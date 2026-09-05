@@ -158,12 +158,13 @@ const InstallmentPlanDetails = () => {
 
     if (isPastDue) {
       message = `*⚠️ Zaroori Notice - ${settings.shopName || 'Electronics Shop'}*
+
 --------------------------------
-Salam *${plan.customer?.fullName || 'Customer'}* bhai,
-Aapki *${plan.product?.name || 'Item'}* ki kist (Month #${inst.installmentNumber}) jama karwane ki tareeqh guzar chuki hai.
+Assalam-o-Alaikum *${plan.customer?.fullName || 'Customer'}*,
+Aapko yaad dilaya jata hai ke aapki *${plan.product?.name || 'Item'}* ki kist k date guzar chuke hai aur  (Month #${inst.installmentNumber}) abhi tak aapki payment receive nahi hui hai...
 
 *Kist Raqam:* ${settings.currency} ${inst.remainingAmount.toLocaleString()}
-*Due Tareeqh Thi:* ${dueDateFormatted}
+*Tareeqh Thi:* ${dueDateFormatted}
 
 Bara-e-meherbani foran dukan tashreef layein aur apni kist jama karwayein taake record kharab na ho.
 --------------------------------
@@ -172,13 +173,13 @@ Bara-e-meherbani foran dukan tashreef layein aur apni kist jama karwayein taake 
     } else {
       message = `*Kist Reminder - ${settings.shopName || 'Electronics Shop'}*
 --------------------------------
-Salam *${plan.customer?.fullName || 'Customer'}* bhai,
-Aapki *${plan.product?.name || 'Item'}* ki kist (Month #${inst.installmentNumber}) jald due hai.
+Assalam-o-Alaikum *${plan.customer?.fullName || 'Customer'}* ,
+Aapki *${plan.product?.name || 'Item'}* ki kist (Month #${inst.installmentNumber}) jald ane wale hai.
 
 *Kist Raqam:* ${settings.currency} ${inst.remainingAmount.toLocaleString()}
 *Akhri Tareeqh:* ${dueDateFormatted}
 
-Bara-e-meherbani time par dukan tashreef la kar kist jama karwa dein.
+Bara-e-meherbani time par dukan tashreef la kar kist jama karwa dena.
 --------------------------------
 *Dukan:* ${settings.shopName || ''}
 *Phone:* ${settings.shopPhone || ''}`;

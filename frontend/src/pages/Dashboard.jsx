@@ -67,18 +67,17 @@ const Dashboard = () => {
   const message = `*⚠️ URGENT INSTALLMENT REMINDER*
 ━━━━━━━━━━━━━━━━━━━━
 
-Assalam-o-Alaikum *${customerName}* bhai,
+Assalam-o-Alaikum *${customerName}*,
 
-Aapko yaad dilaya jata hai ke aapki *${productName}* ki installment ki due date:
+Aapko yaad dilaya jata hai ke aapki *${productName}* ki kist k date guzar chuke hai aur abhi tak aapki payment receive nahi hui hai...:
 
 📅 *Due Date:* ${dueDateFormatted}
 
-guzar chuki hai aur abhi tak is installment ki payment receive nahi hui.
 
 💰 *Installment Amount:* ${settings.currency} ${inst.amount.toLocaleString()}
 🔢 *Installment:* Month #${inst.installmentNumber}
 
-Meharbani farma kar apni pending installment *jald az jald* jama karwa dein, taake aapka payment record updated rahe aur kisi bhi inconvenience se bacha ja sake.
+Meharbani farma kar apni installment *jald az jald* jama karwa dein, taake aapka payment record updated rahe aur kisi bhi mushkil se bacha sake.
 
 Agar aap payment already kar chuke hain to is message ko ignore karein ya payment details share kar dein.
 
