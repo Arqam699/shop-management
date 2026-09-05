@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -26,7 +27,7 @@ const YearlyAuditDetail = () => {
   const fetchDetails = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/audits/${id}`);
+      const res = await api.get(`/api/audits/${id}`);
       if (res.data && res.data.success) {
         setAudit(res.data.data);
       }
@@ -44,7 +45,7 @@ const YearlyAuditDetail = () => {
   const handleAddPurchase = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.post(`/audits/${id}/purchase`, purchaseForm);
+      const res = await api.post(`/api/audits/${id}/purchase`, purchaseForm);
       if (res.data && res.data.success) {
         setAudit(res.data.data);
         setPurchaseForm({ name: '', brand: '', quantity: 1, purchasePrice: '' });
@@ -57,7 +58,7 @@ const YearlyAuditDetail = () => {
   const handleAddSale = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.post(`/audits/${id}/sale`, saleForm);
+      const res = await api.post(`/api/audits/${id}/sale`, saleForm);
       if (res.data && res.data.success) {
         setAudit(res.data.data);
         setSaleForm({ 
@@ -79,7 +80,7 @@ const YearlyAuditDetail = () => {
   const handleDeleteItem = async (itemId, type) => {
     if (window.confirm('Are you sure you want to delete this historical entry?')) {
       try {
-        const res = await api.delete(`/audits/${id}/item/${itemId}?type=${type}`);
+        const res = await api.delete(`/api/audits/${id}/item/${itemId}?type=${type}`);
         if (res.data && res.data.success) {
           setAudit(res.data.data);
         }

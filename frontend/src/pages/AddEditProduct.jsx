@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -24,7 +25,7 @@ const AddEditProduct = () => {
     supplier: '',
     warrantyPeriod: '',
     description: '',
-    adjustmentReason: '' // only for manual edit adjustments
+    adjustmentReason: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -32,8 +33,15 @@ const AddEditProduct = () => {
   const [errorMsg, setErrorMsg] = useState('');
 
   const categories = [
-    'Mobile Phones', 'LED TVs', 'Refrigerators', 'Washing Machines', 
-    'Air Conditioners', 'Laptops', 'Accessories', 'Speakers', 'Other'
+    'Mobile Phones',
+    'LED TVs',
+    'Refrigerators',
+    'Washing Machines',
+    'Air Conditioners',
+    'Laptops',
+    'Accessories',
+    'Speakers',
+    'Other'
   ];
 
   useEffect(() => {
@@ -41,11 +49,13 @@ const AddEditProduct = () => {
       const fetchProductDetails = async () => {
         try {
           setFetching(true);
-          const response = await api.get(`/products/${id}`);
+
+          const response = await api.get(`/api/products/${id}`);
+
           if (response.data && response.data.success) {
             setFormData({
               ...response.data.data,
-              adjustmentReason: '' // clear any previous adjustments text
+              adjustmentReason: ''
             });
           }
         } catch (error) {
@@ -54,13 +64,18 @@ const AddEditProduct = () => {
           setFetching(false);
         }
       };
+
       fetchProductDetails();
     }
   }, [id, isEditMode]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+
+    setFormData({
+      ...formData,
+      [name]: value
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -77,13 +92,18 @@ const AddEditProduct = () => {
 
     try {
       if (isEditMode) {
-        await api.put(`/products/${id}`, formData);
+        await api.put(`/api/products/${id}`, formData);
       } else {
-        await api.post('/products', formData);
+        await api.post('/api/products', formData);
       }
+
+      // Frontend route — /api should NOT be used here
       navigate('/inventory');
     } catch (error) {
-      setErrorMsg(error.response?.data?.message || 'Failed to save product configurations.');
+      setErrorMsg(
+        error.response?.data?.message ||
+        'Failed to save product configurations.'
+      );
     } finally {
       setLoading(false);
     }
@@ -93,38 +113,65 @@ const AddEditProduct = () => {
     return (
       <div className="flex flex-col items-center justify-center p-10 space-y-3">
         <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-gray-500 text-sm">Loading product details...</span>
+        <span className="text-gray-500 text-sm">
+          Loading product details...
+        </span>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+
       <div className="flex items-center space-x-3">
-        <Link to="/inventory" className="p-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-600">
+        <Link
+          to="/inventory"
+          className="p-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-600"
+        >
           <ArrowLeft className="w-5 h-5" />
         </Link>
+
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">{isEditMode ? 'Modify Product Specifications' : 'Add New Product'}</h2>
-          <p className="text-sm text-gray-600">Ensure SKU pricing metrics and warranty are saved correctly.</p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {isEditMode
+              ? 'Modify Product Specifications'
+              : 'Add New Product'}
+          </h2>
+
+          <p className="text-sm text-gray-600">
+            Ensure SKU pricing metrics and warranty are saved correctly.
+          </p>
         </div>
       </div>
 
       {errorMsg && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg flex items-start space-x-3 text-red-800">
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <span className="text-sm font-semibold">{errorMsg}</span>
+          <span className="text-sm font-semibold">
+            {errorMsg}
+          </span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden"
+      >
         <div className="p-6 space-y-6">
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
             {/* Core details */}
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-800 border-b pb-2">Base Information</h3>
+              <h3 className="font-bold text-gray-800 border-b pb-2">
+                Base Information
+              </h3>
+
               <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">Product Title / Name</label>
+                <label className="block text-xs font-semibold uppercase text-gray-500">
+                  Product Title / Name
+                </label>
+
                 <input
                   type="text"
                   name="name"
@@ -137,7 +184,10 @@ const AddEditProduct = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Brand</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Brand
+                  </label>
+
                   <input
                     type="text"
                     name="brand"
@@ -147,8 +197,12 @@ const AddEditProduct = () => {
                     required
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Model Name/Number</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Model Name/Number
+                  </label>
+
                   <input
                     type="text"
                     name="model"
@@ -162,7 +216,10 @@ const AddEditProduct = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Category</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Category
+                  </label>
+
                   <select
                     name="category"
                     value={formData.category}
@@ -170,11 +227,19 @@ const AddEditProduct = () => {
                     className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                     required
                   >
-                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
                   </select>
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Warranty Term</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Warranty Term
+                  </label>
+
                   <input
                     type="text"
                     name="warrantyPeriod"
@@ -187,7 +252,10 @@ const AddEditProduct = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">Device Serials / Barcode Number</label>
+                <label className="block text-xs font-semibold uppercase text-gray-500">
+                  Device Serials / Barcode Number
+                </label>
+
                 <input
                   type="text"
                   name="serialNumber"
@@ -198,7 +266,10 @@ const AddEditProduct = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">IMEI (For Phones only)</label>
+                <label className="block text-xs font-semibold uppercase text-gray-500">
+                  IMEI (For Phones only)
+                </label>
+
                 <input
                   type="text"
                   name="imei"
@@ -211,11 +282,16 @@ const AddEditProduct = () => {
 
             {/* Price levels & stock parameters */}
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-800 border-b pb-2">Financials & Stock Parameters</h3>
-              
+              <h3 className="font-bold text-gray-800 border-b pb-2">
+                Financials & Stock Parameters
+              </h3>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Purchase Price ({settings.currency})</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Purchase Price ({settings.currency})
+                  </label>
+
                   <input
                     type="number"
                     name="purchasePrice"
@@ -226,8 +302,12 @@ const AddEditProduct = () => {
                     min="0"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Selling Price ({settings.currency})</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Selling Price ({settings.currency})
+                  </label>
+
                   <input
                     type="number"
                     name="salePrice"
@@ -242,7 +322,10 @@ const AddEditProduct = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Initial Quantity</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Initial Quantity
+                  </label>
+
                   <input
                     type="number"
                     name="quantity"
@@ -253,8 +336,12 @@ const AddEditProduct = () => {
                     min="0"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-gray-500">Low Stock Trigger</label>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Low Stock Trigger
+                  </label>
+
                   <input
                     type="number"
                     name="minStockLevel"
@@ -268,7 +355,10 @@ const AddEditProduct = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">Supplier Name / Factory Details</label>
+                <label className="block text-xs font-semibold uppercase text-gray-500">
+                  Supplier Name / Factory Details
+                </label>
+
                 <input
                   type="text"
                   name="supplier"
@@ -279,7 +369,10 @@ const AddEditProduct = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">Description / Specifications Note</label>
+                <label className="block text-xs font-semibold uppercase text-gray-500">
+                  Description / Specifications Note
+                </label>
+
                 <textarea
                   name="description"
                   value={formData.description}
@@ -291,7 +384,10 @@ const AddEditProduct = () => {
 
               {isEditMode && (
                 <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                  <label className="block text-xs font-semibold uppercase text-amber-700">Reason for Stock Adjustment</label>
+                  <label className="block text-xs font-semibold uppercase text-amber-700">
+                    Reason for Stock Adjustment
+                  </label>
+
                   <input
                     type="text"
                     name="adjustmentReason"
@@ -320,7 +416,11 @@ const AddEditProduct = () => {
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>{isEditMode ? 'Update Product specifications' : 'Save New Product'}</span>
+                <span>
+                  {isEditMode
+                    ? 'Update Product specifications'
+                    : 'Save New Product'}
+                </span>
               </>
             )}
           </button>

@@ -30,7 +30,7 @@ const Expenses = () => {
   const fetchExpenses = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/expenses');
+      const response = await api.get('/api/expenses');
       if (response.data && response.data.success) {
         setExpenses(response.data.data);
       }
@@ -48,7 +48,7 @@ const Expenses = () => {
   const handleDeleteExpense = async (id, expenseId, amount) => {
     if (window.confirm(`Are you sure you want to permanently delete Expense Voucher "${expenseId}" worth ${settings.currency} ${amount.toLocaleString()}?`)) {
       try {
-        const response = await api.delete(`/expenses/${id}`);
+        const response = await api.delete(`/api/expenses/${id}`);
         if (response.data && response.data.success) {
           setExpenses(expenses.filter(e => e._id !== id));
           alert(`Expense Voucher ${expenseId} removed successfully!`);
@@ -77,7 +77,7 @@ const Expenses = () => {
     }
 
     try {
-      const response = await api.post('/expenses', formData);
+      const response = await api.post('/api/expenses', formData);
       if (response.data && response.data.success) {
         alert('Expense Voucher registered successfully!');
         setShowAddModal(false);

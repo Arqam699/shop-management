@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
@@ -13,7 +14,8 @@ const Returns = () => {
   const fetchReturns = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/returns');
+      const response = await api.get('/api/returns');
+
       if (response.data && response.data.success) {
         setReturns(response.data.data);
       }
@@ -31,7 +33,8 @@ const Returns = () => {
   const handleDeleteReturn = async (id, returnId) => {
     if (window.confirm(`Are you sure you want to permanently delete return record "${returnId}" from database?`)) {
       try {
-        const response = await api.delete(`/returns/${id}`);
+        const response = await api.delete(`/api/returns/${id}`);
+
         if (response.data && response.data.success) {
           setReturns(returns.filter(r => r._id !== id));
           alert(`Return record ${returnId} removed successfully!`);
@@ -42,7 +45,7 @@ const Returns = () => {
     }
   };
 
-  const filteredReturns = returns.filter(r => 
+  const filteredReturns = returns.filter(r =>
     r.customer?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.returnId?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -50,13 +53,18 @@ const Returns = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 font-sans">Returns & Adjustments History</h2>
-        <p className="text-sm text-gray-600">Track dynamic product exchanges, refund cashbacks and dynamic financing installments reductions.</p>
+        <h2 className="text-2xl font-bold text-gray-900 font-sans">
+          Returns & Adjustments History
+        </h2>
+        <p className="text-sm text-gray-600">
+          Track dynamic product exchanges, refund cashbacks and dynamic financing installments reductions.
+        </p>
       </div>
 
       <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
         <div className="relative">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
+
           <input
             type="text"
             placeholder="Search returned vouchers by customer name, return ID (RET-...)..."
@@ -71,13 +79,21 @@ const Returns = () => {
         {loading ? (
           <div className="p-10 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-gray-500 text-sm">Querying returns directory...</span>
+            <span className="text-gray-500 text-sm">
+              Querying returns directory...
+            </span>
           </div>
         ) : filteredReturns.length === 0 ? (
           <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-2">
             <RefreshCcw className="w-12 h-12 text-gray-300" />
-            <p className="text-sm font-semibold">No returns recorded yet</p>
-            <p className="text-xs">If a customer returns an item, click "Process Return" directly from their invoice page.</p>
+
+            <p className="text-sm font-semibold">
+              No returns recorded yet
+            </p>
+
+            <p className="text-xs">
+              If a customer returns an item, click "Process Return" directly from their invoice page.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -95,36 +111,67 @@ const Returns = () => {
                   <th className="px-6 py-4 text-center">Actions</th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-gray-200">
                 {filteredReturns.map((r) => (
                   <tr key={r._id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 text-indigo-600 font-bold tracking-wider">{r.returnId}</td>
-                    <td className="px-6 py-4 text-slate-500">{r.sale?.saleId || 'Deleted Invoice'}</td>
+                    <td className="px-6 py-4 text-indigo-600 font-bold tracking-wider">
+                      {r.returnId}
+                    </td>
+
+                    <td className="px-6 py-4 text-slate-500">
+                      {r.sale?.saleId || 'Deleted Invoice'}
+                    </td>
+
                     <td className="px-6 py-4">
                       <div>
-                        <p className="font-bold text-gray-900">{r.customer?.fullName || 'N/A'}</p>
-                        <p className="text-xs text-gray-500">{r.customer?.mobileNumber || ''}</p>
+                        <p className="font-bold text-gray-900">
+                          {r.customer?.fullName || 'N/A'}
+                        </p>
+
+                        <p className="text-xs text-gray-500">
+                          {r.customer?.mobileNumber || ''}
+                        </p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-800">{r.product?.name || 'Deleted Product'}</td>
-                    <td className="px-6 py-4 text-red-600 font-bold">{r.quantity} Units</td>
-                    <td className="px-6 py-4 font-extrabold text-green-600">{settings.currency} {r.refundAmount.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-gray-500 truncate max-w-[150px]" title={r.reason}>{r.reason}</td>
+
+                    <td className="px-6 py-4 text-gray-800">
+                      {r.product?.name || 'Deleted Product'}
+                    </td>
+
+                    <td className="px-6 py-4 text-red-600 font-bold">
+                      {r.quantity} Units
+                    </td>
+
+                    <td className="px-6 py-4 font-extrabold text-green-600">
+                      {settings.currency} {r.refundAmount.toLocaleString()}
+                    </td>
+
+                    <td
+                      className="px-6 py-4 text-gray-500 truncate max-w-[150px]"
+                      title={r.reason}
+                    >
+                      {r.reason}
+                    </td>
+
                     <td className="px-6 py-4 text-xs text-gray-500">
                       {new Date(r.returnDate).toLocaleDateString()}
                     </td>
+
                     <td className="px-6 py-4 text-center">
                       {ALLOW_GLOBAL_DELETION ? (
                         <button
-                          onClick={() => handleDeleteReturn(r._id, r.returnId)}
+                          onClick={() =>
+                            handleDeleteReturn(r._id, r.returnId)
+                          }
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex"
                           title="Delete Return Record"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       ) : (
-                        <span 
-                          className="inline-flex items-center p-1.5 text-gray-400 cursor-not-allowed opacity-60" 
+                        <span
+                          className="inline-flex items-center p-1.5 text-gray-400 cursor-not-allowed opacity-60"
                           title="Locked: Only Admin can delete from config"
                         >
                           <Lock className="w-3.5 h-3.5" />

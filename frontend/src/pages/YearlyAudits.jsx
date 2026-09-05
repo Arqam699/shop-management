@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -18,7 +19,7 @@ const YearlyAudits = () => {
   const fetchAudits = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/audits');
+      const res = await api.get('/api/audits');
       if (res.data && res.data.success) {
         setAudits(res.data.data);
       }
@@ -39,7 +40,7 @@ const YearlyAudits = () => {
     setIsSubmitting(true);
 
     try {
-      const res = await api.post('/audits', { year: newYear });
+      const res = await api.post('/api/audits', { year: newYear });
       if (res.data && res.data.success) {
         alert(`Audit Sheet for Year ${newYear} generated successfully!`);
         setShowAddModal(false);
@@ -56,7 +57,7 @@ const YearlyAudits = () => {
   const handleDeleteYear = async (id, year) => {
     if (window.confirm(`DANGER: Are you sure you want to permanently delete Yearly Audit register for Year "${year}"?`)) {
       try {
-        await api.delete(`/audits/${id}`);
+        await api.delete(`/api/audits/${id}`);
         setAudits(audits.filter(a => a._id !== id));
       } catch (error) {
         alert('Failed to remove yearly audit register.');

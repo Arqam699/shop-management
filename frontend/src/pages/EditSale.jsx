@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -31,8 +32,8 @@ const EditSale = () => {
       try {
         setFetching(true);
         const [prodRes, saleRes] = await Promise.all([
-          api.get('/products'),
-          api.get(`/sales/${id}`)
+          api.get('/api/products'),
+          api.get(`/api/sales/${id}`)
         ]);
 
         if (prodRes.data && prodRes.data.success) {
@@ -81,7 +82,10 @@ const EditSale = () => {
   const activeProduct = products.find(p => p._id === formData.product);
   const subtotal = formData.quantity * formData.unitPrice;
   const finalTotal = subtotal - formData.discount;
-  const remaining = formData.paymentType === 'Installment' ? (finalTotal - formData.downPayment) : 0;
+  const remaining =
+    formData.paymentType === 'Installment'
+      ? (finalTotal - formData.downPayment)
+      : 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -95,18 +99,27 @@ const EditSale = () => {
     }
 
     try {
-      await api.put(`/sales/${id}`, {
+      await api.put(`/api/sales/${id}`, {
         product: formData.product,
         quantity: Number(formData.quantity),
         unitPrice: Number(formData.unitPrice),
         discount: Number(formData.discount),
         paymentType: formData.paymentType,
-        downPayment: formData.paymentType === 'Installment' ? Number(formData.downPayment) : 0,
-        installmentDuration: formData.paymentType === 'Installment' ? Number(formData.installmentDuration) : 0
+        downPayment:
+          formData.paymentType === 'Installment'
+            ? Number(formData.downPayment)
+            : 0,
+        installmentDuration:
+          formData.paymentType === 'Installment'
+            ? Number(formData.installmentDuration)
+            : 0
       });
+
       navigate('/sales');
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'Failed to update transaction.');
+      setErrorMsg(
+        err.response?.data?.message || 'Failed to update transaction.'
+      );
     } finally {
       setIsSaving(false);
     }
@@ -116,7 +129,9 @@ const EditSale = () => {
     return (
       <div className="flex flex-col items-center justify-center p-10 space-y-3">
         <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-gray-500 text-sm">Querying invoice records...</span>
+        <span className="text-gray-500 text-sm">
+          Querying invoice records...
+        </span>
       </div>
     );
   }
@@ -124,12 +139,21 @@ const EditSale = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center space-x-3">
-        <Link to="/sales" className="p-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-600">
+        <Link
+          to="/sales"
+          className="p-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-600"
+        >
           <ArrowLeft className="w-5 h-5" />
         </Link>
+
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Correct Invoice Deal (Edit Sale)</h2>
-          <p className="text-sm text-gray-600">Modify items or recalculate discount structures for customer: <strong>{formData.customerName}</strong></p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Correct Invoice Deal (Edit Sale)
+          </h2>
+          <p className="text-sm text-gray-600">
+            Modify items or recalculate discount structures for customer:{' '}
+            <strong>{formData.customerName}</strong>
+          </p>
         </div>
       </div>
 
@@ -140,20 +164,29 @@ const EditSale = () => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form
+        onSubmit={handleSubmit}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-            
-            {/* Read-only customer banner */}
+
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-              <span className="text-xs uppercase font-bold text-gray-400">Customer Tied To Invoice</span>
-              <p className="text-lg font-extrabold text-gray-800 mt-1">{formData.customerName}</p>
-              <span className="text-xs text-indigo-600 font-bold tracking-wider">{formData.customerId}</span>
+              <span className="text-xs uppercase font-bold text-gray-400">
+                Customer Tied To Invoice
+              </span>
+              <p className="text-lg font-extrabold text-gray-800 mt-1">
+                {formData.customerName}
+              </p>
+              <span className="text-xs text-indigo-600 font-bold tracking-wider">
+                {formData.customerId}
+              </span>
             </div>
 
-            {/* Select Product */}
             <div>
-              <label className="block text-xs font-semibold uppercase text-gray-500">Stock Item</label>
+              <label className="block text-xs font-semibold uppercase text-gray-500">
+                Stock Item
+              </label>
               <select
                 value={formData.product}
                 onChange={handleProductChange}
@@ -161,15 +194,19 @@ const EditSale = () => {
                 required
               >
                 {products.map(p => (
-                  <option key={p._id} value={p._id}>{p.name} ({p.brand} {p.model}) - Max Available Stock: {p.quantity}</option>
+                  <option key={p._id} value={p._id}>
+                    {p.name} ({p.brand} {p.model}) - Max Available Stock:{' '}
+                    {p.quantity}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* Price Override and Qty */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500">Unit Price ({settings.currency})</label>
+                <label className="block text-xs font-semibold text-gray-500">
+                  Unit Price ({settings.currency})
+                </label>
                 <input
                   type="number"
                   name="unitPrice"
@@ -179,8 +216,11 @@ const EditSale = () => {
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-semibold text-gray-500">Quantity</label>
+                <label className="block text-xs font-semibold text-gray-500">
+                  Quantity
+                </label>
                 <input
                   type="number"
                   name="quantity"
@@ -193,13 +233,20 @@ const EditSale = () => {
               </div>
             </div>
 
-            {/* Payment Method Selector */}
             <div>
-              <label className="block text-xs font-semibold uppercase text-gray-500">Payment Term</label>
+              <label className="block text-xs font-semibold uppercase text-gray-500">
+                Payment Term
+              </label>
+
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, paymentType: 'Cash' }))}
+                  onClick={() =>
+                    setFormData(prev => ({
+                      ...prev,
+                      paymentType: 'Cash'
+                    }))
+                  }
                   className={`py-3 px-4 border rounded-xl text-sm font-bold transition-colors ${
                     formData.paymentType === 'Cash'
                       ? 'border-green-600 bg-green-50 text-green-700 shadow-sm'
@@ -208,9 +255,15 @@ const EditSale = () => {
                 >
                   Cash Deal
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, paymentType: 'Installment' }))}
+                  onClick={() =>
+                    setFormData(prev => ({
+                      ...prev,
+                      paymentType: 'Installment'
+                    }))
+                  }
                   className={`py-3 px-4 border rounded-xl text-sm font-bold transition-colors ${
                     formData.paymentType === 'Installment'
                       ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-sm'
@@ -224,10 +277,15 @@ const EditSale = () => {
 
             {formData.paymentType === 'Installment' && (
               <div className="bg-purple-50/50 border border-purple-200 p-4 rounded-xl space-y-4">
-                <h4 className="text-sm font-extrabold text-purple-800">Installment Parameters</h4>
+                <h4 className="text-sm font-extrabold text-purple-800">
+                  Installment Parameters
+                </h4>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-purple-700">Down Payment ({settings.currency})</label>
+                    <label className="block text-xs font-semibold text-purple-700">
+                      Down Payment ({settings.currency})
+                    </label>
                     <input
                       type="number"
                       name="downPayment"
@@ -237,8 +295,11 @@ const EditSale = () => {
                       required
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-semibold text-purple-700">Plan Duration (Months)</label>
+                    <label className="block text-xs font-semibold text-purple-700">
+                      Plan Duration (Months)
+                    </label>
                     <select
                       name="installmentDuration"
                       value={formData.installmentDuration}
@@ -254,11 +315,9 @@ const EditSale = () => {
                 </div>
               </div>
             )}
-
           </div>
         </div>
 
-        {/* Right Side recalculation ledger */}
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-white shadow-md space-y-6 sticky top-24">
             <h3 className="font-extrabold text-sm uppercase tracking-wider text-indigo-400 border-b border-slate-800 pb-3 flex items-center space-x-2">
@@ -269,8 +328,11 @@ const EditSale = () => {
             <div className="space-y-3 font-medium text-sm text-slate-300">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>{settings.currency} {subtotal.toLocaleString()}</span>
+                <span>
+                  {settings.currency} {subtotal.toLocaleString()}
+                </span>
               </div>
+
               <div className="flex justify-between items-center">
                 <span>Discount</span>
                 <input
@@ -282,16 +344,21 @@ const EditSale = () => {
                   min="0"
                 />
               </div>
+
               <div className="border-t border-slate-800 my-4 pt-4 flex justify-between text-base font-extrabold text-white">
                 <span>Net Payable</span>
-                <span className="text-indigo-400">{settings.currency} {finalTotal.toLocaleString()}</span>
+                <span className="text-indigo-400">
+                  {settings.currency} {finalTotal.toLocaleString()}
+                </span>
               </div>
 
               {formData.paymentType === 'Installment' && (
                 <div className="space-y-2 border-t border-slate-800/50 pt-4 text-xs font-semibold text-slate-400">
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
                     <span>Financed Balance</span>
-                    <span className="text-purple-400">{settings.currency} {remaining.toLocaleString()}</span>
+                    <span className="text-purple-400">
+                      {settings.currency} {remaining.toLocaleString()}
+                    </span>
                   </div>
                 </div>
               )}
@@ -302,7 +369,11 @@ const EditSale = () => {
               disabled={isSaving}
               className="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl shadow transition-colors text-sm"
             >
-              {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+              {isSaving ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Save className="w-5 h-5" />
+              )}
               <span>Save Corrections</span>
             </button>
           </div>
