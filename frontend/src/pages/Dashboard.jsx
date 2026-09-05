@@ -20,7 +20,7 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/reports/dashboard');
+      const response = await api.get('/api/reports/dashboard');
       if (response.data && response.data.success) {
         setStats(response.data.data);
       }
