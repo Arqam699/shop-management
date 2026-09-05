@@ -19,7 +19,7 @@ const Sales = () => {
   const fetchSales = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/sales');
+      const response = await api.get('/api/sales');
       if (response.data && response.data.success) {
         setSales(response.data.data);
       }
