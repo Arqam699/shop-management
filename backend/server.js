@@ -2,6 +2,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+
 const connectDB = require('./config/db');
 const Admin = require('./models/Admin');
 const authRoutes = require('./routes/authRoutes');
@@ -10,21 +11,30 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
+/* =========================
+   MIDDLEWARE
+========================= */
+
 app.use(express.json());
 app.use(cookieParser());
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: 'https://shop-frontend-black-ten.vercel.app',
     credentials: true,
   })
 );
 
-// Database connection
+/* =========================
+   DATABASE
+========================= */
+
 connectDB();
 
-// Health check
+/* =========================
+   HEALTH CHECK
+========================= */
+
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -32,7 +42,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
+/* =========================
+   API ROUTES
+========================= */
+
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', require('./routes/settingsRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
@@ -45,18 +58,26 @@ app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 app.use('/api/audits', require('./routes/auditRoutes'));
 
-// Admin Seeder
+/* =========================
+   ADMIN SEEDER
+========================= */
+
 const seedAdminAccount = async () => {
   try {
     const adminEmail = (
       process.env.ADMIN_EMAIL || 'admin@shop.com'
-    ).trim().toLowerCase();
+    )
+      .trim()
+      .toLowerCase();
 
     const adminPassword =
       process.env.ADMIN_PASSWORD || 'SecureAdminPassword123';
 
-    let admin = await Admin.findOne({ email: adminEmail });
+    let admin = await Admin.findOne({
+      email: adminEmail,
+    });
 
+    // Create admin if it doesn't exist
     if (!admin) {
       admin = new Admin({
         email: adminEmail,
@@ -69,10 +90,14 @@ const seedAdminAccount = async () => {
         `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
       );
     } else {
-      const isMatch = await admin.comparePassword(adminPassword);
+      // Check if password from .env matches
+      const isMatch = await admin.comparePassword(
+        adminPassword
+      );
 
       if (!isMatch) {
         admin.password = adminPassword;
+
         await admin.save();
 
         console.log(
@@ -91,7 +116,10 @@ const seedAdminAccount = async () => {
 
 seedAdminAccount();
 
-// Error Handling
+/* =========================
+   ERROR HANDLING
+========================= */
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
 
@@ -101,7 +129,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Local development only
+/* =========================
+   LOCAL DEVELOPMENT
+========================= */
+
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
 
@@ -114,5 +145,8 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Export for Vercel
+/* =========================
+   VERCEL EXPORT
+========================= */
+
 module.exports = app;
