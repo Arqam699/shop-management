@@ -125,17 +125,58 @@ const updateCustomer = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to update profile', error: error.message });
   }
 };
-
 const deleteCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findByIdAndDelete(req.params.id);
-    if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
+    // Check Deletion Mode
+    const Settings = require('../models/Settings');
+
+    const settings = await Settings.findOne();
+
+    if (!settings || !settings.allowGlobalDeletion) {
+      return res.status(403).json({
+        success: false,
+        message: 'Deletion Mode is disabled. Enable it from Settings first.',
+      });
     }
-    return res.status(200).json({ success: true, message: 'Customer record deleted from system' });
+
+    // Check if Deletion Mode has expired
+    if (
+      settings.deletionModeExpiresAt &&
+      new Date() > settings.deletionModeExpiresAt
+    ) {
+      settings.allowGlobalDeletion = false;
+      settings.deletionModeExpiresAt = null;
+
+      await settings.save();
+
+      return res.status(403).json({
+        success: false,
+        message: 'Deletion Mode has expired. Enable it again from Settings.',
+      });
+    }
+
+    // Delete customer
+    const customer = await Customer.findByIdAndDelete(req.params.id);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Customer record deleted from system',
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Deletion failed', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Deletion failed',
+      error: error.message,
+    });
   }
 };
+
 
 module.exports = { getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer };

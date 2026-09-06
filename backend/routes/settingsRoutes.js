@@ -1,9 +1,28 @@
 const express = require('express');
+
 const router = express.Router();
-const { getSettings, updateSettings } = require('../controllers/settingsController');
+
+const {
+  getSettings,
+  updateSettings,
+  enableDeletionMode,
+  disableDeletionMode,
+} = require('../controllers/settingsController');
+
 const { protect } = require('../middleware/authMiddleware');
 
+
+// Get current shop settings
 router.get('/', protect, getSettings);
+
+// Update shop settings
 router.put('/', protect, updateSettings);
+
+
+// Deletion Mode
+router.post('/deletion-mode/enable', protect, enableDeletionMode);
+
+router.post('/deletion-mode/disable', protect, disableDeletionMode);
+
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const Settings = require('../models/Settings');
+const Admin = require('../models/Admin');
 
 // @desc    Get current shop settings
 // @route   GET /api/settings
@@ -6,14 +7,35 @@ const Settings = require('../models/Settings');
 const getSettings = async (req, res) => {
   try {
     let settings = await Settings.findOne();
+
     if (!settings) {
       settings = await Settings.create({});
     }
-    return res.status(200).json({ success: true, data: settings });
+
+    // Automatically turn deletion OFF if expired
+    if (
+      settings.allowGlobalDeletion &&
+      settings.deletionModeExpiresAt &&
+      new Date() > settings.deletionModeExpiresAt
+    ) {
+      settings.allowGlobalDeletion = false;
+      settings.deletionModeExpiresAt = null;
+      await settings.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: settings,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to retrieve settings', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve settings',
+      error: error.message,
+    });
   }
 };
+
 
 // @desc    Update shop settings
 // @route   PUT /api/settings
@@ -21,16 +43,152 @@ const getSettings = async (req, res) => {
 const updateSettings = async (req, res) => {
   try {
     let settings = await Settings.findOne();
+
     if (!settings) {
       settings = new Settings(req.body);
     } else {
       Object.assign(settings, req.body);
     }
+
     await settings.save();
-    return res.status(200).json({ success: true, message: 'Settings updated successfully', data: settings });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Settings updated successfully',
+      data: settings,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to update settings', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update settings',
+      error: error.message,
+    });
   }
 };
 
-module.exports = { getSettings, updateSettings };
+
+// @desc    Enable deletion mode after password verification
+// @route   POST /api/settings/deletion-mode/enable
+// @access  Private
+const enableDeletionMode = async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin password is required',
+      });
+    }
+
+    const admin = await Admin.findById(req.admin._id);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin not found',
+      });
+    }
+
+    const isPasswordCorrect = await admin.comparePassword(password);
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect admin password',
+      });
+    }
+
+    let settings = await Settings.findOne();
+
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    // Enable deletion mode for 30 minutes
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    settings.allowGlobalDeletion = true;
+    settings.deletionModeExpiresAt = expiresAt;
+
+    await settings.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Deletion Mode enabled for 30 minutes',
+      data: settings,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to enable deletion mode',
+      error: error.message,
+    });
+  }
+};
+
+
+// @desc    Disable deletion mode after password verification
+// @route   POST /api/settings/deletion-mode/disable
+// @access  Private
+const disableDeletionMode = async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin password is required',
+      });
+    }
+
+    const admin = await Admin.findById(req.admin._id);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin not found',
+      });
+    }
+
+    const isPasswordCorrect = await admin.comparePassword(password);
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect admin password',
+      });
+    }
+
+    let settings = await Settings.findOne();
+
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    settings.allowGlobalDeletion = false;
+    settings.deletionModeExpiresAt = null;
+
+    await settings.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Deletion Mode disabled',
+      data: settings,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to disable deletion mode',
+      error: error.message,
+    });
+  }
+};
+
+
+module.exports = {
+  getSettings,
+  updateSettings,
+  enableDeletionMode,
+  disableDeletionMode,
+};

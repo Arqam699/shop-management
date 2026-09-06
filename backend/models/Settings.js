@@ -10,7 +10,11 @@ const settingsSchema = new mongoose.Schema({
   defaultMinStockLevel: { type: Number, default: 5 },
   invoicePrefix: { type: String, default: 'INV' },
   customerIdPrefix: { type: String, default: 'CUST' },
-  allowGlobalDeletion: { type: Boolean, default: false } // Master Deletion Switch state saved in DB!
+  allowGlobalDeletion: { type: Boolean, default: false },
+  deletionModeExpiresAt: {
+  type: Date,
+  default: null,
+},
 }, { timestamps: true });
 
 module.exports = mongoose.model('Settings', settingsSchema);
