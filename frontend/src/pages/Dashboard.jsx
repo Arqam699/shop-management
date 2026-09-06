@@ -937,7 +937,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
   const firstRowKpis = [
     {
-      name: 'Total Revenue',
+      name: 'Total Earnings / Revenue',
       value: `${
         settings.currency
       } ${totalRevenue.toLocaleString()}`,
@@ -1025,7 +1025,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       icon: Wallet
     },
     {
-      label: 'Clear / Net Profit',
+      label: 'Clear',
       value: netProfitVal,
       icon: TrendingUp
     }
