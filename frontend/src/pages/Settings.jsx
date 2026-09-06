@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import api from '../utils/api'; // API import for password verification
+import api from '../utils/api'; 
 import { useSettings } from '../context/SettingsContext';
 import { 
-  Save, CheckCircle2, AlertTriangle, RefreshCw, Lock, ShieldAlert, KeyRound, X 
-} from 'lucide-react';
+  Save, CheckCircle2, AlertTriangle, RefreshCw, Lock, ShieldAlert, KeyRound, X, AlertCircle 
+} from 'lucide-react'; // AlertCircle icon imported cleanly!
 
 const SettingsPage = () => {
   const { settings, updateSettings, refreshSettings } = useSettings();
@@ -50,12 +50,10 @@ const SettingsPage = () => {
   // Toggle Master Deletion Lock handler
   const handleToggleClick = async () => {
     if (!settings?.allowGlobalDeletion) {
-      // If currently locked, open password modal to confirm admin identity
       setAdminPassword('');
       setPasswordError('');
       setShowPasswordModal(true);
     } else {
-      // If currently unlocked, lock it back immediately with 1-click
       if (window.confirm('Lock all deletion actions across the system (Safe Mode)?')) {
         const res = await updateSettings({ ...formData, allowGlobalDeletion: false });
         if (res.success) {
@@ -74,7 +72,6 @@ const SettingsPage = () => {
     try {
       const verifyRes = await api.post('/auth/verify-password', { password: adminPassword });
       if (verifyRes.data && verifyRes.data.success) {
-        // Password verified! Now enable global deletion in settings
         const updateRes = await updateSettings({ ...formData, allowGlobalDeletion: true });
         if (updateRes.success) {
           alert('IDENTITY VERIFIED! System Deletions UNLOCKED. All delete buttons are now active across the application.');
@@ -174,7 +171,6 @@ const SettingsPage = () => {
       <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Shop Details */}
             <div className="space-y-4">
               <h3 className="text-md font-bold text-gray-800 border-b pb-2">Dukan Information</h3>
               <div>
@@ -220,7 +216,6 @@ const SettingsPage = () => {
               </div>
             </div>
 
-            {/* Invoicing and Defaults */}
             <div className="space-y-4">
               <h3 className="text-md font-bold text-gray-800 border-b pb-2">System Calculations</h3>
               <div>
