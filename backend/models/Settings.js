@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const settingsSchema = new mongoose.Schema({
   shopName: { type: String, default: 'My Electronics Shop' },
-  shopAddress: { type: String, default: 'Main Bazar, Pakistan' },
+  shopAddress: { type: String, default: 'Main Bazar, Sangla Hill, Pakistan' },
   shopPhone: { type: String, default: '+92 300 1234567' },
   shopEmail: { type: String, default: 'admin@shop.com' },
   currency: { type: String, default: 'Rs.' },
@@ -10,6 +10,7 @@ const settingsSchema = new mongoose.Schema({
   defaultMinStockLevel: { type: Number, default: 5 },
   invoicePrefix: { type: String, default: 'INV' },
   customerIdPrefix: { type: String, default: 'CUST' },
+  allowGlobalDeletion: { type: Boolean, default: false } // Master Deletion Switch state saved in DB!
 }, { timestamps: true });
 
 module.exports = mongoose.model('Settings', settingsSchema);
