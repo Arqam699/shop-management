@@ -1,31 +1,47 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { FileText, Search, Eye, Trash2, Lock, Calendar } from 'lucide-react';
+import {
+  FileText,
+  Search,
+  Eye,
+  Trash2,
+  Lock,
+  Calendar,
+} from 'lucide-react';
 
 const Invoices = () => {
   const { settings } = useSettings();
+
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Universal Date Filter states (Today, Week, Month, Custom, All-Time)
+  // Universal Date Filter states
+  // Today, Week, Month, Custom, All-Time
   const [filterPreset, setFilterPreset] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // Settings-based Universal Deletion Mode
+  const isDeletionUnlocked =
+    settings?.allowGlobalDeletion === true;
+
   const fetchInvoices = async () => {
     try {
       setLoading(true);
+
       const response = await api.get('/api/sales');
 
       if (response.data && response.data.success) {
         setInvoices(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching invoices ledger:', error);
+      console.error(
+        'Error fetching invoices ledger:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -36,6 +52,14 @@ const Invoices = () => {
   }, []);
 
   const handleDeleteInvoice = async (id, saleId) => {
+    // Frontend protection
+    if (!isDeletionUnlocked) {
+      alert(
+        'Deletion Mode is disabled. Enable it from Settings first.'
+      );
+      return;
+    }
+
     if (
       window.confirm(
         `WARNING: Are you sure you want to cancel and permanently delete Invoice "${saleId}"?\n\nThis will delete the sale, wipe out any associated installment schedules, and automatically RESTORE the stock quantity back to your inventory.`
@@ -44,7 +68,11 @@ const Invoices = () => {
       try {
         await api.delete(`/api/sales/${id}`);
 
-        setInvoices(invoices.filter((inv) => inv._id !== id));
+        setInvoices((currentInvoices) =>
+          currentInvoices.filter(
+            (inv) => inv._id !== id
+          )
+        );
 
         alert(
           `Invoice ${saleId} deleted successfully and stock restored!`
@@ -108,12 +136,13 @@ const Invoices = () => {
     return true;
   };
 
-  // Combined Search & Date Filter logic (100% crash-proof)
+  // Combined Search & Date Filter logic
   const filteredInvoices = invoices.filter((inv) => {
     const custName =
       inv.customer?.fullName?.toLowerCase() || '';
 
-    const sId = inv.saleId?.toLowerCase() || '';
+    const sId =
+      inv.saleId?.toLowerCase() || '';
 
     const prodName =
       inv.product?.name?.toLowerCase() || '';
@@ -125,7 +154,9 @@ const Invoices = () => {
       sId.includes(term) ||
       prodName.includes(term);
 
-    const matchesDate = isDateInFilter(inv.saleDate);
+    const matchesDate = isDateInFilter(
+      inv.saleDate
+    );
 
     return matchesSearch && matchesDate;
   });
@@ -154,7 +185,9 @@ const Invoices = () => {
             type="text"
             placeholder="Search invoice files by Invoice / Bill Number (e.g. BILL-101), Customer Name, or Product..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) =>
+              setSearchTerm(e.target.value)
+            }
             className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           />
         </div>
@@ -163,15 +196,32 @@ const Invoices = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
           <div className="flex flex-wrap gap-1.5">
             {[
-              { id: 'all', label: 'All-Time' },
-              { id: 'today', label: 'Invoiced Today' },
-              { id: 'week', label: 'Invoiced This Week' },
-              { id: 'month', label: 'Invoiced This Month' },
-              { id: 'custom', label: 'Custom Range' }
+              {
+                id: 'all',
+                label: 'All-Time',
+              },
+              {
+                id: 'today',
+                label: 'Invoiced Today',
+              },
+              {
+                id: 'week',
+                label: 'Invoiced This Week',
+              },
+              {
+                id: 'month',
+                label: 'Invoiced This Month',
+              },
+              {
+                id: 'custom',
+                label: 'Custom Range',
+              },
             ].map((preset) => (
               <button
                 key={preset.id}
-                onClick={() => setFilterPreset(preset.id)}
+                onClick={() =>
+                  setFilterPreset(preset.id)
+                }
                 className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
                   filterPreset === preset.id
                     ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
@@ -190,7 +240,11 @@ const Invoices = () => {
               <input
                 type="date"
                 value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
+                onChange={(e) =>
+                  setCustomStartDate(
+                    e.target.value
+                  )
+                }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
 
@@ -199,7 +253,11 @@ const Invoices = () => {
               <input
                 type="date"
                 value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
+                onChange={(e) =>
+                  setCustomEndDate(
+                    e.target.value
+                  )
+                }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
             </div>
@@ -234,16 +292,37 @@ const Invoices = () => {
             <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Invoice / Bill #</th>
-                  <th className="px-6 py-4">Customer Details</th>
-                  <th className="px-6 py-4">Product details</th>
-                  <th className="px-6 py-4 text-right">Final Amount</th>
-                  <th className="px-6 py-4 text-right">Down Payment</th>
+                  <th className="px-6 py-4">
+                    Invoice / Bill #
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Customer Details
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Product details
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Final Amount
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Down Payment
+                  </th>
+
                   <th className="px-6 py-4 text-right text-red-600">
                     Financing Dues
                   </th>
-                  <th className="px-6 py-4">Method</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+
+                  <th className="px-6 py-4">
+                    Method
+                  </th>
+
+                  <th className="px-6 py-4 text-center">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -260,33 +339,41 @@ const Invoices = () => {
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-bold text-gray-900">
-                          {inv.customer?.fullName || 'N/A'}
+                          {inv.customer?.fullName ||
+                            'N/A'}
                         </p>
 
                         <p className="text-xs text-gray-500">
-                          {inv.customer?.mobileNumber || ''}
+                          {inv.customer?.mobileNumber ||
+                            ''}
                         </p>
                       </div>
                     </td>
 
                     <td className="px-6 py-4 text-gray-800">
-                      {inv.product?.name || 'Deleted Product'}
+                      {inv.product?.name ||
+                        'Deleted Product'}
                     </td>
 
-                    {/* Safe mapping using "|| 0" fallback */}
                     <td className="px-6 py-4 text-right font-bold text-gray-900">
                       {settings.currency}{' '}
-                      {(inv.finalTotal || 0).toLocaleString()}
+                      {(
+                        inv.finalTotal || 0
+                      ).toLocaleString()}
                     </td>
 
                     <td className="px-6 py-4 text-right text-green-600">
                       {settings.currency}{' '}
-                      {(inv.downPayment || 0).toLocaleString()}
+                      {(
+                        inv.downPayment || 0
+                      ).toLocaleString()}
                     </td>
 
                     <td className="px-6 py-4 text-right text-red-600 font-black">
                       {settings.currency}{' '}
-                      {(inv.remainingBalance || 0).toLocaleString()}
+                      {(
+                        inv.remainingBalance || 0
+                      ).toLocaleString()}
                     </td>
 
                     <td className="px-6 py-4">
@@ -303,6 +390,7 @@ const Invoices = () => {
 
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center space-x-2">
+                        {/* View Invoice */}
                         <Link
                           to={`/invoices/${inv._id}`}
                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
@@ -311,9 +399,10 @@ const Invoices = () => {
                           <Eye className="w-4 h-4" />
                         </Link>
 
-                        {/* EXPLICIT "ONLY ADMIN CAN UNLOCK" SECURITY BADGE */}
-                        {ALLOW_GLOBAL_DELETION ? (
+                        {/* Delete Invoice */}
+                        {isDeletionUnlocked ? (
                           <button
+                            type="button"
                             onClick={() =>
                               handleDeleteInvoice(
                                 inv._id,
@@ -328,7 +417,7 @@ const Invoices = () => {
                         ) : (
                           <span
                             className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
-                            title="Locked: Only Admin can unlock from config"
+                            title="Locked: Enable Deletion Mode from Settings"
                           >
                             <Lock className="w-3 h-3 text-slate-400" />
                             <span>Locked</span>

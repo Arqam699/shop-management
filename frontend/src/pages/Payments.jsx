@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
@@ -19,10 +18,15 @@ import {
 
 const Payments = () => {
   const { settings } = useSettings();
+
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeReceipt, setActiveReceipt] = useState(null);
+
+  // Settings-based Universal Deletion Mode
+  const isDeletionUnlocked =
+    settings?.allowGlobalDeletion === true;
 
   // Tab View Mode
   const [viewModeTab, setViewModeTab] = useState(0);
@@ -43,7 +47,10 @@ const Payments = () => {
         setPayments(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching payments history:', error);
+      console.error(
+        'Error fetching payments history:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -53,18 +60,33 @@ const Payments = () => {
     fetchPayments();
   }, []);
 
-  const handleDeletePayment = async (id, paymentId) => {
+  const handleDeletePayment = async (
+    id,
+    paymentId
+  ) => {
+    // Frontend protection
+    if (!isDeletionUnlocked) {
+      alert(
+        'Deletion Mode is disabled. Enable it from Settings first.'
+      );
+      return;
+    }
+
     if (
       window.confirm(
         `Are you sure you want to delete this payment receipt to clean up the ledger?`
       )
     ) {
       try {
-        const res = await api.delete(`/api/payments/${id}`);
+        const res = await api.delete(
+          `/api/payments/${id}`
+        );
 
         if (res.data && res.data.success) {
-          setPayments(
-            payments.filter((p) => p._id !== id)
+          setPayments((currentPayments) =>
+            currentPayments.filter(
+              (p) => p._id !== id
+            )
           );
 
           if (selectedInvoiceGroup) {
@@ -76,7 +98,9 @@ const Payments = () => {
             }));
           }
 
-          alert(`Payment receipt removed successfully!`);
+          alert(
+            `Payment receipt removed successfully!`
+          );
         }
       } catch (error) {
         alert(
@@ -157,7 +181,8 @@ const Payments = () => {
     const name =
       p.customer?.fullName?.toLowerCase() || '';
 
-    const mobile = p.customer?.mobileNumber || '';
+    const mobile =
+      p.customer?.mobileNumber || '';
 
     const invoiceNumber = (
       p.sale?.saleId ||
@@ -202,11 +227,13 @@ const Payments = () => {
       };
     }
 
-    invoiceGroupsMap[invoiceNo]
-      .totalPaidOnThisInvoice += p.amount || 0;
+    invoiceGroupsMap[
+      invoiceNo
+    ].totalPaidOnThisInvoice += p.amount || 0;
 
-    invoiceGroupsMap[invoiceNo]
-      .receipts.push(p);
+    invoiceGroupsMap[
+      invoiceNo
+    ].receipts.push(p);
   });
 
   const invoiceGroupsList =
@@ -217,6 +244,7 @@ const Payments = () => {
   };
 
   const planDoc = activeReceipt?.installmentPlan;
+
   const totalPlanAmount =
     planDoc?.totalAmount || 0;
 
@@ -266,8 +294,10 @@ const Payments = () => {
               }`}
             >
               <Folder className="w-3.5 h-3.5" />
+
               <span>
-                Invoice Classification ({invoiceGroupsList.length})
+                Invoice Classification (
+                {invoiceGroupsList.length})
               </span>
             </button>
 
@@ -280,8 +310,10 @@ const Payments = () => {
               }`}
             >
               <CreditCard className="w-3.5 h-3.5" />
+
               <span>
-                All Receipts Ledger ({filteredPayments.length})
+                All Receipts Ledger (
+                {filteredPayments.length})
               </span>
             </button>
           </div>
@@ -307,11 +339,26 @@ const Payments = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
             <div className="flex flex-wrap gap-1.5">
               {[
-                { id: 'all', label: 'All-Time' },
-                { id: 'today', label: 'Received Today' },
-                { id: 'week', label: 'Received This Week' },
-                { id: 'month', label: 'Received This Month' },
-                { id: 'custom', label: 'Custom Range' }
+                {
+                  id: 'all',
+                  label: 'All-Time'
+                },
+                {
+                  id: 'today',
+                  label: 'Received Today'
+                },
+                {
+                  id: 'week',
+                  label: 'Received This Week'
+                },
+                {
+                  id: 'month',
+                  label: 'Received This Month'
+                },
+                {
+                  id: 'custom',
+                  label: 'Custom Range'
+                }
               ].map((preset) => (
                 <button
                   key={preset.id}
@@ -337,7 +384,9 @@ const Payments = () => {
                   type="date"
                   value={customStartDate}
                   onChange={(e) =>
-                    setCustomStartDate(e.target.value)
+                    setCustomStartDate(
+                      e.target.value
+                    )
                   }
                   className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
                 />
@@ -348,7 +397,9 @@ const Payments = () => {
                   type="date"
                   value={customEndDate}
                   onChange={(e) =>
-                    setCustomEndDate(e.target.value)
+                    setCustomEndDate(
+                      e.target.value
+                    )
                   }
                   className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
                 />
@@ -363,6 +414,7 @@ const Payments = () => {
             <div className="p-4 bg-gray-50/50 border-b flex justify-between items-center">
               <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center space-x-2">
                 <Layers className="w-4 h-4 text-indigo-600" />
+
                 <span>
                   Invoice Numbers Classification List
                 </span>
@@ -386,21 +438,34 @@ const Payments = () => {
                 <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
                   <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
                     <tr>
-                      <th className="px-6 py-4">Invoice / Bill #</th>
-                      <th className="px-6 py-4">Customer Details</th>
-                      <th className="px-6 py-4">Product details</th>
+                      <th className="px-6 py-4">
+                        Invoice / Bill #
+                      </th>
+
+                      <th className="px-6 py-4">
+                        Customer Details
+                      </th>
+
+                      <th className="px-6 py-4">
+                        Product details
+                      </th>
+
                       <th className="px-6 py-4 text-right">
                         Total Deal Cost
                       </th>
+
                       <th className="px-6 py-4 text-right text-green-700">
                         Total Paid
                       </th>
+
                       <th className="px-6 py-4 text-right text-red-600">
                         Remaining Dues
                       </th>
+
                       <th className="px-6 py-4 text-center">
                         Receipts Count
                       </th>
+
                       <th className="px-6 py-4 text-center">
                         Action
                       </th>
@@ -410,11 +475,12 @@ const Payments = () => {
                   <tbody className="divide-y divide-gray-200">
                     {invoiceGroupsList.map((group) => {
                       const remaining =
-                        group.installmentPlan?.remainingBalance ||
-                        0;
+                        group.installmentPlan
+                          ?.remainingBalance || 0;
 
                       const totalCost =
-                        group.installmentPlan?.totalAmount ||
+                        group.installmentPlan
+                          ?.totalAmount ||
                         group.sale?.finalTotal ||
                         0;
 
@@ -430,19 +496,22 @@ const Payments = () => {
                           <td className="px-6 py-4">
                             <div>
                               <p className="font-bold text-gray-900">
-                                {group.customer?.fullName ||
+                                {group.customer
+                                  ?.fullName ||
                                   'Walk-in'}
                               </p>
 
                               <p className="text-xs text-gray-500">
-                                {group.customer?.mobileNumber ||
+                                {group.customer
+                                  ?.mobileNumber ||
                                   ''}
                               </p>
                             </div>
                           </td>
 
                           <td className="px-6 py-4 text-slate-800 text-xs">
-                            {group.product?.name || 'Item'}
+                            {group.product?.name ||
+                              'Item'}
                           </td>
 
                           <td className="px-6 py-4 text-right font-bold text-slate-900">
@@ -462,18 +531,24 @@ const Payments = () => {
 
                           <td className="px-6 py-4 text-center">
                             <span className="bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-bold">
-                              {group.receipts.length} Receipts
+                              {group.receipts.length}{' '}
+                              Receipts
                             </span>
                           </td>
 
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() =>
-                                setSelectedInvoiceGroup(group)
+                                setSelectedInvoiceGroup(
+                                  group
+                                )
                               }
                               className="inline-flex items-center space-x-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition-colors"
                             >
-                              <span>View Receipts</span>
+                              <span>
+                                View Receipts
+                              </span>
+
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                           </td>
@@ -502,21 +577,27 @@ const Payments = () => {
                       <th className="px-6 py-4">
                         Invoice / Bill #
                       </th>
+
                       <th className="px-6 py-4">
                         Customer Details
                       </th>
+
                       <th className="px-6 py-4">
                         Installment Month
                       </th>
+
                       <th className="px-6 py-4 text-right">
                         Amount Paid
                       </th>
+
                       <th className="px-6 py-4 font-bold">
                         Method
                       </th>
+
                       <th className="px-6 py-4">
                         Collection Date
                       </th>
+
                       <th className="px-6 py-4 text-center">
                         Actions
                       </th>
@@ -541,21 +622,31 @@ const Payments = () => {
 
                           <td className="px-6 py-4">
                             <p className="font-bold text-gray-900">
-                              {p.customer?.fullName || 'N/A'}
+                              {p.customer
+                                ?.fullName ||
+                                'N/A'}
                             </p>
 
                             <p className="text-xs text-gray-500">
-                              {p.customer?.mobileNumber || ''}
+                              {p.customer
+                                ?.mobileNumber ||
+                                ''}
                             </p>
                           </td>
 
                           <td className="px-6 py-4 text-slate-800">
-                            Installment #{p.installment?.installmentNumber}
+                            Installment #
+                            {
+                              p.installment
+                                ?.installmentNumber
+                            }
                           </td>
 
                           <td className="px-6 py-4 text-right font-extrabold text-green-600">
                             {settings.currency}{' '}
-                            {p.amount.toLocaleString()}
+                            {(
+                              p.amount || 0
+                            ).toLocaleString()}
                           </td>
 
                           <td className="px-6 py-4 font-bold text-slate-800">
@@ -563,11 +654,14 @@ const Payments = () => {
                           </td>
 
                           <td className="px-6 py-4 text-xs text-gray-500">
-                            {formatDateTime(p.paymentDate)}
+                            {formatDateTime(
+                              p.paymentDate
+                            )}
                           </td>
 
                           <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center space-x-1.5">
+                              {/* Print */}
                               <button
                                 onClick={() =>
                                   setActiveReceipt(p)
@@ -578,8 +672,10 @@ const Payments = () => {
                                 <Printer className="w-4 h-4" />
                               </button>
 
-                              {ALLOW_GLOBAL_DELETION ? (
+                              {/* Delete */}
+                              {isDeletionUnlocked ? (
                                 <button
+                                  type="button"
                                   onClick={() =>
                                     handleDeletePayment(
                                       p._id,
@@ -594,10 +690,13 @@ const Payments = () => {
                               ) : (
                                 <span
                                   className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
-                                  title="Locked: Only Admin can unlock from config"
+                                  title="Locked: Enable Deletion Mode from Settings"
                                 >
                                   <Lock className="w-3 h-3 text-slate-400" />
-                                  <span>Locked</span>
+
+                                  <span>
+                                    Locked
+                                  </span>
                                 </span>
                               )}
                             </div>
@@ -626,9 +725,16 @@ const Payments = () => {
                 <h3 className="font-extrabold text-base text-slate-900">
                   Bill No:{' '}
                   <strong className="text-indigo-600">
-                    {selectedInvoiceGroup.invoiceNumber}
+                    {
+                      selectedInvoiceGroup.invoiceNumber
+                    }
                   </strong>{' '}
-                  ({selectedInvoiceGroup.customer?.fullName})
+                  (
+                  {
+                    selectedInvoiceGroup.customer
+                      ?.fullName
+                  }
+                  )
                 </h3>
               </div>
 
@@ -650,8 +756,10 @@ const Payments = () => {
                   </span>
 
                   <p className="text-slate-800 mt-0.5">
-                    {selectedInvoiceGroup.product?.name ||
-                      'Item'}
+                    {
+                      selectedInvoiceGroup
+                        .product?.name
+                    }
                   </p>
                 </div>
 
@@ -674,7 +782,9 @@ const Payments = () => {
                   <p className="text-red-600 mt-0.5">
                     {settings.currency}{' '}
                     {(
-                      selectedInvoiceGroup.installmentPlan?.remainingBalance ||
+                      selectedInvoiceGroup
+                        .installmentPlan
+                        ?.remainingBalance ||
                       0
                     ).toLocaleString()}
                   </p>
@@ -688,12 +798,15 @@ const Payments = () => {
                       <th className="px-4 py-3">
                         Installment Month
                       </th>
+
                       <th className="px-4 py-3 text-right">
                         Amount Received
                       </th>
+
                       <th className="px-4 py-3">
                         Payment Date & Time
                       </th>
+
                       <th className="px-4 py-3 text-center">
                         Actions
                       </th>
@@ -701,54 +814,78 @@ const Payments = () => {
                   </thead>
 
                   <tbody className="divide-y">
-                    {selectedInvoiceGroup.receipts.map((p) => (
-                      <tr
-                        key={p._id}
-                        className="hover:bg-gray-50/50"
-                      >
-                        <td className="px-4 py-3 text-slate-800 font-bold">
-                          Month #{p.installment?.installmentNumber}
-                        </td>
+                    {selectedInvoiceGroup.receipts.map(
+                      (p) => (
+                        <tr
+                          key={p._id}
+                          className="hover:bg-gray-50/50"
+                        >
+                          <td className="px-4 py-3 text-slate-800 font-bold">
+                            Month #
+                            {
+                              p.installment
+                                ?.installmentNumber
+                            }
+                          </td>
 
-                        <td className="px-4 py-3 text-right font-extrabold text-green-600">
-                          {settings.currency}{' '}
-                          {p.amount.toLocaleString()}
-                        </td>
+                          <td className="px-4 py-3 text-right font-extrabold text-green-600">
+                            {settings.currency}{' '}
+                            {(
+                              p.amount || 0
+                            ).toLocaleString()}
+                          </td>
 
-                        <td className="px-4 py-3 text-gray-500 text-[10px]">
-                          {formatDateTime(p.paymentDate)}
-                        </td>
+                          <td className="px-4 py-3 text-gray-500 text-[10px]">
+                            {formatDateTime(
+                              p.paymentDate
+                            )}
+                          </td>
 
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center space-x-1.5">
-                            <button
-                              onClick={() =>
-                                setActiveReceipt(p)
-                              }
-                              className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
-                              title="Print This Slip"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-
-                            {ALLOW_GLOBAL_DELETION && (
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center space-x-1.5">
+                              {/* Print */}
                               <button
                                 onClick={() =>
-                                  handleDeletePayment(
-                                    p._id,
-                                    p.paymentId
-                                  )
+                                  setActiveReceipt(p)
                                 }
-                                className="p-1 text-red-600 hover:bg-red-50 rounded"
-                                title="Delete"
+                                className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                                title="Print This Slip"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Printer className="w-4 h-4" />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+
+                              {/* Delete */}
+                              {isDeletionUnlocked ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeletePayment(
+                                      p._id,
+                                      p.paymentId
+                                    )
+                                  }
+                                  className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                  title="Delete Payment"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center space-x-1 px-2 py-1 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
+                                  title="Locked: Enable Deletion Mode from Settings"
+                                >
+                                  <Lock className="w-3 h-3 text-slate-400" />
+
+                                  <span>
+                                    Locked
+                                  </span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -824,7 +961,10 @@ const Payments = () => {
             <div className="p-4 border-b bg-gray-50 flex justify-between items-center shrink-0 print:hidden rounded-t-2xl">
               <span className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span>Print Receipt Preview</span>
+
+                <span>
+                  Print Receipt Preview
+                </span>
               </span>
 
               <div className="flex space-x-2">
@@ -833,11 +973,16 @@ const Payments = () => {
                   className="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Print Slip</span>
+
+                  <span>
+                    Print Slip
+                  </span>
                 </button>
 
                 <button
-                  onClick={() => setActiveReceipt(null)}
+                  onClick={() =>
+                    setActiveReceipt(null)
+                  }
                   className="p-1.5 hover:bg-gray-200 rounded-lg text-gray-500 transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -854,7 +999,8 @@ const Payments = () => {
             >
               <div className="text-center pb-2 border-b border-dashed border-slate-300 space-y-1">
                 <h3 className="text-lg font-black tracking-wider uppercase">
-                  {settings.shopName || 'Electronics Shop'}
+                  {settings.shopName ||
+                    'Electronics Shop'}
                 </h3>
 
                 <p className="text-[10px] text-gray-500 font-bold">
@@ -897,17 +1043,21 @@ const Payments = () => {
                   </span>
 
                   <p className="font-extrabold text-slate-900 truncate">
-                    {activeReceipt.customer?.fullName ||
+                    {activeReceipt.customer
+                      ?.fullName ||
                       'Walk-in'}
                   </p>
 
                   <p className="text-slate-600 font-bold text-[10px]">
-                    {activeReceipt.customer?.mobileNumber ||
+                    {activeReceipt.customer
+                      ?.mobileNumber ||
                       ''}
                   </p>
 
                   <p className="text-[9px] text-slate-500 truncate">
-                    CNIC: {activeReceipt.customer?.cnic || ''}
+                    CNIC:{' '}
+                    {activeReceipt.customer?.cnic ||
+                      ''}
                   </p>
                 </div>
 
@@ -917,7 +1067,8 @@ const Payments = () => {
                   </span>
 
                   <p className="font-extrabold text-slate-900 truncate">
-                    {planDoc?.product?.name || 'Item'}
+                    {planDoc?.product?.name ||
+                      'Item'}
                   </p>
 
                   <p className="text-slate-600 font-bold text-[10px] truncate">
@@ -930,7 +1081,9 @@ const Payments = () => {
               {/* PRICING BREAKDOWN */}
               <div className="space-y-1.5 text-[11px] font-bold text-gray-800">
                 <div className="flex justify-between">
-                  <span>Unit Cash Price:</span>
+                  <span>
+                    Unit Cash Price:
+                  </span>
 
                   <span>
                     {settings.currency}{' '}
@@ -939,15 +1092,20 @@ const Payments = () => {
                 </div>
 
                 <div className="flex justify-between text-purple-900">
-                  <span>Financing Plan Taken:</span>
+                  <span>
+                    Financing Plan Taken:
+                  </span>
 
                   <span className="text-indigo-600 font-black">
-                    {planDoc?.duration || 0} Months Plan
+                    {planDoc?.duration || 0}{' '}
+                    Months Plan
                   </span>
                 </div>
 
                 <div className="flex justify-between text-slate-900">
-                  <span>Total Price (Plan Included):</span>
+                  <span>
+                    Total Price (Plan Included):
+                  </span>
 
                   <span>
                     {settings.currency}{' '}
@@ -956,7 +1114,9 @@ const Payments = () => {
                 </div>
 
                 <div className="flex justify-between text-green-700 border-b border-dashed border-slate-200 pb-1">
-                  <span>Total Paid (So far):</span>
+                  <span>
+                    Total Paid (So far):
+                  </span>
 
                   <span>
                     {settings.currency}{' '}
@@ -965,10 +1125,16 @@ const Payments = () => {
                 </div>
 
                 <div className="flex justify-between pt-1">
-                  <span>Settled Month:</span>
+                  <span>
+                    Settled Month:
+                  </span>
 
                   <span>
-                    Installment #{activeReceipt.installment?.installmentNumber}
+                    Installment #
+                    {
+                      activeReceipt.installment
+                        ?.installmentNumber
+                    }
                   </span>
                 </div>
 
@@ -980,7 +1146,9 @@ const Payments = () => {
                     </p>
 
                     <div className="flex justify-between">
-                      <span>Standard Month Due:</span>
+                      <span>
+                        Standard Month Due:
+                      </span>
 
                       <span>
                         {settings.currency}{' '}
@@ -1002,7 +1170,9 @@ const Payments = () => {
                 )}
 
                 <div className="flex justify-between border-t border-dashed border-slate-300 pt-1.5 items-center text-sm font-black text-slate-900">
-                  <span>This Receipt Paid:</span>
+                  <span>
+                    This Receipt Paid:
+                  </span>
 
                   <span className="text-green-600">
                     {settings.currency}{' '}
@@ -1011,7 +1181,9 @@ const Payments = () => {
                 </div>
 
                 <div className="flex justify-between text-gray-500 pt-0.5 border-b border-dashed border-slate-300 pb-1.5">
-                  <span>Remaining Dues Balance:</span>
+                  <span>
+                    Remaining Dues Balance:
+                  </span>
 
                   <span className="text-red-500 font-extrabold">
                     {settings.currency}{' '}

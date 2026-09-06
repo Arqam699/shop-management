@@ -1,26 +1,42 @@
-
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
-import { RefreshCcw, Search, Trash2, Lock } from 'lucide-react';
+import {
+  RefreshCcw,
+  Search,
+  Trash2,
+  Lock
+} from 'lucide-react';
 
 const Returns = () => {
   const { settings } = useSettings();
+
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Settings-based Universal Deletion Mode
+  const isDeletionUnlocked =
+    settings?.allowGlobalDeletion === true;
+
   const fetchReturns = async () => {
     try {
       setLoading(true);
+
       const response = await api.get('/api/returns');
 
-      if (response.data && response.data.success) {
+      if (
+        response.data &&
+        response.data.success
+      ) {
         setReturns(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching returns directory:', error);
+      console.error(
+        'Error fetching returns directory:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -30,24 +46,59 @@ const Returns = () => {
     fetchReturns();
   }, []);
 
-  const handleDeleteReturn = async (id, returnId) => {
-    if (window.confirm(`Are you sure you want to permanently delete return record "${returnId}" from database?`)) {
-      try {
-        const response = await api.delete(`/api/returns/${id}`);
+  const handleDeleteReturn = async (
+    id,
+    returnId
+  ) => {
+    // Frontend protection
+    if (!isDeletionUnlocked) {
+      alert(
+        'Deletion Mode is disabled. Enable it from Settings first.'
+      );
+      return;
+    }
 
-        if (response.data && response.data.success) {
-          setReturns(returns.filter(r => r._id !== id));
-          alert(`Return record ${returnId} removed successfully!`);
+    if (
+      window.confirm(
+        `Are you sure you want to permanently delete return record "${returnId}" from database?`
+      )
+    ) {
+      try {
+        const response = await api.delete(
+          `/api/returns/${id}`
+        );
+
+        if (
+          response.data &&
+          response.data.success
+        ) {
+          setReturns((currentReturns) =>
+            currentReturns.filter(
+              (r) => r._id !== id
+            )
+          );
+
+          alert(
+            `Return record ${returnId} removed successfully!`
+          );
         }
       } catch (error) {
-        alert(error.response?.data?.message || 'Failed to delete return record.');
+        alert(
+          error.response?.data?.message ||
+            'Failed to delete return record.'
+        );
       }
     }
   };
 
-  const filteredReturns = returns.filter(r =>
-    r.customer?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.returnId?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredReturns = returns.filter(
+    (r) =>
+      r.customer?.fullName
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      r.returnId
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -56,6 +107,7 @@ const Returns = () => {
         <h2 className="text-2xl font-bold text-gray-900 font-sans">
           Returns & Adjustments History
         </h2>
+
         <p className="text-sm text-gray-600">
           Track dynamic product exchanges, refund cashbacks and dynamic financing installments reductions.
         </p>
@@ -69,7 +121,9 @@ const Returns = () => {
             type="text"
             placeholder="Search returned vouchers by customer name, return ID (RET-...)..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) =>
+              setSearchTerm(e.target.value)
+            }
             className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
@@ -79,6 +133,7 @@ const Returns = () => {
         {loading ? (
           <div className="p-10 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+
             <span className="text-gray-500 text-sm">
               Querying returns directory...
             </span>
@@ -100,43 +155,76 @@ const Returns = () => {
             <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Return ID</th>
-                  <th className="px-6 py-4">Original Invoice</th>
-                  <th className="px-6 py-4">Customer Details</th>
-                  <th className="px-6 py-4">Returned Product</th>
-                  <th className="px-6 py-4">Returned Qty</th>
-                  <th className="px-6 py-4">Refund / Adjusted</th>
-                  <th className="px-6 py-4">Reason</th>
-                  <th className="px-6 py-4">Return Date</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+                  <th className="px-6 py-4">
+                    Return ID
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Original Invoice
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Customer Details
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Returned Product
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Returned Qty
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Refund / Adjusted
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Reason
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Return Date
+                  </th>
+
+                  <th className="px-6 py-4 text-center">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-200">
                 {filteredReturns.map((r) => (
-                  <tr key={r._id} className="hover:bg-gray-50/50">
+                  <tr
+                    key={r._id}
+                    className="hover:bg-gray-50/50"
+                  >
                     <td className="px-6 py-4 text-indigo-600 font-bold tracking-wider">
                       {r.returnId}
                     </td>
 
                     <td className="px-6 py-4 text-slate-500">
-                      {r.sale?.saleId || 'Deleted Invoice'}
+                      {r.sale?.saleId ||
+                        'Deleted Invoice'}
                     </td>
 
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-bold text-gray-900">
-                          {r.customer?.fullName || 'N/A'}
+                          {r.customer?.fullName ||
+                            'N/A'}
                         </p>
 
                         <p className="text-xs text-gray-500">
-                          {r.customer?.mobileNumber || ''}
+                          {r.customer
+                            ?.mobileNumber || ''}
                         </p>
                       </div>
                     </td>
 
                     <td className="px-6 py-4 text-gray-800">
-                      {r.product?.name || 'Deleted Product'}
+                      {r.product?.name ||
+                        'Deleted Product'}
                     </td>
 
                     <td className="px-6 py-4 text-red-600 font-bold">
@@ -144,7 +232,10 @@ const Returns = () => {
                     </td>
 
                     <td className="px-6 py-4 font-extrabold text-green-600">
-                      {settings.currency} {r.refundAmount.toLocaleString()}
+                      {settings.currency}{' '}
+                      {(
+                        r.refundAmount || 0
+                      ).toLocaleString()}
                     </td>
 
                     <td
@@ -155,14 +246,20 @@ const Returns = () => {
                     </td>
 
                     <td className="px-6 py-4 text-xs text-gray-500">
-                      {new Date(r.returnDate).toLocaleDateString()}
+                      {new Date(
+                        r.returnDate
+                      ).toLocaleDateString()}
                     </td>
 
                     <td className="px-6 py-4 text-center">
-                      {ALLOW_GLOBAL_DELETION ? (
+                      {isDeletionUnlocked ? (
                         <button
+                          type="button"
                           onClick={() =>
-                            handleDeleteReturn(r._id, r.returnId)
+                            handleDeleteReturn(
+                              r._id,
+                              r.returnId
+                            )
                           }
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex"
                           title="Delete Return Record"
@@ -171,10 +268,14 @@ const Returns = () => {
                         </button>
                       ) : (
                         <span
-                          className="inline-flex items-center p-1.5 text-gray-400 cursor-not-allowed opacity-60"
-                          title="Locked: Only Admin can delete from config"
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
+                          title="Locked: Enable Deletion Mode from Settings"
                         >
-                          <Lock className="w-3.5 h-3.5" />
+                          <Lock className="w-3 h-3 text-slate-400" />
+
+                          <span>
+                            Locked
+                          </span>
                         </span>
                       )}
                     </td>

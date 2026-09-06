@@ -16,7 +16,10 @@ const loginAdmin = async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const admin = await Admin.findOne({ email: cleanEmail });
+
+    const admin = await Admin.findOne({
+      email: cleanEmail,
+    });
 
     if (!admin) {
       return res.status(401).json({
@@ -25,10 +28,10 @@ const loginAdmin = async (req, res) => {
       });
     }
 
+    // Verify password using bcrypt hash
     const isMatch = await admin.comparePassword(password);
-    const isEnvMatch = process.env.ADMIN_PASSWORD && (password === process.env.ADMIN_PASSWORD);
 
-    if (!isMatch && !isEnvMatch) {
+    if (!isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -45,6 +48,7 @@ const loginAdmin = async (req, res) => {
         email: admin.email,
       },
     });
+
   } catch (error) {
     console.error('Login Error:', error);
 
@@ -55,6 +59,7 @@ const loginAdmin = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Admin logout / clear cookie
 // @route   POST /api/auth/logout
@@ -72,6 +77,7 @@ const logoutAdmin = (req, res) => {
     message: 'Logged out successfully',
   });
 };
+
 
 // @desc    Get current session status
 // @route   GET /api/auth/me
@@ -91,6 +97,7 @@ const getAdminProfile = async (req, res) => {
         email: req.admin.email,
       },
     });
+
   } catch (error) {
     console.error('Get Admin Profile Error:', error);
 
@@ -102,57 +109,9 @@ const getAdminProfile = async (req, res) => {
   }
 };
 
-// @desc    Verify Admin Password for Unlocking Master Deletions (Fail-Safe Verification)
-// @route   POST /api/auth/verify-password
-// @access  Private
-const verifyPassword = async (req, res) => {
-  try {
-    const { password } = req.body;
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is required to confirm identity.',
-      });
-    }
-
-    const admin = await Admin.findById(req.admin._id);
-
-    if (!admin) {
-      return res.status(404).json({
-        success: false,
-        message: 'Admin account not found.',
-      });
-    }
-
-    // DUAL FAIL-SAFE CHECK (Bcrypt Hash + Direct .env string match)
-    const isBcryptMatch = await admin.comparePassword(password);
-    const isEnvMatch = process.env.ADMIN_PASSWORD && (password === process.env.ADMIN_PASSWORD);
-
-    if (!isBcryptMatch && !isEnvMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Incorrect Admin Password. Access Denied!',
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Password verified successfully!',
-    });
-  } catch (error) {
-    console.error('Password Verification Error:', error);
-
-    return res.status(500).json({
-      success: false,
-      message: 'Password verification failed: ' + error.message,
-    });
-  }
-};
 
 module.exports = {
   loginAdmin,
   logoutAdmin,
   getAdminProfile,
-  verifyPassword,
 };

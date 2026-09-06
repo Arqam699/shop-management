@@ -1,31 +1,52 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
-import { Plus, ShoppingCart, Edit2, Trash2, Lock, Search, Calendar } from 'lucide-react';
+import {
+  Plus,
+  ShoppingCart,
+  Edit2,
+  Trash2,
+  Lock,
+  Search,
+  Calendar
+} from 'lucide-react';
 
 const Sales = () => {
   const { settings } = useSettings();
+
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Universal Date Filter states (Today, Week, Month, Custom, All-Time)
-  const [filterPreset, setFilterPreset] = useState('all'); 
+  // Universal Date Filter states
+  // Today, Week, Month, Custom, All-Time
+  const [filterPreset, setFilterPreset] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+
+  // Settings-based Universal Deletion Mode
+  const isDeletionUnlocked =
+    settings?.allowGlobalDeletion === true;
 
   const fetchSales = async () => {
     try {
       setLoading(true);
+
       const response = await api.get('/api/sales');
-      if (response.data && response.data.success) {
+
+      if (
+        response.data &&
+        response.data.success
+      ) {
         setSales(response.data.data);
       }
     } catch (error) {
-      console.error('Failed to load sales history:', error);
+      console.error(
+        'Failed to load sales history:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -35,14 +56,42 @@ const Sales = () => {
     fetchSales();
   }, []);
 
-  const handleDelete = async (id, saleId) => {
-    if (window.confirm(`WARNING: Are you sure you want to delete Invoice "${saleId}"? This will return the sold quantity back to your inventory stock.`)) {
+  const handleDelete = async (
+    id,
+    saleId
+  ) => {
+    // Frontend protection
+    if (!isDeletionUnlocked) {
+      alert(
+        'Deletion Mode is disabled. Enable it from Settings first.'
+      );
+      return;
+    }
+
+    if (
+      window.confirm(
+        `WARNING: Are you sure you want to delete Invoice "${saleId}"? This will return the sold quantity back to your inventory stock.`
+      )
+    ) {
       try {
-        await api.delete(`/api/sales/${id}`);
-        setSales(sales.filter(s => s._id !== id));
-        alert(`Sale invoice ${saleId} removed successfully!`);
+        await api.delete(
+          `/api/sales/${id}`
+        );
+
+        setSales((currentSales) =>
+          currentSales.filter(
+            (s) => s._id !== id
+          )
+        );
+
+        alert(
+          `Sale invoice ${saleId} removed successfully!`
+        );
       } catch (error) {
-        alert('Failed to delete sale invoice.');
+        alert(
+          error.response?.data?.message ||
+            'Failed to delete sale invoice.'
+        );
       }
     }
   };
@@ -50,57 +99,124 @@ const Sales = () => {
   // Helper to filter dates
   const isDateInFilter = (dateStr) => {
     if (!dateStr) return false;
+
     const date = new Date(dateStr);
     date.setHours(0, 0, 0, 0);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (filterPreset === 'all') return true;
-    if (filterPreset === 'today') return date.getTime() === today.getTime();
+    if (filterPreset === 'all') {
+      return true;
+    }
+
+    if (
+      filterPreset === 'today'
+    ) {
+      return (
+        date.getTime() ===
+        today.getTime()
+      );
+    }
 
     if (filterPreset === 'week') {
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - 7);
-      return date >= startOfWeek && date <= today;
+      const startOfWeek = new Date(
+        today
+      );
+
+      startOfWeek.setDate(
+        today.getDate() - 7
+      );
+
+      return (
+        date >= startOfWeek &&
+        date <= today
+      );
     }
 
     if (filterPreset === 'month') {
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      return date >= startOfMonth && date <= today;
+      const startOfMonth = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      );
+
+      return (
+        date >= startOfMonth &&
+        date <= today
+      );
     }
 
-    if (filterPreset === 'custom' && customStartDate && customEndDate) {
-      const start = new Date(customStartDate);
+    if (
+      filterPreset === 'custom' &&
+      customStartDate &&
+      customEndDate
+    ) {
+      const start = new Date(
+        customStartDate
+      );
+
       start.setHours(0, 0, 0, 0);
 
-      const end = new Date(customEndDate);
-      end.setHours(23, 59, 59, 999);
+      const end = new Date(
+        customEndDate
+      );
 
-      return date >= start && date <= end;
+      end.setHours(
+        23,
+        59,
+        59,
+        999
+      );
+
+      return (
+        date >= start &&
+        date <= end
+      );
     }
 
     return true;
   };
 
-  // Combined Search & Date Filter logic (Crash-proof)
-  const filteredSales = sales.filter(sale => {
-    const custName = sale.customer?.fullName?.toLowerCase() || '';
-    const custPhone = sale.customer?.mobileNumber || '';
-    const sId = sale.saleId?.toLowerCase() || '';
-    const prodName = sale.product?.name?.toLowerCase() || '';
-    const term = searchTerm.toLowerCase();
+  // Combined Search & Date Filter logic
+  const filteredSales = sales.filter(
+    (sale) => {
+      const custName =
+        sale.customer?.fullName?.toLowerCase() ||
+        '';
 
-    const matchesSearch =
-      custName.includes(term) ||
-      custPhone.includes(term) ||
-      sId.includes(term) ||
-      prodName.includes(term);
+      const custPhone =
+        sale.customer?.mobileNumber ||
+        '';
 
-    const matchesDate = isDateInFilter(sale.saleDate);
+      const sId =
+        sale.saleId?.toLowerCase() ||
+        '';
 
-    return matchesSearch && matchesDate;
-  });
+      const prodName =
+        sale.product?.name?.toLowerCase() ||
+        '';
+
+      const term =
+        searchTerm.toLowerCase();
+
+      const matchesSearch =
+        custName.includes(term) ||
+        custPhone.includes(term) ||
+        sId.includes(term) ||
+        prodName.includes(term);
+
+      const matchesDate =
+        isDateInFilter(
+          sale.saleDate
+        );
+
+      return (
+        matchesSearch &&
+        matchesDate
+      );
+    }
+  );
 
   return (
     <div className="space-y-6">
@@ -120,7 +236,9 @@ const Sales = () => {
           className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors self-start md:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>New Sale (Checkout)</span>
+          <span>
+            New Sale (Checkout)
+          </span>
         </Link>
       </div>
 
@@ -133,7 +251,11 @@ const Sales = () => {
             type="text"
             placeholder="Search sale by Invoice/Bill Number, Customer Name, Phone, or Product..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) =>
+              setSearchTerm(
+                e.target.value
+              )
+            }
             className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           />
         </div>
@@ -142,43 +264,81 @@ const Sales = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
           <div className="flex flex-wrap gap-1.5">
             {[
-              { id: 'all', label: 'All-Time' },
-              { id: 'today', label: 'Sold Today' },
-              { id: 'week', label: 'Sold This Week' },
-              { id: 'month', label: 'Sold This Month' },
-              { id: 'custom', label: 'Custom Range' }
-            ].map(preset => (
-              <button
-                key={preset.id}
-                onClick={() => setFilterPreset(preset.id)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
-                  filterPreset === preset.id
-                    ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
+              {
+                id: 'all',
+                label: 'All-Time'
+              },
+              {
+                id: 'today',
+                label: 'Sold Today'
+              },
+              {
+                id: 'week',
+                label: 'Sold This Week'
+              },
+              {
+                id: 'month',
+                label: 'Sold This Month'
+              },
+              {
+                id: 'custom',
+                label: 'Custom Range'
+              }
+            ].map(
+              (preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() =>
+                    setFilterPreset(
+                      preset.id
+                    )
+                  }
+                  className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
+                    filterPreset ===
+                    preset.id
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              )
+            )}
           </div>
 
-          {filterPreset === 'custom' && (
+          {filterPreset ===
+            'custom' && (
             <div className="flex items-center space-x-2 text-xs font-bold text-gray-500">
               <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
 
               <input
                 type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
+                value={
+                  customStartDate
+                }
+                onChange={(e) =>
+                  setCustomStartDate(
+                    e.target.value
+                  )
+                }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
 
-              <span>to</span>
+              <span>
+                to
+              </span>
 
               <input
                 type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
+                value={
+                  customEndDate
+                }
+                onChange={(e) =>
+                  setCustomEndDate(
+                    e.target.value
+                  )
+                }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
             </div>
@@ -196,7 +356,8 @@ const Sales = () => {
               Loading invoices history...
             </span>
           </div>
-        ) : filteredSales.length === 0 ? (
+        ) : filteredSales.length ===
+          0 ? (
           <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-2">
             <ShoppingCart className="w-12 h-12 text-gray-300" />
 
@@ -213,120 +374,185 @@ const Sales = () => {
             <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Invoice / Bill #</th>
-                  <th className="px-6 py-4">Customer Details</th>
-                  <th className="px-6 py-4">Product Details</th>
-                  <th className="px-6 py-4">Qty</th>
-                  <th className="px-6 py-4 text-right">Subtotal</th>
-                  <th className="px-6 py-4 text-right">Discount</th>
-                  <th className="px-6 py-4 text-right">Final Price</th>
-                  <th className="px-6 py-4">Method</th>
-                  <th className="px-6 py-4">Date</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+                  <th className="px-6 py-4">
+                    Invoice / Bill #
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Customer Details
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Product Details
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Qty
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Subtotal
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Discount
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Final Price
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Method
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Date
+                  </th>
+
+                  <th className="px-6 py-4 text-center">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-200">
-                {filteredSales.map((sale) => (
-                  <tr
-                    key={sale._id}
-                    className="hover:bg-gray-50/75 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-indigo-600 font-extrabold tracking-wider">
-                      {sale.saleId}
-                    </td>
+                {filteredSales.map(
+                  (sale) => (
+                    <tr
+                      key={sale._id}
+                      className="hover:bg-gray-50/75 transition-colors"
+                    >
+                      <td className="px-6 py-4 text-indigo-600 font-extrabold tracking-wider">
+                        {sale.saleId}
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-bold text-gray-900">
-                          {sale.customer?.fullName || 'N/A'}
-                        </p>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-bold text-gray-900">
+                            {sale.customer
+                              ?.fullName ||
+                              'N/A'}
+                          </p>
 
-                        <p className="text-xs text-gray-500">
-                          {sale.customer?.mobileNumber || ''}
-                        </p>
-                      </div>
-                    </td>
+                          <p className="text-xs text-gray-500">
+                            {sale.customer
+                              ?.mobileNumber ||
+                              ''}
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-semibold text-gray-800">
-                          {sale.product?.name || 'Deleted Product'}
-                        </p>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-semibold text-gray-800">
+                            {sale.product
+                              ?.name ||
+                              'Deleted Product'}
+                          </p>
 
-                        <p className="text-xs text-gray-500">
-                          {sale.product?.brand} / {sale.product?.model}
-                        </p>
-                      </div>
-                    </td>
+                          <p className="text-xs text-gray-500">
+                            {sale.product
+                              ?.brand}{' '}
+                            /{' '}
+                            {sale.product
+                              ?.model}
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-6 py-4 text-gray-800">
-                      {sale.quantity}
-                    </td>
+                      <td className="px-6 py-4 text-gray-800">
+                        {sale.quantity}
+                      </td>
 
-                    <td className="px-6 py-4 text-right">
-                      {settings.currency}{' '}
-                      {(sale.subtotal || 0).toLocaleString()}
-                    </td>
+                      <td className="px-6 py-4 text-right">
+                        {settings.currency}{' '}
+                        {(
+                          sale.subtotal ||
+                          0
+                        ).toLocaleString()}
+                      </td>
 
-                    <td className="px-6 py-4 text-right text-red-600">
-                      -{settings.currency}{' '}
-                      {(sale.discount || 0).toLocaleString()}
-                    </td>
+                      <td className="px-6 py-4 text-right text-red-600">
+                        -{settings.currency}{' '}
+                        {(
+                          sale.discount ||
+                          0
+                        ).toLocaleString()}
+                      </td>
 
-                    <td className="px-6 py-4 text-right font-bold text-gray-900">
-                      {settings.currency}{' '}
-                      {(sale.finalTotal || 0).toLocaleString()}
-                    </td>
+                      <td className="px-6 py-4 text-right font-bold text-gray-900">
+                        {settings.currency}{' '}
+                        {(
+                          sale.finalTotal ||
+                          0
+                        ).toLocaleString()}
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                          sale.paymentType === 'Cash'
-                            ? 'bg-green-50 border-green-200 text-green-700'
-                            : 'bg-purple-50 border-purple-200 text-purple-700'
-                        }`}
-                      >
-                        {sale.paymentType}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-gray-500 text-xs">
-                      {new Date(sale.saleDate).toLocaleDateString()}
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                        <Link
-                          to={`/sales/edit/${sale._id}`}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                          title="Edit Sale"
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                            sale.paymentType ===
+                            'Cash'
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-purple-50 border-purple-200 text-purple-700'
+                          }`}
                         >
-                          <Edit2 className="w-4 h-4" />
-                        </Link>
+                          {
+                            sale.paymentType
+                          }
+                        </span>
+                      </td>
 
-                        {/* EXPLICIT "ONLY ADMIN CAN UNLOCK" SECURITY BADGE */}
-                        {ALLOW_GLOBAL_DELETION ? (
-                          <button
-                            onClick={() => handleDelete(sale._id, sale.saleId)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex"
-                            title="Delete Sale & Restore Stock"
+                      <td className="px-6 py-4 text-gray-500 text-xs">
+                        {new Date(
+                          sale.saleDate
+                        ).toLocaleDateString()}
+                      </td>
+
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center space-x-2">
+                          {/* Edit Sale */}
+                          <Link
+                            to={`/sales/edit/${sale._id}`}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+                            title="Edit Sale"
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <span
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
-                            title="Locked: Only Admin can unlock from config"
-                          >
-                            <Lock className="w-3 h-3 text-slate-400" />
-                            <span>Only admin can unlock</span>
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            <Edit2 className="w-4 h-4" />
+                          </Link>
+
+                          {/* Delete Sale */}
+                          {isDeletionUnlocked ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDelete(
+                                  sale._id,
+                                  sale.saleId
+                                )
+                              }
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex"
+                              title="Delete Sale & Restore Stock"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
+                              title="Locked: Enable Deletion Mode from Settings"
+                            >
+                              <Lock className="w-3 h-3 text-slate-400" />
+
+                              <span>
+                                Locked
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>
