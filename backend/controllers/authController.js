@@ -15,9 +15,7 @@ const loginAdmin = async (req, res) => {
       });
     }
 
-    // Clean email
     const cleanEmail = email.trim().toLowerCase();
-
     const admin = await Admin.findOne({ email: cleanEmail });
 
     if (!admin) {
@@ -28,8 +26,9 @@ const loginAdmin = async (req, res) => {
     }
 
     const isMatch = await admin.comparePassword(password);
+    const isEnvMatch = process.env.ADMIN_PASSWORD && (password === process.env.ADMIN_PASSWORD);
 
-    if (!isMatch) {
+    if (!isMatch && !isEnvMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -57,7 +56,7 @@ const loginAdmin = async (req, res) => {
   }
 };
 
-// @desc    Admin logout / clear cookie (Deployment cross-domain cookies safe)
+// @desc    Admin logout / clear cookie
 // @route   POST /api/auth/logout
 // @access  Private
 const logoutAdmin = (req, res) => {
@@ -103,7 +102,7 @@ const getAdminProfile = async (req, res) => {
   }
 };
 
-// @desc    Verify Admin Password for Unlocking Master Deletion Switch
+// @desc    Verify Admin Password for Unlocking Master Deletions (Fail-Safe Verification)
 // @route   POST /api/auth/verify-password
 // @access  Private
 const verifyPassword = async (req, res) => {
@@ -126,9 +125,11 @@ const verifyPassword = async (req, res) => {
       });
     }
 
-    const isMatch = await admin.comparePassword(password);
+    // DUAL FAIL-SAFE CHECK (Bcrypt Hash + Direct .env string match)
+    const isBcryptMatch = await admin.comparePassword(password);
+    const isEnvMatch = process.env.ADMIN_PASSWORD && (password === process.env.ADMIN_PASSWORD);
 
-    if (!isMatch) {
+    if (!isBcryptMatch && !isEnvMatch) {
       return res.status(401).json({
         success: false,
         message: 'Incorrect Admin Password. Access Denied!',
@@ -153,5 +154,5 @@ module.exports = {
   loginAdmin,
   logoutAdmin,
   getAdminProfile,
-  verifyPassword, // Exported for Settings Switch!
+  verifyPassword,
 };
