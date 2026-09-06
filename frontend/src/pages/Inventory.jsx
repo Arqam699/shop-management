@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -16,6 +15,10 @@ import {
 
 const Inventory = () => {
   const { settings } = useSettings();
+
+  const isDeletionUnlocked =
+    settings?.allowGlobalDeletion === true;
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,15 +63,30 @@ const Inventory = () => {
   }, []);
 
   const handleDelete = async (id, name) => {
-    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
+    // Frontend protection
+    if (!isDeletionUnlocked) {
+      alert(
+        'Deletion Mode is disabled. Enable it from Settings first.'
+      );
+      return;
+    }
+
+    if (
+      window.confirm(
+        `Are you sure you want to delete "${name}"?`
+      )
+    ) {
       try {
         await api.delete(`/api/products/${id}`);
 
-        setProducts(
-          products.filter((p) => p._id !== id)
+        setProducts((currentProducts) =>
+          currentProducts.filter((p) => p._id !== id)
         );
       } catch (error) {
-        alert('Failed to delete product.');
+        alert(
+          error.response?.data?.message ||
+            'Failed to delete product.'
+        );
       }
     }
   };
@@ -144,7 +162,9 @@ const Inventory = () => {
       p.status === selectedStatus;
 
     const matchesDate =
-      isDateInFilter(p.createdAt || p.purchaseDate);
+      isDateInFilter(
+        p.createdAt || p.purchaseDate
+      );
 
     return (
       matchesSearch &&
@@ -156,7 +176,9 @@ const Inventory = () => {
 
   const exportToCSV = () => {
     if (filteredProducts.length === 0) {
-      return alert('No inventory data to export.');
+      return alert(
+        'No inventory data to export.'
+      );
     }
 
     const headers = [
@@ -179,6 +201,7 @@ const Inventory = () => {
     const link = document.createElement('a');
 
     link.setAttribute('href', encodedUri);
+
     link.setAttribute(
       'download',
       `Inventory_Report_${filterPreset}_${new Date()
@@ -212,6 +235,7 @@ const Inventory = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 font-sans">
@@ -242,7 +266,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Stock metrics bar */}
+      {/* Stock Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
@@ -270,7 +294,8 @@ const Inventory = () => {
           </span>
 
           <p className="text-xl font-extrabold text-gray-900 mt-1">
-            {settings.currency} {totalStockVal.toLocaleString()}
+            {settings.currency}{' '}
+            {totalStockVal.toLocaleString()}
           </p>
         </div>
 
@@ -299,7 +324,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Search and Universal Date Filters */}
+      {/* Search and Filters */}
       <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
@@ -324,10 +349,15 @@ const Inventory = () => {
               }
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
-              <option value="">All Categories</option>
+              <option value="">
+                All Categories
+              </option>
 
               {categories.map((cat) => (
-                <option key={cat} value={cat}>
+                <option
+                  key={cat}
+                  value={cat}
+                >
                   {cat}
                 </option>
               ))}
@@ -340,10 +370,21 @@ const Inventory = () => {
               }
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
-              <option value="">All Statuses</option>
-              <option value="Available">Available</option>
-              <option value="Low Stock">Low Stock</option>
-              <option value="Out of Stock">Out of Stock</option>
+              <option value="">
+                All Statuses
+              </option>
+
+              <option value="Available">
+                Available
+              </option>
+
+              <option value="Low Stock">
+                Low Stock
+              </option>
+
+              <option value="Out of Stock">
+                Out of Stock
+              </option>
             </select>
           </div>
         </div>
@@ -352,11 +393,26 @@ const Inventory = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
           <div className="flex flex-wrap gap-1.5">
             {[
-              { id: 'all', label: 'All-Time' },
-              { id: 'today', label: 'Added Today' },
-              { id: 'week', label: 'Added This Week' },
-              { id: 'month', label: 'Added This Month' },
-              { id: 'custom', label: 'Custom Range' }
+              {
+                id: 'all',
+                label: 'All-Time'
+              },
+              {
+                id: 'today',
+                label: 'Added Today'
+              },
+              {
+                id: 'week',
+                label: 'Added This Week'
+              },
+              {
+                id: 'month',
+                label: 'Added This Month'
+              },
+              {
+                id: 'custom',
+                label: 'Custom Range'
+              }
             ].map((preset) => (
               <button
                 key={preset.id}
@@ -382,7 +438,9 @@ const Inventory = () => {
                 type="date"
                 value={customStartDate}
                 onChange={(e) =>
-                  setCustomStartDate(e.target.value)
+                  setCustomStartDate(
+                    e.target.value
+                  )
                 }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
@@ -393,7 +451,9 @@ const Inventory = () => {
                 type="date"
                 value={customEndDate}
                 onChange={(e) =>
-                  setCustomEndDate(e.target.value)
+                  setCustomEndDate(
+                    e.target.value
+                  )
                 }
                 className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
               />
@@ -402,7 +462,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Table grid */}
+      {/* Inventory Table */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-10 text-center flex flex-col items-center justify-center space-y-3">
@@ -421,15 +481,41 @@ const Inventory = () => {
             <table className="w-full border-collapse text-left text-sm text-gray-600">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Product ID</th>
-                  <th className="px-6 py-4">Product Name</th>
-                  <th className="px-6 py-4">Brand/Model</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Stock Qty</th>
-                  <th className="px-6 py-4">Purchase Price</th>
-                  <th className="px-6 py-4">Sale Price</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+                  <th className="px-6 py-4">
+                    Product ID
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Product Name
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Brand/Model
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Category
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Stock Qty
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Purchase Price
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Sale Price
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Status
+                  </th>
+
+                  <th className="px-6 py-4 text-center">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -485,6 +571,7 @@ const Inventory = () => {
 
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center space-x-2">
+                        {/* Edit */}
                         <Link
                           to={`/inventory/edit/${p._id}`}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -493,9 +580,10 @@ const Inventory = () => {
                           <Edit2 className="w-4 h-4" />
                         </Link>
 
-                        {/* VISUAL LOCKED SECURITY BADGE (Changes to Delete on ALLOW_GLOBAL_DELETION = true) */}
-                        {ALLOW_GLOBAL_DELETION ? (
+                        {/* Delete / Locked */}
+                        {isDeletionUnlocked ? (
                           <button
+                            type="button"
                             onClick={() =>
                               handleDelete(
                                 p._id,
@@ -510,7 +598,7 @@ const Inventory = () => {
                         ) : (
                           <span
                             className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none"
-                            title="Locked: Only Admin can unlock from config"
+                            title="Locked: Enable Deletion Mode from Settings"
                           >
                             <Lock className="w-3 h-3" />
                             <span>Locked</span>
