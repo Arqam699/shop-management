@@ -6,6 +6,6 @@ const { protect } = require('../middleware/authMiddleware');
 router.post('/login', loginAdmin);
 router.post('/logout', protect, logoutAdmin);
 router.get('/me', protect, getAdminProfile);
-router.post('/verify-password', protect, verifyPassword); // Password verification endpoint
+router.post('/verify-password', protect, verifyPassword); // Verified Endpoint
 
 module.exports = router;
