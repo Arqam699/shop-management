@@ -12,7 +12,7 @@ const getSettings = async (req, res) => {
       settings = await Settings.create({});
     }
 
-    // Automatically turn deletion OFF if expired
+    // Automatically disable deletion mode if expired
     if (
       settings.allowGlobalDeletion &&
       settings.deletionModeExpiresAt &&
@@ -20,6 +20,7 @@ const getSettings = async (req, res) => {
     ) {
       settings.allowGlobalDeletion = false;
       settings.deletionModeExpiresAt = null;
+
       await settings.save();
     }
 
@@ -37,7 +38,7 @@ const getSettings = async (req, res) => {
 };
 
 
-// @desc    Update shop settings
+// @desc    Update normal shop settings
 // @route   PUT /api/settings
 // @access  Private
 const updateSettings = async (req, res) => {
@@ -45,10 +46,21 @@ const updateSettings = async (req, res) => {
     let settings = await Settings.findOne();
 
     if (!settings) {
-      settings = new Settings(req.body);
-    } else {
-      Object.assign(settings, req.body);
+      settings = new Settings();
     }
+
+    /*
+      IMPORTANT:
+      Normal settings update is NOT allowed to change
+      deletion mode or deletion expiry.
+    */
+    const {
+      allowGlobalDeletion,
+      deletionModeExpiresAt,
+      ...safeSettings
+    } = req.body;
+
+    Object.assign(settings, safeSettings);
 
     await settings.save();
 
@@ -67,7 +79,7 @@ const updateSettings = async (req, res) => {
 };
 
 
-// @desc    Enable deletion mode after password verification
+// @desc    Enable deletion mode after admin password verification
 // @route   POST /api/settings/deletion-mode/enable
 // @access  Private
 const enableDeletionMode = async (req, res) => {
@@ -86,16 +98,17 @@ const enableDeletionMode = async (req, res) => {
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: 'Admin not found',
+        message: 'Admin account not found',
       });
     }
 
+    // Verify existing admin password
     const isPasswordCorrect = await admin.comparePassword(password);
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: 'Incorrect admin password',
+        message: 'Incorrect Admin Password. Access Denied.',
       });
     }
 
@@ -115,7 +128,7 @@ const enableDeletionMode = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Deletion Mode enabled for 30 minutes',
+      message: 'Deletion Mode enabled for 30 minutes.',
       data: settings,
     });
   } catch (error) {
@@ -128,7 +141,7 @@ const enableDeletionMode = async (req, res) => {
 };
 
 
-// @desc    Disable deletion mode after password verification
+// @desc    Disable deletion mode after admin password verification
 // @route   POST /api/settings/deletion-mode/disable
 // @access  Private
 const disableDeletionMode = async (req, res) => {
@@ -147,16 +160,17 @@ const disableDeletionMode = async (req, res) => {
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: 'Admin not found',
+        message: 'Admin account not found',
       });
     }
 
+    // Verify existing admin password
     const isPasswordCorrect = await admin.comparePassword(password);
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: 'Incorrect admin password',
+        message: 'Incorrect Admin Password. Access Denied.',
       });
     }
 
@@ -173,7 +187,7 @@ const disableDeletionMode = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Deletion Mode disabled',
+      message: 'Deletion Mode disabled successfully.',
       data: settings,
     });
   } catch (error) {

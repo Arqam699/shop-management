@@ -12,17 +12,24 @@ const {
 const { protect } = require('../middleware/authMiddleware');
 
 
-// Get current shop settings
+// Normal settings
 router.get('/', protect, getSettings);
 
-// Update shop settings
 router.put('/', protect, updateSettings);
 
 
 // Deletion Mode
-router.post('/deletion-mode/enable', protect, enableDeletionMode);
+router.post(
+  '/deletion-mode/enable',
+  protect,
+  enableDeletionMode
+);
 
-router.post('/deletion-mode/disable', protect, disableDeletionMode);
+router.post(
+  '/deletion-mode/disable',
+  protect,
+  disableDeletionMode
+);
 
 
 module.exports = router;
