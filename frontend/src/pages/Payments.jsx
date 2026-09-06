@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { ALLOW_GLOBAL_DELETION } from '../utils/config';
+
 import {
   CreditCard,
   Search,

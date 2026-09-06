@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { ALLOW_GLOBAL_DELETION } from '../utils/config'; // Security Lock
+
 import { ArrowLeft, Trash2, ClipboardList, ShoppingCart, Plus, Lock } from 'lucide-react';
 
 const YearlyAuditDetail = () => {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { ALLOW_GLOBAL_DELETION } from '../utils/config'; // Security Master Switch
+
 import { Plus, ShoppingCart, Edit2, Trash2, Lock, Search, Calendar } from 'lucide-react';
 
 const Sales = () => {

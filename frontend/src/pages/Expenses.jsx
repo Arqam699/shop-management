@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { ALLOW_GLOBAL_DELETION } from '../utils/config'; // Security Master Switch
 import { Wallet, Search, PlusCircle, Trash2, Calendar, FileSpreadsheet, X, AlertCircle, Lock } from 'lucide-react';
 
 const Expenses = () => {
