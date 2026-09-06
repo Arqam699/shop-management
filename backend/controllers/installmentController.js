@@ -7,21 +7,28 @@ const generatePaymentID = async () => {
   try {
     const payments = await Payment.find({}, 'paymentId');
     let maxNum = 0;
+
     payments.forEach(p => {
       if (p.paymentId) {
         const num = parseInt(p.paymentId.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
+
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
       }
     });
+
     return String(maxNum + 1).padStart(2, '0'); // e.g. 01, 02, 03...
   } catch (err) {
     return '01';
   }
 };
 
+
 const updateOverdueStatus = async (planId) => {
   try {
     const today = new Date();
+
     await Installment.updateMany(
       {
         installmentPlan: planId,
@@ -31,36 +38,226 @@ const updateOverdueStatus = async (planId) => {
       { $set: { status: 'Overdue' } }
     );
 
-    const overdueExists = await Installment.findOne({ installmentPlan: planId, status: 'Overdue' });
+    const overdueExists = await Installment.findOne({
+      installmentPlan: planId,
+      status: 'Overdue'
+    });
+
     if (overdueExists) {
-      await InstallmentPlan.findByIdAndUpdate(planId, { status: 'Overdue' });
+      await InstallmentPlan.findByIdAndUpdate(
+        planId,
+        { status: 'Overdue' }
+      );
     }
   } catch (error) {
     console.error('Failed to update overdue dates:', error);
   }
 };
 
+
+// ======================================================
+// GET ALL INSTALLMENT PLANS
+// ======================================================
 // @desc    Get all installment plans (With sale populated for invoice number)
 const getInstallmentPlans = async (req, res) => {
   try {
     const plans = await InstallmentPlan.find()
-      .populate('customer', 'fullName mobileNumber customerId')
-      .populate('product', 'name brand model sku')
-      .populate('sale', 'saleId finalTotal') // Populates Invoice Number
+      .populate(
+        'customer',
+        'fullName mobileNumber customerId'
+      )
+      .populate(
+        'product',
+        'name brand model sku'
+      )
+      .populate(
+        'sale',
+        'saleId finalTotal'
+      ) // Populates Invoice Number
       .sort({ createdAt: 1 });
 
     for (const plan of plans) {
       await updateOverdueStatus(plan._id);
     }
-    return res.status(200).json({ success: true, data: plans });
+
+    return res.status(200).json({
+      success: true,
+      data: plans
+    });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
+
+// ======================================================
+// GET DUE INSTALLMENTS
+// OVERDUE + DUE TODAY
+// ======================================================
+const getDueInstallments = async (req, res) => {
+  try {
+
+    // --------------------------------------------------
+    // Current date boundaries
+    // --------------------------------------------------
+    const now = new Date();
+
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(
+      startOfTomorrow.getDate() + 1
+    );
+
+
+    // --------------------------------------------------
+    // Find all unpaid installments
+    // --------------------------------------------------
+    const installments = await Installment.find({
+      status: {
+        $ne: 'Paid'
+      }
+    })
+      .populate({
+        path: 'installmentPlan',
+        populate: [
+          {
+            path: 'customer',
+            select: 'fullName mobileNumber customerId'
+          },
+          {
+            path: 'product',
+            select: 'name brand model sku purchasePrice sellingPrice'
+          },
+          {
+            path: 'sale',
+            select: 'saleId finalTotal'
+          }
+        ]
+      })
+      .sort({
+        dueDate: 1
+      });
+
+
+    // --------------------------------------------------
+    // Separate Overdue and Due Today
+    // --------------------------------------------------
+    const overdue = [];
+    const dueToday = [];
+
+
+    installments.forEach((installment) => {
+
+      if (!installment.dueDate) {
+        return;
+      }
+
+      const dueDate = new Date(
+        installment.dueDate
+      );
+
+
+      // -----------------------------------------------
+      // OVERDUE
+      // Due date is before today
+      // -----------------------------------------------
+      if (dueDate < startOfToday) {
+
+        overdue.push({
+          ...installment.toObject(),
+
+          category: 'Overdue',
+
+          daysOverdue: Math.max(
+            1,
+            Math.floor(
+              (
+                startOfToday.getTime() -
+                new Date(
+                  dueDate.getFullYear(),
+                  dueDate.getMonth(),
+                  dueDate.getDate()
+                ).getTime()
+              ) /
+              (1000 * 60 * 60 * 24)
+            )
+          )
+        });
+
+        return;
+      }
+
+
+      // -----------------------------------------------
+      // DUE TODAY
+      // Due date is today
+      // -----------------------------------------------
+      if (
+        dueDate >= startOfToday &&
+        dueDate < startOfTomorrow
+      ) {
+
+        dueToday.push({
+          ...installment.toObject(),
+
+          category: 'Due Today',
+
+          daysOverdue: 0
+        });
+      }
+
+    });
+
+
+    // --------------------------------------------------
+    // Return result
+    // --------------------------------------------------
+    return res.status(200).json({
+      success: true,
+
+      data: {
+        overdue,
+        dueToday,
+
+        totalOverdue: overdue.length,
+        totalDueToday: dueToday.length,
+
+        totalDue:
+          overdue.length +
+          dueToday.length
+      }
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Failed to retrieve due installments:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve due installments',
+      error: error.message
+    });
+  }
+};
+
+
+// ======================================================
+// GET SINGLE INSTALLMENT PLAN
+// ======================================================
 const getInstallmentPlanById = async (req, res) => {
   try {
+
     const planId = req.params.id;
+
     await updateOverdueStatus(planId);
 
     const plan = await InstallmentPlan.findById(planId)
@@ -69,126 +266,332 @@ const getInstallmentPlanById = async (req, res) => {
       .populate('sale'); // Populates Invoice Number
 
     if (!plan) {
-      return res.status(404).json({ success: false, message: 'Installment Plan not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Installment Plan not found'
+      });
     }
 
-    const installments = await Installment.find({ installmentPlan: planId }).sort({ installmentNumber: 1 });
-    return res.status(200).json({ success: true, data: { plan, installments } });
+    const installments = await Installment.find({
+      installmentPlan: planId
+    }).sort({
+      installmentNumber: 1
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        plan,
+        installments
+      }
+    });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
+
+// ======================================================
+// PAY INSTALLMENT
+// ======================================================
 const payInstallment = async (req, res) => {
   try {
+
     const installmentId = req.params.id;
-    const paymentAmount = Number(req.body.amount); 
-    const paymentMethod = req.body.paymentMethod || 'Cash';
 
-    if (isNaN(paymentAmount) || paymentAmount <= 0) {
-      return res.status(400).json({ success: false, message: 'Please enter a valid payment amount.' });
+    const paymentAmount = Number(
+      req.body.amount
+    );
+
+    const paymentMethod =
+      req.body.paymentMethod || 'Cash';
+
+
+    if (
+      isNaN(paymentAmount) ||
+      paymentAmount <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid payment amount.'
+      });
     }
 
-    const installment = await Installment.findById(installmentId);
+
+    const installment =
+      await Installment.findById(
+        installmentId
+      );
+
+
     if (!installment) {
-      return res.status(404).json({ success: false, message: 'Installment item not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Installment item not found'
+      });
     }
+
 
     if (installment.status === 'Paid') {
-      return res.status(400).json({ success: false, message: 'This installment is already fully paid.' });
+      return res.status(400).json({
+        success: false,
+        message:
+          'This installment is already fully paid.'
+      });
     }
 
-    if (paymentAmount > installment.remainingAmount) {
-      return res.status(400).json({ success: false, message: `Payment amount cannot exceed remaining dues (${installment.remainingAmount}).` });
+
+    if (
+      paymentAmount >
+      installment.remainingAmount
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `Payment amount cannot exceed remaining dues (${installment.remainingAmount}).`
+      });
     }
 
-    const originalRemaining = installment.remainingAmount;
-    const isPartial = paymentAmount < installment.remainingAmount;
-    const carryForwardAmount = installment.remainingAmount - paymentAmount;
 
-    if (!installment.originalAmount || installment.originalAmount === 0) {
-      installment.originalAmount = installment.amount;
+    const originalRemaining =
+      installment.remainingAmount;
+
+    const isPartial =
+      paymentAmount <
+      installment.remainingAmount;
+
+    const carryForwardAmount =
+      installment.remainingAmount -
+      paymentAmount;
+
+
+    if (
+      !installment.originalAmount ||
+      installment.originalAmount === 0
+    ) {
+      installment.originalAmount =
+        installment.amount;
     }
 
-    const plan = await InstallmentPlan.findById(installment.installmentPlan);
+
+    const plan =
+      await InstallmentPlan.findById(
+        installment.installmentPlan
+      );
+
+
     if (!plan) {
-      return res.status(404).json({ success: false, message: 'Parent installment plan not found.' });
+      return res.status(404).json({
+        success: false,
+        message:
+          'Parent installment plan not found.'
+      });
     }
 
-    const futureUnpaidInstallments = await Installment.find({
-      installmentPlan: plan._id,
-      _id: { $ne: installment._id },
-      status: { $ne: 'Paid' }
-    }).sort({ installmentNumber: 1 });
 
-    if (isPartial && futureUnpaidInstallments.length === 0) {
-      installment.paidAmount += paymentAmount;
-      installment.remainingAmount = installment.amount - installment.paidAmount;
-      installment.status = 'Partially Paid';
+    const futureUnpaidInstallments =
+      await Installment.find({
+        installmentPlan: plan._id,
+        _id: {
+          $ne: installment._id
+        },
+        status: {
+          $ne: 'Paid'
+        }
+      }).sort({
+        installmentNumber: 1
+      });
+
+
+    if (
+      isPartial &&
+      futureUnpaidInstallments.length === 0
+    ) {
+
+      installment.paidAmount +=
+        paymentAmount;
+
+      installment.remainingAmount =
+        installment.amount -
+        installment.paidAmount;
+
+      installment.status =
+        'Partially Paid';
+
       await installment.save();
+
     } else {
-      installment.amount = installment.amount - carryForwardAmount; 
-      installment.paidAmount = installment.amount;
+
+      installment.amount =
+        installment.amount -
+        carryForwardAmount;
+
+      installment.paidAmount =
+        installment.amount;
+
       installment.remainingAmount = 0;
+
       installment.status = 'Paid';
+
       installment.paidDate = new Date();
+
       await installment.save();
 
-      if (isPartial && futureUnpaidInstallments.length > 0) {
-        const distributeShare = Math.floor(carryForwardAmount / futureUnpaidInstallments.length);
-        const roundingDiff = carryForwardAmount - (distributeShare * futureUnpaidInstallments.length);
 
-        for (let i = 0; i < futureUnpaidInstallments.length; i++) {
-          const isLast = (i === futureUnpaidInstallments.length - 1);
-          const instDoc = futureUnpaidInstallments[i];
-          const additionalAmount = isLast ? (distributeShare + roundingDiff) : distributeShare;
-          
-          instDoc.amount += additionalAmount;
-          instDoc.remainingAmount += additionalAmount;
+      if (
+        isPartial &&
+        futureUnpaidInstallments.length > 0
+      ) {
+
+        const distributeShare =
+          Math.floor(
+            carryForwardAmount /
+            futureUnpaidInstallments.length
+          );
+
+        const roundingDiff =
+          carryForwardAmount -
+          (
+            distributeShare *
+            futureUnpaidInstallments.length
+          );
+
+
+        for (
+          let i = 0;
+          i < futureUnpaidInstallments.length;
+          i++
+        ) {
+
+          const isLast =
+            i ===
+            futureUnpaidInstallments.length - 1;
+
+          const instDoc =
+            futureUnpaidInstallments[i];
+
+          const additionalAmount =
+            isLast
+              ? (
+                  distributeShare +
+                  roundingDiff
+                )
+              : distributeShare;
+
+
+          instDoc.amount +=
+            additionalAmount;
+
+          instDoc.remainingAmount +=
+            additionalAmount;
+
           await instDoc.save();
         }
       }
     }
 
-    plan.remainingBalance = Math.max(0, plan.remainingBalance - paymentAmount);
-    
-    const hasUnpaid = await Installment.findOne({
-      installmentPlan: plan._id,
-      status: { $ne: 'Paid' }
-    });
+
+    plan.remainingBalance =
+      Math.max(
+        0,
+        plan.remainingBalance -
+        paymentAmount
+      );
+
+
+    const hasUnpaid =
+      await Installment.findOne({
+        installmentPlan: plan._id,
+        status: {
+          $ne: 'Paid'
+        }
+      });
+
 
     if (!hasUnpaid) {
-      plan.status = 'Completed';
+
+      plan.status =
+        'Completed';
+
     } else {
-      const hasOverdue = await Installment.findOne({
-        installmentPlan: plan._id,
-        status: 'Overdue'
-      });
-      plan.status = hasOverdue ? 'Overdue' : 'Active';
+
+      const hasOverdue =
+        await Installment.findOne({
+          installmentPlan: plan._id,
+          status: 'Overdue'
+        });
+
+      plan.status =
+        hasOverdue
+          ? 'Overdue'
+          : 'Active';
     }
+
+
     await plan.save();
 
-    await Sale.findByIdAndUpdate(plan.sale, { remainingBalance: plan.remainingBalance });
 
-    const paymentId = await generatePaymentID(); // '01', '02'...
-    const paymentLog = new Payment({
-      paymentId,
-      customer: plan.customer,
-      sale: plan.sale,
-      installmentPlan: plan._id,
-      installment: installment._id,
-      amount: paymentAmount,
-      paymentMethod,
-      originalInstallmentAmount: originalRemaining,
-      carryForwardAmount: carryForwardAmount,
-      notes: `Collected ${paymentAmount} (Original dues: ${originalRemaining} | Adjusted carry-forward: ${carryForwardAmount})`
-    });
+    await Sale.findByIdAndUpdate(
+      plan.sale,
+      {
+        remainingBalance:
+          plan.remainingBalance
+      }
+    );
+
+
+    const paymentId =
+      await generatePaymentID(); // '01', '02'...
+
+
+    const paymentLog =
+      new Payment({
+        paymentId,
+        customer: plan.customer,
+        sale: plan.sale,
+        installmentPlan: plan._id,
+        installment: installment._id,
+        amount: paymentAmount,
+        paymentMethod,
+        originalInstallmentAmount:
+          originalRemaining,
+        carryForwardAmount:
+          carryForwardAmount,
+        notes:
+          `Collected ${paymentAmount} (Original dues: ${originalRemaining} | Adjusted carry-forward: ${carryForwardAmount})`
+      });
+
+
     await paymentLog.save();
 
-    return res.status(200).json({ success: true, message: 'Payment recorded and schedules synchronized!' });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Payment recorded and schedules synchronized!'
+    });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
-module.exports = { getInstallmentPlans, getInstallmentPlanById, payInstallment };
+
+// ======================================================
+// EXPORTS
+// ======================================================
+module.exports = {
+  getInstallmentPlans,
+  getInstallmentPlanById,
+  payInstallment,
+  getDueInstallments
+};

@@ -22,12 +22,16 @@ import Returns from './pages/Returns';
 import Payments from './pages/Payments';
 import Invoices from './pages/Invoices';
 import InvoiceDetails from './pages/InvoiceDetails';
-import YearlyAudits from './pages/YearlyAudits'; // Import directory page
-import YearlyAuditDetail from './pages/YearlyAuditDetail'; // Import detail page
+import YearlyAudits from './pages/YearlyAudits';
+import YearlyAuditDetail from './pages/YearlyAuditDetail';
 
 // Import New Expenses & Reports Pages
 import Expenses from './pages/Expenses'; 
 import Reports from './pages/Reports';
+
+// NEW: Due Dates Page
+import DueDates from './pages/DueDates';
+
 
 function App() {
   return (
@@ -35,7 +39,9 @@ function App() {
       <SettingsProvider>
         <Router>
           <Routes>
+
             <Route path="/login" element={<Login />} />
+
 
             {/* Dashboard Routing */}
             <Route
@@ -49,6 +55,22 @@ function App() {
               }
             />
 
+
+            {/* =====================================================
+                DUE DATES ROUTING - NEW
+                ===================================================== */}
+            <Route
+              path="/due-dates"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <DueDates />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+
             {/* Inventory Routing */}
             <Route
               path="/inventory"
@@ -60,6 +82,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/inventory/add"
               element={
@@ -70,6 +93,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/inventory/edit/:id"
               element={
@@ -80,6 +104,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
 
             {/* Customers Routing */}
             <Route
@@ -92,6 +117,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/customers/add"
               element={
@@ -102,6 +128,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/customers/edit/:id"
               element={
@@ -112,6 +139,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/customers/:id"
               element={
@@ -122,6 +150,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
 
             {/* Sales Routing */}
             <Route
@@ -134,6 +163,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/sales/new"
               element={
@@ -144,6 +174,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/sales/edit/:id"
               element={
@@ -154,7 +185,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            
+
+
             {/* Settings Routing */}
             <Route
               path="/settings"
@@ -167,6 +199,7 @@ function App() {
               }
             />
 
+
             {/* Installments Routing */}
             <Route
               path="/installments"
@@ -178,6 +211,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/installments/:id"
               element={
@@ -188,6 +222,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
 
             {/* Payments History Routing */}
             <Route
@@ -201,6 +236,7 @@ function App() {
               }
             />
 
+
             {/* Invoices Routing */}
             <Route
               path="/invoices"
@@ -212,6 +248,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/invoices/:id"
               element={
@@ -222,7 +259,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            
+
+
             {/* Returns Routing */}
             <Route
               path="/returns"
@@ -234,6 +272,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
 
             {/* Expenses Routing */}
             <Route
@@ -247,6 +286,7 @@ function App() {
               }
             />
 
+
             {/* Reports Routing */}
             <Route
               path="/reports"
@@ -258,6 +298,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+
             {/* Yearly Audits */}
             <Route
               path="/audits"
@@ -269,6 +311,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/audits/:id"
               element={
@@ -280,8 +323,28 @@ function App() {
               }
             />
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+            {/* Default Routes */}
+            <Route
+              path="/"
+              element={
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="*"
+              element={
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              }
+            />
+
           </Routes>
         </Router>
       </SettingsProvider>
