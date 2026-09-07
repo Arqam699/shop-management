@@ -1075,6 +1075,16 @@ const Payments = () => {
                     {planDoc?.product?.brand || ''}{' '}
                     {planDoc?.product?.model || ''}
                   </p>
+                  {planDoc?.product?.imei && (
+                    <p className="text-slate-600 font-bold text-[10px] truncate">
+                      IMEI: {planDoc.product.imei}
+                    </p>
+                  )}
+                  {planDoc?.product?.chassisNumber && (
+                    <p className="text-slate-600 font-bold text-[10px] truncate">
+                      Chassis: {planDoc.product.chassisNumber}
+                    </p>
+                  )}
                 </div>
               </div>
 

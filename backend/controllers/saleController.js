@@ -4,14 +4,18 @@ const StockMovement = require('../models/StockMovement');
 const InstallmentPlan = require('../models/InstallmentPlan');
 const Installment = require('../models/Installment');
 const Settings = require('../models/Settings');
+const Customer = require('../models/Customer');
+
 
 // ============================================================
-// Helper: Check Deletion Mode
+// HELPER: CHECK DELETION MODE
+// SaaS: Current shop only
 // ============================================================
-const checkDeletionMode = async () => {
-  const settings = await Settings.findOne();
+const checkDeletionMode = async (shopId) => {
+  const settings = await Settings.findOne({
+    shopId,
+  });
 
-  // Deletion Mode is OFF
   if (!settings || !settings.allowGlobalDeletion) {
     return {
       allowed: false,
@@ -20,7 +24,6 @@ const checkDeletionMode = async () => {
     };
   }
 
-  // Deletion Mode expired
   if (
     settings.deletionModeExpiresAt &&
     new Date() > settings.deletionModeExpiresAt
@@ -42,9 +45,15 @@ const checkDeletionMode = async () => {
   };
 };
 
-const generateSaleID = async () => {
+
+// ============================================================
+// GENERATE SALE ID
+// SaaS: Sale ID generated separately for each shop
+// ============================================================
+const generateSaleID = async (shopId) => {
   try {
     const lastSale = await Sale.findOne({
+      shopId,
       saleId: /^SALE-\d+$/,
     }).sort({ saleId: -1 });
 
@@ -57,17 +66,28 @@ const generateSaleID = async () => {
       10
     );
 
-    return `SALE-${String(lastIdNum + 1).padStart(4, '0')}`;
+    return `SALE-${String(
+      lastIdNum + 1
+    ).padStart(4, '0')}`;
+
   } catch (err) {
-    return `SALE-${Date.now().toString().slice(-4)}`;
+    return `SALE-${Date.now()
+      .toString()
+      .slice(-4)}`;
   }
 };
 
-// Simple Plan ID Generator ('01', '02', '03' ... '10', '11'...)
-const generatePlanID = async () => {
+
+// ============================================================
+// GENERATE INSTALLMENT PLAN ID
+// SaaS: Plan ID generated separately for each shop
+// ============================================================
+const generatePlanID = async (shopId) => {
   try {
     const plans = await InstallmentPlan.find(
-      {},
+      {
+        shopId,
+      },
       'planId'
     );
 
@@ -80,21 +100,35 @@ const generatePlanID = async () => {
           10
         );
 
-        if (!isNaN(num) && num > maxNum) {
+        if (
+          !isNaN(num) &&
+          num > maxNum
+        ) {
           maxNum = num;
         }
       }
     });
 
-    return String(maxNum + 1).padStart(2, '0');
+    return String(
+      maxNum + 1
+    ).padStart(2, '0');
+
   } catch (err) {
     return '01';
   }
 };
 
+
+// ============================================================
+// GET SALES
+// @route GET /api/sales
+// @access Private
+// ============================================================
 const getSales = async (req, res) => {
   try {
-    const sales = await Sale.find()
+    const sales = await Sale.find({
+      shopId: req.shopId,
+    })
       .populate(
         'customer',
         'fullName mobileNumber customerId'
@@ -109,6 +143,7 @@ const getSales = async (req, res) => {
       success: true,
       data: sales,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -117,11 +152,18 @@ const getSales = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// GET SALE BY ID
+// @route GET /api/sales/:id
+// @access Private
+// ============================================================
 const getSaleById = async (req, res) => {
   try {
-    const sale = await Sale.findById(
-      req.params.id
-    )
+    const sale = await Sale.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    })
       .populate('customer')
       .populate('product');
 
@@ -132,16 +174,22 @@ const getSaleById = async (req, res) => {
       });
     }
 
-    const plan = await InstallmentPlan.findOne({
-      sale: sale._id,
-    });
+    const plan =
+      await InstallmentPlan.findOne({
+        sale: sale._id,
+        shopId: req.shopId,
+      });
 
     let installments = [];
 
     if (plan) {
-      installments = await Installment.find({
-        installmentPlan: plan._id,
-      }).sort({ installmentNumber: 1 });
+      installments =
+        await Installment.find({
+          installmentPlan: plan._id,
+          shopId: req.shopId,
+        }).sort({
+          installmentNumber: 1,
+        });
     }
 
     return res.status(200).json({
@@ -152,6 +200,7 @@ const getSaleById = async (req, res) => {
         installments,
       },
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -161,6 +210,12 @@ const getSaleById = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// CREATE SALE
+// @route POST /api/sales
+// @access Private
+// ============================================================
 const createSale = async (req, res) => {
   try {
     const {
@@ -178,14 +233,19 @@ const createSale = async (req, res) => {
     const qty = Number(quantity);
     const uPrice = Number(unitPrice);
     const disc = Number(discount || 0);
-    const dPayment = Number(downPayment || 0);
+    const dPayment = Number(
+      downPayment || 0
+    );
     const duration = Number(
       installmentDuration || 0
     );
 
-    const calculatedSubtotal = qty * uPrice;
+    const calculatedSubtotal =
+      qty * uPrice;
+
     const calculatedFinalTotal =
       calculatedSubtotal - disc;
+
     const initialRemaining =
       calculatedFinalTotal - dPayment;
 
@@ -197,24 +257,61 @@ const createSale = async (req, res) => {
       });
     }
 
-    let saleId = manualInvoiceNumber
-      ? manualInvoiceNumber.trim().toUpperCase()
-      : await generateSaleID();
+    // ========================================================
+    // CUSTOMER MUST BELONG TO CURRENT SHOP
+    // ========================================================
+    const customerDoc =
+      await Customer.findOne({
+        _id: customer,
+        shopId: req.shopId,
+      });
 
-    const existingSale = await Sale.findOne({
-      saleId,
-    });
+    if (!customerDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found.',
+      });
+    }
+
+    // ========================================================
+    // SALE ID
+    // SaaS: Generate per shop
+    // ========================================================
+    const saleId =
+      manualInvoiceNumber
+        ? manualInvoiceNumber
+            .trim()
+            .toUpperCase()
+        : await generateSaleID(
+            req.shopId
+          );
+
+    // ========================================================
+    // IMPORTANT:
+    // Duplicate invoice check must also be shop-specific
+    // ========================================================
+    const existingSale =
+      await Sale.findOne({
+        saleId,
+        shopId: req.shopId,
+      });
 
     if (existingSale) {
       return res.status(400).json({
         success: false,
-        message: `Invoice / Bill Number "${saleId}" already exists. Please use a unique bill number.`,
+        message:
+          `Invoice / Bill Number "${saleId}" already exists. Please use a unique bill number.`,
       });
     }
 
-    const prodDoc = await Product.findById(
-      product
-    );
+    // ========================================================
+    // PRODUCT MUST BELONG TO CURRENT SHOP
+    // ========================================================
+    const prodDoc =
+      await Product.findOne({
+        _id: product,
+        shopId: req.shopId,
+      });
 
     if (!prodDoc) {
       return res.status(404).json({
@@ -226,19 +323,26 @@ const createSale = async (req, res) => {
     if (prodDoc.quantity < qty) {
       return res.status(400).json({
         success: false,
-        message: 'Insufficient stock available.',
+        message:
+          'Insufficient stock available.',
       });
     }
 
-    const previousQty = prodDoc.quantity;
+    const previousQty =
+      prodDoc.quantity;
 
     prodDoc.quantity -= qty;
 
     await prodDoc.save();
 
+    // ========================================================
+    // INSTALLMENT MARKUP
+    // ========================================================
     let markupPercent = 0;
 
-    if (paymentType === 'Installment') {
+    if (
+      paymentType === 'Installment'
+    ) {
       if (duration === 3) {
         markupPercent = 0.15;
       } else if (duration === 6) {
@@ -256,22 +360,30 @@ const createSale = async (req, res) => {
       }
     }
 
-    const markupAmount = Math.round(
-      initialRemaining * markupPercent
-    );
+    const markupAmount =
+      Math.round(
+        initialRemaining *
+          markupPercent
+      );
 
     const totalFinancedAmount =
-      initialRemaining + markupAmount;
+      initialRemaining +
+      markupAmount;
 
+    // ========================================================
+    // CREATE SALE
+    // ========================================================
     const sale = new Sale({
+      shopId: req.shopId,
       saleId,
-      customer,
-      product,
+      customer: customerDoc._id,
+      product: prodDoc._id,
       quantity: qty,
       unitPrice: uPrice,
       discount: disc,
       subtotal: calculatedSubtotal,
-      finalTotal: calculatedFinalTotal,
+      finalTotal:
+        calculatedFinalTotal,
       paymentType,
       downPayment:
         paymentType === 'Installment'
@@ -289,71 +401,110 @@ const createSale = async (req, res) => {
 
     await sale.save();
 
-    const stockMovement = new StockMovement({
-      product: prodDoc._id,
-      type: 'Sale',
-      quantity: qty,
-      previousQuantity: previousQty,
-      newQuantity: prodDoc.quantity,
-      reason: `Sold to customer (${saleId})`,
-      reference: saleId,
-    });
+    // ========================================================
+    // STOCK MOVEMENT
+    // ========================================================
+    const stockMovement =
+      new StockMovement({
+        shopId: req.shopId,
+        product: prodDoc._id,
+        type: 'Sale',
+        quantity: qty,
+        previousQuantity:
+          previousQty,
+        newQuantity:
+          prodDoc.quantity,
+        reason:
+          `Sold to customer (${saleId})`,
+        reference: saleId,
+      });
 
     await stockMovement.save();
 
-    if (paymentType === 'Installment') {
-      const planId = await generatePlanID();
+    // ========================================================
+    // CREATE INSTALLMENT PLAN
+    // ========================================================
+    if (
+      paymentType === 'Installment'
+    ) {
+      const planId =
+        await generatePlanID(
+          req.shopId
+        );
 
-      const firstDueDate = new Date();
+      const firstDueDate =
+        new Date();
+
       firstDueDate.setMonth(
         firstDueDate.getMonth() + 1
       );
 
-      const plan = new InstallmentPlan({
-        planId,
-        sale: sale._id,
-        customer,
-        product,
-        totalAmount:
-          calculatedFinalTotal + markupAmount,
-        downPayment: dPayment,
-        remainingBalance:
-          totalFinancedAmount,
-        duration,
-        firstDueDate,
-      });
+      const plan =
+        new InstallmentPlan({
+          shopId: req.shopId,
+          planId,
+          sale: sale._id,
+          customer:
+            customerDoc._id,
+          product:
+            prodDoc._id,
+          totalAmount:
+            calculatedFinalTotal +
+            markupAmount,
+          downPayment: dPayment,
+          remainingBalance:
+            totalFinancedAmount,
+          duration,
+          firstDueDate,
+        });
 
       await plan.save();
 
-      const baseAmount = Math.floor(
-        totalFinancedAmount / duration
-      );
+      const baseAmount =
+        Math.floor(
+          totalFinancedAmount /
+            duration
+        );
 
       const roundingDiff =
         totalFinancedAmount -
         baseAmount * duration;
 
-      let currentDueDate = new Date(
-        firstDueDate
-      );
+      let currentDueDate =
+        new Date(firstDueDate);
 
       const installmentsArray = [];
 
-      for (let i = 1; i <= duration; i++) {
-        const isLast = i === duration;
+      for (
+        let i = 1;
+        i <= duration;
+        i++
+      ) {
+        const isLast =
+          i === duration;
 
-        const installmentAmount = isLast
-          ? baseAmount + roundingDiff
-          : baseAmount;
+        const installmentAmount =
+          isLast
+            ? baseAmount +
+              roundingDiff
+            : baseAmount;
 
         installmentsArray.push({
-          installmentPlan: plan._id,
+          shopId: req.shopId,
+          installmentPlan:
+            plan._id,
           installmentNumber: i,
-          amount: installmentAmount,
-          originalAmount: installmentAmount,
+          amount:
+            installmentAmount,
+          originalAmount:
+            installmentAmount,
           paidAmount: 0,
-          remainingAmount: installmentAmount,
-          dueDate: new Date(currentDueDate),
+          remainingAmount:
+            installmentAmount,
+          dueDate:
+            new Date(
+              currentDueDate
+            ),
           status: 'Pending',
         });
 
@@ -369,9 +520,11 @@ const createSale = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Sale completed successfully!',
+      message:
+        'Sale completed successfully!',
       data: sale,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -380,6 +533,12 @@ const createSale = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// UPDATE SALE
+// @route PUT /api/sales/:id
+// @access Private
+// ============================================================
 const updateSale = async (req, res) => {
   try {
     const saleId = req.params.id;
@@ -394,35 +553,59 @@ const updateSale = async (req, res) => {
       installmentDuration,
     } = req.body;
 
-    const sale = await Sale.findById(saleId);
+    // ========================================================
+    // SALE MUST BELONG TO CURRENT SHOP
+    // ========================================================
+    const sale =
+      await Sale.findOne({
+        _id: saleId,
+        shopId: req.shopId,
+      });
 
     if (!sale) {
       return res.status(404).json({
         success: false,
-        message: 'Sale record not found',
+        message:
+          'Sale record not found',
       });
     }
 
     const qty = Number(quantity);
     const uPrice = Number(unitPrice);
-    const disc = Number(discount || 0);
-    const dPayment = Number(downPayment || 0);
+    const disc = Number(
+      discount || 0
+    );
+    const dPayment = Number(
+      downPayment || 0
+    );
     const duration = Number(
       installmentDuration || 0
     );
 
-    const origProduct = await Product.findById(
-      sale.product
-    );
+    // ========================================================
+    // ORIGINAL PRODUCT
+    // ========================================================
+    const origProduct =
+      await Product.findOne({
+        _id: sale.product,
+        shopId: req.shopId,
+      });
 
     if (origProduct) {
-      origProduct.quantity += sale.quantity;
+      origProduct.quantity +=
+        sale.quantity;
+
       await origProduct.save();
     }
 
-    const targetProduct = await Product.findById(
-      product
-    );
+    // ========================================================
+    // TARGET PRODUCT
+    // ========================================================
+    const targetProduct =
+      await Product.findOne({
+        _id: product,
+        shopId: req.shopId,
+      });
 
     if (
       !targetProduct ||
@@ -430,7 +613,8 @@ const updateSale = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Insufficient stock available.',
+        message:
+          'Insufficient stock available.',
       });
     }
 
@@ -441,30 +625,54 @@ const updateSale = async (req, res) => {
 
     await targetProduct.save();
 
+    // ========================================================
+    // OLD INSTALLMENT PLAN
+    // ========================================================
     const oldPlan =
       await InstallmentPlan.findOne({
         sale: sale._id,
+        shopId: req.shopId,
       });
 
     if (oldPlan) {
       await Installment.deleteMany({
-        installmentPlan: oldPlan._id,
+        installmentPlan:
+          oldPlan._id,
+        shopId: req.shopId,
       });
 
-      await InstallmentPlan.findByIdAndDelete(
-        oldPlan._id
-      );
+      await InstallmentPlan.findOneAndDelete({
+        _id: oldPlan._id,
+        shopId: req.shopId,
+      });
     }
 
-    const calculatedSubtotal = qty * uPrice;
+    const calculatedSubtotal =
+      qty * uPrice;
+
     const calculatedFinalTotal =
       calculatedSubtotal - disc;
-    const initialRemaining =
-      calculatedFinalTotal - dPayment;
 
+    const initialRemaining =
+      calculatedFinalTotal -
+      dPayment;
+
+    if (calculatedFinalTotal < 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Discount cannot be greater than subtotal.',
+      });
+    }
+
+    // ========================================================
+    // INSTALLMENT MARKUP
+    // ========================================================
     let markupPercent = 0;
 
-    if (paymentType === 'Installment') {
+    if (
+      paymentType === 'Installment'
+    ) {
       if (duration === 3) {
         markupPercent = 0.15;
       } else if (duration === 6) {
@@ -482,29 +690,47 @@ const updateSale = async (req, res) => {
       }
     }
 
-    const markupAmount = Math.round(
-      initialRemaining * markupPercent
-    );
+    const markupAmount =
+      Math.round(
+        initialRemaining *
+          markupPercent
+      );
 
     const totalFinancedAmount =
-      initialRemaining + markupAmount;
+      initialRemaining +
+      markupAmount;
 
-    sale.product = product;
+    // ========================================================
+    // UPDATE SALE
+    // ========================================================
+    sale.product =
+      targetProduct._id;
+
     sale.quantity = qty;
+
     sale.unitPrice = uPrice;
+
     sale.discount = disc;
+
     sale.subtotal =
       sale.quantity * uPrice;
-    sale.finalTotal = calculatedFinalTotal;
-    sale.paymentType = paymentType;
+
+    sale.finalTotal =
+      calculatedFinalTotal;
+
+    sale.paymentType =
+      paymentType;
+
     sale.downPayment =
       paymentType === 'Installment'
         ? dPayment
         : 0;
+
     sale.remainingBalance =
       paymentType === 'Installment'
         ? totalFinancedAmount
         : 0;
+
     sale.installmentDuration =
       paymentType === 'Installment'
         ? duration
@@ -512,37 +738,64 @@ const updateSale = async (req, res) => {
 
     await sale.save();
 
+    // ========================================================
+    // DELETE OLD SALE STOCK MOVEMENT
+    // CURRENT SHOP ONLY
+    // ========================================================
     await StockMovement.deleteMany({
       reference: sale.saleId,
+      shopId: req.shopId,
     });
 
+    // ========================================================
+    // CREATE UPDATED SALE MOVEMENT
+    // ========================================================
     const updatedMovement =
       new StockMovement({
-        product: targetProduct._id,
+        shopId: req.shopId,
+        product:
+          targetProduct._id,
         type: 'Sale',
         quantity: qty,
-        previousQuantity: prevStockQty,
-        newQuantity: targetProduct.quantity,
-        reason: `Corrected/Edited Sale (${sale.saleId})`,
-        reference: sale.saleId,
+        previousQuantity:
+          prevStockQty,
+        newQuantity:
+          targetProduct.quantity,
+        reason:
+          `Corrected/Edited Sale (${sale.saleId})`,
+        reference:
+          sale.saleId,
       });
 
     await updatedMovement.save();
 
-    if (paymentType === 'Installment') {
-      const planId = await generatePlanID();
+    // ========================================================
+    // CREATE NEW INSTALLMENT PLAN
+    // ========================================================
+    if (
+      paymentType === 'Installment'
+    ) {
+      const planId =
+        await generatePlanID(
+          req.shopId
+        );
 
-      const firstDueDate = new Date();
+      const firstDueDate =
+        new Date();
+
       firstDueDate.setMonth(
         firstDueDate.getMonth() + 1
       );
 
       const plan =
         new InstallmentPlan({
+          shopId: req.shopId,
           planId,
           sale: sale._id,
-          customer: sale.customer,
-          product,
+          customer:
+            sale.customer,
+          product:
+            targetProduct._id,
           totalAmount:
             calculatedFinalTotal +
             markupAmount,
@@ -555,17 +808,18 @@ const updateSale = async (req, res) => {
 
       await plan.save();
 
-      const baseAmount = Math.floor(
-        totalFinancedAmount / duration
-      );
+      const baseAmount =
+        Math.floor(
+          totalFinancedAmount /
+            duration
+        );
 
       const roundingDiff =
         totalFinancedAmount -
         baseAmount * duration;
 
-      let currentDueDate = new Date(
-        firstDueDate
-      );
+      let currentDueDate =
+        new Date(firstDueDate);
 
       const installmentsArray = [];
 
@@ -574,24 +828,31 @@ const updateSale = async (req, res) => {
         i <= duration;
         i++
       ) {
-        const isLast = i === duration;
+        const isLast =
+          i === duration;
 
-        const installmentAmount = isLast
-          ? baseAmount + roundingDiff
-          : baseAmount;
+        const installmentAmount =
+          isLast
+            ? baseAmount +
+              roundingDiff
+            : baseAmount;
 
         installmentsArray.push({
-          installmentPlan: plan._id,
+          shopId: req.shopId,
+          installmentPlan:
+            plan._id,
           installmentNumber: i,
-          amount: installmentAmount,
+          amount:
+            installmentAmount,
           originalAmount:
             installmentAmount,
           paidAmount: 0,
           remainingAmount:
             installmentAmount,
-          dueDate: new Date(
-            currentDueDate
-          ),
+          dueDate:
+            new Date(
+              currentDueDate
+            ),
           status: 'Pending',
         });
 
@@ -611,6 +872,7 @@ const updateSale = async (req, res) => {
         'Sale updated and schedules synchronized!',
       data: sale,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -619,101 +881,127 @@ const updateSale = async (req, res) => {
   }
 };
 
+
 // ============================================================
 // DELETE SALE
-// Deletion Mode protected
+// @route DELETE /api/sales/:id
+// @access Private
 // ============================================================
 const deleteSale = async (req, res) => {
   try {
-    // --------------------------------------------------------
-    // SECURITY: Check Deletion Mode BEFORE any deletion
-    // --------------------------------------------------------
     const deletionCheck =
-      await checkDeletionMode();
+      await checkDeletionMode(
+        req.shopId
+      );
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
         success: false,
-        message: deletionCheck.message,
+        message:
+          deletionCheck.message,
       });
     }
 
-    const sale = await Sale.findById(
-      req.params.id
-    );
+    // ========================================================
+    // SALE MUST BELONG TO CURRENT SHOP
+    // ========================================================
+    const sale =
+      await Sale.findOne({
+        _id: req.params.id,
+        shopId: req.shopId,
+      });
 
     if (!sale) {
       return res.status(404).json({
         success: false,
-        message: 'Sale record not found',
+        message:
+          'Sale record not found',
       });
     }
 
-    // --------------------------------------------------------
-    // Restore product stock
-    // --------------------------------------------------------
-    const productDoc = await Product.findById(
-      sale.product
-    );
+    // ========================================================
+    // RESTORE PRODUCT STOCK
+    // ========================================================
+    const productDoc =
+      await Product.findOne({
+        _id: sale.product,
+        shopId: req.shopId,
+      });
 
     if (productDoc) {
-      const origQty = productDoc.quantity;
+      const origQty =
+        productDoc.quantity;
 
-      productDoc.quantity += sale.quantity;
+      productDoc.quantity +=
+        sale.quantity;
 
       await productDoc.save();
 
       const restoreMovement =
         new StockMovement({
-          product: productDoc._id,
+          shopId: req.shopId,
+          product:
+            productDoc._id,
           type: 'Return',
-          quantity: sale.quantity,
-          previousQuantity: origQty,
-          newQuantity: productDoc.quantity,
-          reason: `Dukan sale cancelled & deleted (${sale.saleId})`,
-          reference: sale.saleId,
+          quantity:
+            sale.quantity,
+          previousQuantity:
+            origQty,
+          newQuantity:
+            productDoc.quantity,
+          reason:
+            `Dukan sale cancelled & deleted (${sale.saleId})`,
+          reference:
+            sale.saleId,
         });
 
       await restoreMovement.save();
     }
 
-    // --------------------------------------------------------
-    // Delete installment plan + installments
-    // --------------------------------------------------------
+    // ========================================================
+    // DELETE INSTALLMENT PLAN
+    // ========================================================
     const oldPlan =
       await InstallmentPlan.findOne({
         sale: sale._id,
+        shopId: req.shopId,
       });
 
     if (oldPlan) {
       await Installment.deleteMany({
-        installmentPlan: oldPlan._id,
+        installmentPlan:
+          oldPlan._id,
+        shopId: req.shopId,
       });
 
-      await InstallmentPlan.findByIdAndDelete(
-        oldPlan._id
-      );
+      await InstallmentPlan.findOneAndDelete({
+        _id: oldPlan._id,
+        shopId: req.shopId,
+      });
     }
 
-    // --------------------------------------------------------
-    // Delete old stock movements
-    // --------------------------------------------------------
+    // ========================================================
+    // DELETE SALE STOCK MOVEMENTS
+    // ========================================================
     await StockMovement.deleteMany({
       reference: sale.saleId,
+      shopId: req.shopId,
     });
 
-    // --------------------------------------------------------
-    // Delete Sale
-    // --------------------------------------------------------
-    await Sale.findByIdAndDelete(
-      req.params.id
-    );
+    // ========================================================
+    // DELETE SALE
+    // ========================================================
+    await Sale.findOneAndDelete({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     return res.status(200).json({
       success: true,
       message:
         'Sale deleted and stock restored successfully!',
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -722,21 +1010,32 @@ const deleteSale = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// EXCHANGE SALE PRODUCT
+// @route PATCH /api/sales/:id/exchange
+// @access Private
+// ============================================================
 const exchangeSaleProduct = async (
   req,
   res
 ) => {
   try {
-    const saleId = req.params.id;
+    const saleId =
+      req.params.id;
 
     const {
       newProductId,
       newPrice,
     } = req.body;
 
-    const nPrice = Number(newPrice);
+    const nPrice =
+      Number(newPrice);
 
-    if (isNaN(nPrice) || nPrice < 0) {
+    if (
+      isNaN(nPrice) ||
+      nPrice < 0
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -744,9 +1043,14 @@ const exchangeSaleProduct = async (
       });
     }
 
-    const sale = await Sale.findById(
-      saleId
-    );
+    // ========================================================
+    // SALE MUST BELONG TO CURRENT SHOP
+    // ========================================================
+    const sale =
+      await Sale.findOne({
+        _id: saleId,
+        shopId: req.shopId,
+      });
 
     if (!sale) {
       return res.status(404).json({
@@ -756,17 +1060,24 @@ const exchangeSaleProduct = async (
       });
     }
 
-    const oldProductId = sale.product;
-    const oldPrice = sale.unitPrice;
+    const oldProductId =
+      sale.product;
+
+    const oldPrice =
+      sale.unitPrice;
 
     const priceDifference =
       (nPrice - oldPrice) *
       sale.quantity;
 
+    // ========================================================
+    // TARGET PRODUCT
+    // ========================================================
     const targetProduct =
-      await Product.findById(
-        newProductId
-      );
+      await Product.findOne({
+        _id: newProductId,
+        shopId: req.shopId,
+      });
 
     if (
       !targetProduct ||
@@ -780,10 +1091,14 @@ const exchangeSaleProduct = async (
       });
     }
 
+    // ========================================================
+    // OLD PRODUCT
+    // ========================================================
     const oldProductDoc =
-      await Product.findById(
-        oldProductId
-      );
+      await Product.findOne({
+        _id: oldProductId,
+        shopId: req.shopId,
+      });
 
     if (oldProductDoc) {
       const origQty =
@@ -796,19 +1111,28 @@ const exchangeSaleProduct = async (
 
       const returnMovement =
         new StockMovement({
-          product: oldProductId,
+          shopId: req.shopId,
+          product:
+            oldProductId,
           type: 'Return',
-          quantity: sale.quantity,
-          previousQuantity: origQty,
+          quantity:
+            sale.quantity,
+          previousQuantity:
+            origQty,
           newQuantity:
             oldProductDoc.quantity,
-          reason: `Exchanged and returned (linked to: ${sale.saleId})`,
-          reference: sale.saleId,
+          reason:
+            `Exchanged and returned (linked to: ${sale.saleId})`,
+          reference:
+            sale.saleId,
         });
 
       await returnMovement.save();
     }
 
+    // ========================================================
+    // REMOVE TARGET PRODUCT FROM STOCK
+    // ========================================================
     const prevTargetQty =
       targetProduct.quantity;
 
@@ -817,27 +1141,47 @@ const exchangeSaleProduct = async (
 
     await targetProduct.save();
 
+    // ========================================================
+    // SALE STOCK MOVEMENT
+    // ========================================================
     const sellMovement =
       new StockMovement({
-        product: newProductId,
+        shopId: req.shopId,
+        product:
+          newProductId,
         type: 'Sale',
-        quantity: sale.quantity,
+        quantity:
+          sale.quantity,
         previousQuantity:
           prevTargetQty,
         newQuantity:
           targetProduct.quantity,
-        reason: `Exchanged and checkout (linked to: ${sale.saleId})`,
-        reference: sale.saleId,
+        reason:
+          `Exchanged and checkout (linked to: ${sale.saleId})`,
+        reference:
+          sale.saleId,
       });
 
     await sellMovement.save();
 
-    sale.product = newProductId;
-    sale.unitPrice = nPrice;
+    // ========================================================
+    // UPDATE SALE
+    // ========================================================
+    sale.product =
+      targetProduct._id;
+
+    sale.unitPrice =
+      nPrice;
+
     sale.subtotal =
       sale.quantity * nPrice;
-    sale.finalTotal += priceDifference;
 
+    sale.finalTotal +=
+      priceDifference;
+
+    // ========================================================
+    // UPDATE INSTALLMENT PLAN
+    // ========================================================
     if (
       sale.paymentType ===
       'Installment'
@@ -845,11 +1189,12 @@ const exchangeSaleProduct = async (
       const plan =
         await InstallmentPlan.findOne({
           sale: sale._id,
+          shopId: req.shopId,
         });
 
       if (plan) {
         plan.product =
-          newProductId;
+          targetProduct._id;
 
         plan.totalAmount +=
           priceDifference;
@@ -870,6 +1215,7 @@ const exchangeSaleProduct = async (
           await Installment.find({
             installmentPlan:
               plan._id,
+            shopId: req.shopId,
             status: {
               $ne: 'Paid',
             },
@@ -881,10 +1227,11 @@ const exchangeSaleProduct = async (
           unpaidInstallments.length >
           0
         ) {
-          const share = Math.floor(
-            priceDifference /
-              unpaidInstallments.length
-          );
+          const share =
+            Math.floor(
+              priceDifference /
+                unpaidInstallments.length
+            );
 
           const roundingDiff =
             priceDifference -
@@ -899,8 +1246,7 @@ const exchangeSaleProduct = async (
           ) {
             const isLast =
               i ===
-              unpaidInstallments.length -
-                1;
+              unpaidInstallments.length - 1;
 
             const instDoc =
               unpaidInstallments[i];
@@ -936,6 +1282,7 @@ const exchangeSaleProduct = async (
       message:
         'Product exchanged and dynamic kiston re-balanced!',
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -944,6 +1291,10 @@ const exchangeSaleProduct = async (
   }
 };
 
+
+// ============================================================
+// EXPORTS
+// ============================================================
 module.exports = {
   getSales,
   getSaleById,

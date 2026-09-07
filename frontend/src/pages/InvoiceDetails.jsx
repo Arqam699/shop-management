@@ -437,6 +437,16 @@ const InvoiceDetails = () => {
             <p className="text-slate-600 font-bold text-[10px] truncate">
               {invoice.product?.brand} {invoice.product?.model}
             </p>
+            {invoice.product?.imei && (
+              <p className="text-slate-600 font-bold text-[10px] truncate">
+                IMEI: {invoice.product.imei}
+              </p>
+            )}
+            {invoice.product?.chassisNumber && (
+              <p className="text-slate-600 font-bold text-[10px] truncate">
+                Chassis: {invoice.product.chassisNumber}
+              </p>
+            )}
           </div>
         </div>
 

@@ -2,17 +2,22 @@ const mongoose = require('mongoose');
 
 const customerSchema = new mongoose.Schema(
   {
-    customerId: { type: String, unique: true }, // Auto-generated e.g. CUST-0001
+    shopId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Shop',
+  required: true,
+  index: true,
+},
+    customerId: { type: String }, // Auto-generated e.g. CUST-0001
     fullName: { type: String, required: true, trim: true },
     fatherName: { type: String, required: true, trim: true },
     mobileNumber: { type: String, required: true, trim: true },
     alternateMobileNumber: { type: String, trim: true },
-    cnic: { 
-      type: String, 
-      required: true, 
-      unique: true, 
-      trim: true 
-    }, 
+    cnic: {
+      type: String,
+      required: true,
+      trim: true
+    },
     address: { type: String, required: true, trim: true },
     city: { type: String, default: 'Sangla Hill', trim: true },
     email: { type: String, trim: true, lowercase: true },
@@ -40,5 +45,8 @@ const customerSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+customerSchema.index({ shopId: 1, customerId: 1 }, { unique: true });
+customerSchema.index({ shopId: 1, cnic: 1 }, { unique: true });
 
 module.exports = mongoose.model('Customer', customerSchema);

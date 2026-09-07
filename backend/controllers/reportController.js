@@ -1,3 +1,4 @@
+
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Payment = require('../models/Payment');
@@ -5,148 +6,701 @@ const InstallmentPlan = require('../models/InstallmentPlan');
 const Customer = require('../models/Customer');
 const Return = require('../models/Return');
 const Installment = require('../models/Installment');
-const Expense = require('../models/Expense'); // Add Expense Model reference
+const Expense = require('../models/Expense');
 
-// Helper to calculate date boundaries
+
+// ============================================================
+// HELPER: CALCULATE DATE BOUNDARIES
+// ============================================================
 const getDateRanges = () => {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay());
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
 
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const startOfWeek =
+    new Date(today);
 
-  return { today, startOfWeek, startOfMonth };
+  startOfWeek.setDate(
+    today.getDate() -
+    today.getDay()
+  );
+
+  const startOfMonth =
+    new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      1
+    );
+
+  return {
+    today,
+    startOfWeek,
+    startOfMonth,
+  };
 };
 
-// @desc    Get complete real-time KPIs, active financing, and expenses for dukan dashboard
+
+// ============================================================
+// GET DASHBOARD STATS
+//
+// @desc    Get complete real-time KPIs, active financing,
+//          expenses and profit for current shop dashboard
+//
 // @route   GET /api/reports/dashboard
 // @access  Private
-const getDashboardStats = async (req, res) => {
+// ============================================================
+const getDashboardStats = async (
+  req,
+  res
+) => {
   try {
-    const { today, startOfWeek, startOfMonth } = getDateRanges();
 
-    // 1. Inventory KPIs
-    const totalProducts = await Product.countDocuments();
-    const lowStockCount = await Product.countDocuments({ status: 'Low Stock' });
-    const outOfStockCount = await Product.countDocuments({ status: 'Out of Stock' });
+    const {
+      today,
+      startOfWeek,
+      startOfMonth,
+    } = getDateRanges();
 
-    const products = await Product.find();
-    const totalStockQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0);
-    const inventoryCostValue = products.reduce((sum, p) => sum + ((p.purchasePrice || 0) * (p.quantity || 0)), 0);
 
-    // 2. Customers KPIs
-    const totalCustomers = await Customer.countDocuments();
+    // ========================================================
+    // CURRENT SHOP
+    // ========================================================
+    //
+    // IMPORTANT SaaS SECURITY:
+    // shopId comes from authenticated middleware.
+    // Never take shopId from req.query or req.body.
+    //
+    const shopId =
+      req.shopId;
 
-    // 3. Raw Lists Populated
-    const salesList = await Sale.find().populate('customer').populate('product').sort({ createdAt: 1 });
-    const activeFinancingList = await InstallmentPlan.find().populate('customer').populate('product').sort({ createdAt: 1 });
-    const paymentsList = await Payment.find({ isArchived: { $ne: true } }).populate('customer').populate('sale').populate('installmentPlan').populate('installment').sort({ createdAt: 1 });
-    
-    // NEW: Fetch all dynamic expenses raw list (Oldest to Newest - Line-wise)
-    const expensesList = await Expense.find().sort({ createdAt: 1 });
 
-    // 4. Fetch urgent due or overdue installments
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
+    // ========================================================
+    // 1. INVENTORY KPIs
+    // ========================================================
 
-    const urgentInstallments = await Installment.find({
-      status: { $in: ['Pending', 'Overdue', 'Partially Paid'] },
-      dueDate: { $lte: endOfToday }
-    })
-    .populate({
-      path: 'installmentPlan',
-      populate: [
-        { path: 'customer' },
-        { path: 'product' }
-      ]
-    })
-    .sort({ dueDate: 1 })
-    .limit(5);
+    const totalProducts =
+      await Product.countDocuments({
+        shopId,
+      });
 
-    // 5. Raw calculations (Presets metrics)
-    const todaySalesList = await Sale.find({ saleDate: { $gte: today } });
-    const weekSalesList = await Sale.find({ saleDate: { $gte: startOfWeek } });
-    const monthSalesList = await Sale.find({ saleDate: { $gte: startOfMonth } });
 
-    const totalSalesVal = salesList.reduce((sum, s) => sum + (s.finalTotal || 0), 0);
-    const todaySalesVal = todaySalesList.reduce((sum, s) => sum + (s.finalTotal || 0), 0);
-    const weekSalesVal = weekSalesList.reduce((sum, s) => sum + (s.finalTotal || 0), 0);
-    const monthSalesVal = monthSalesList.reduce((sum, s) => sum + (s.finalTotal || 0), 0);
+    const lowStockCount =
+      await Product.countDocuments({
+        shopId,
+        status:
+          'Low Stock',
+      });
 
-    const activePlans = await InstallmentPlan.countDocuments({ status: 'Active' });
-    const overduePlans = await InstallmentPlan.countDocuments({ status: 'Overdue' });
-    const totalOutstandingAmount = activeFinancingList.reduce((sum, p) => sum + (p.remainingBalance || 0), 0);
 
-    const todayPayments = await Payment.find({ paymentDate: { $gte: today } });
-    const todayCollectedPayments = todayPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const outOfStockCount =
+      await Product.countDocuments({
+        shopId,
+        status:
+          'Out of Stock',
+      });
 
-    // 6. PROFIT CALCULATOR (With Expenses integration)
+
+    // --------------------------------------------------------
+    // Get products for stock calculations
+    // --------------------------------------------------------
+    const products =
+      await Product.find({
+        shopId,
+      });
+
+
+    const totalStockQuantity =
+      products.reduce(
+        (
+          sum,
+          product
+        ) =>
+          sum +
+          (
+            product.quantity ||
+            0
+          ),
+        0
+      );
+
+
+    const inventoryCostValue =
+      products.reduce(
+        (
+          sum,
+          product
+        ) =>
+          sum +
+          (
+            (product.purchasePrice || 0) *
+            (product.quantity || 0)
+          ),
+        0
+      );
+
+
+    // ========================================================
+    // 2. CUSTOMERS KPIs
+    // ========================================================
+
+    const totalCustomers =
+      await Customer.countDocuments({
+        shopId,
+      });
+
+
+    // ========================================================
+    // 3. RAW LISTS
+    // ========================================================
+
+    // --------------------------------------------------------
+    // SALES
+    // --------------------------------------------------------
+    const salesList =
+      await Sale.find({
+        shopId,
+      })
+        .populate('customer')
+        .populate('product')
+        .sort({
+          createdAt: 1,
+        });
+
+
+    // --------------------------------------------------------
+    // ACTIVE FINANCING / INSTALLMENT PLANS
+    // --------------------------------------------------------
+    const activeFinancingList =
+      await InstallmentPlan.find({
+        shopId,
+      })
+        .populate('customer')
+        .populate('product')
+        .sort({
+          createdAt: 1,
+        });
+
+
+    // --------------------------------------------------------
+    // PAYMENTS
+    // --------------------------------------------------------
+    const paymentsList =
+      await Payment.find({
+        shopId,
+        isArchived: {
+          $ne: true,
+        },
+      })
+        .populate('customer')
+        .populate('sale')
+        .populate('installmentPlan')
+        .populate('installment')
+        .sort({
+          createdAt: 1,
+        });
+
+
+    // --------------------------------------------------------
+    // EXPENSES
+    // --------------------------------------------------------
+    const expensesList =
+      await Expense.find({
+        shopId,
+      }).sort({
+        createdAt: 1,
+      });
+
+
+    // ========================================================
+    // 4. URGENT DUE / OVERDUE INSTALLMENTS
+    // ========================================================
+
+    const endOfToday =
+      new Date();
+
+    endOfToday.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+
+    const urgentInstallments =
+      await Installment.find({
+        shopId,
+
+        status: {
+          $in: [
+            'Pending',
+            'Overdue',
+            'Partially Paid',
+          ],
+        },
+
+        dueDate: {
+          $lte:
+            endOfToday,
+        },
+      })
+        .populate({
+          path:
+            'installmentPlan',
+
+          populate: [
+            {
+              path:
+                'customer',
+            },
+            {
+              path:
+                'product',
+            },
+          ],
+        })
+        .sort({
+          dueDate: 1,
+        })
+        .limit(5);
+
+
+    // ========================================================
+    // 5. SALES PERIOD CALCULATIONS
+    // ========================================================
+
+    const todaySalesList =
+      await Sale.find({
+        shopId,
+
+        saleDate: {
+          $gte:
+            today,
+        },
+      });
+
+
+    const weekSalesList =
+      await Sale.find({
+        shopId,
+
+        saleDate: {
+          $gte:
+            startOfWeek,
+        },
+      });
+
+
+    const monthSalesList =
+      await Sale.find({
+        shopId,
+
+        saleDate: {
+          $gte:
+            startOfMonth,
+        },
+      });
+
+
+    // --------------------------------------------------------
+    // TOTAL SALES
+    // --------------------------------------------------------
+    const totalSalesVal =
+      salesList.reduce(
+        (
+          sum,
+          sale
+        ) =>
+          sum +
+          (
+            sale.finalTotal ||
+            0
+          ),
+        0
+      );
+
+
+    // --------------------------------------------------------
+    // TODAY SALES
+    // --------------------------------------------------------
+    const todaySalesVal =
+      todaySalesList.reduce(
+        (
+          sum,
+          sale
+        ) =>
+          sum +
+          (
+            sale.finalTotal ||
+            0
+          ),
+        0
+      );
+
+
+    // --------------------------------------------------------
+    // WEEK SALES
+    // --------------------------------------------------------
+    const weekSalesVal =
+      weekSalesList.reduce(
+        (
+          sum,
+          sale
+        ) =>
+          sum +
+          (
+            sale.finalTotal ||
+            0
+          ),
+        0
+      );
+
+
+    // --------------------------------------------------------
+    // MONTH SALES
+    // --------------------------------------------------------
+    const monthSalesVal =
+      monthSalesList.reduce(
+        (
+          sum,
+          sale
+        ) =>
+          sum +
+          (
+            sale.finalTotal ||
+            0
+          ),
+        0
+      );
+
+
+    // ========================================================
+    // INSTALLMENT PLAN COUNTS
+    // ========================================================
+
+    const activePlans =
+      await InstallmentPlan.countDocuments({
+        shopId,
+
+        status:
+          'Active',
+      });
+
+
+    const overduePlans =
+      await InstallmentPlan.countDocuments({
+        shopId,
+
+        status:
+          'Overdue',
+      });
+
+
+    // --------------------------------------------------------
+    // TOTAL OUTSTANDING
+    // --------------------------------------------------------
+    const totalOutstandingAmount =
+      activeFinancingList.reduce(
+        (
+          sum,
+          plan
+        ) =>
+          sum +
+          (
+            plan.remainingBalance ||
+            0
+          ),
+        0
+      );
+
+
+    // ========================================================
+    // TODAY'S COLLECTED PAYMENTS
+    // ========================================================
+
+    const todayPayments =
+      await Payment.find({
+        shopId,
+
+        paymentDate: {
+          $gte:
+            today,
+        },
+      });
+
+
+    const todayCollectedPayments =
+      todayPayments.reduce(
+        (
+          sum,
+          payment
+        ) =>
+          sum +
+          (
+            payment.amount ||
+            0
+          ),
+        0
+      );
+
+
+    // ========================================================
+    // 6. PROFIT CALCULATOR
+    //
+    // Revenue
+    //   ↓
+    // Refunds
+    //   ↓
+    // Adjusted Revenue
+    //   ↓
+    // Cost of Goods Sold
+    //   ↓
+    // Gross Profit
+    //   ↓
+    // Expenses
+    //   ↓
+    // Net Profit
+    // ========================================================
+
     let totalRevenue = 0;
+
     let totalCostOfSold = 0;
 
-    for (const sale of salesList) {
-      totalRevenue += sale.finalTotal || 0;
-      if (sale.product) {
-        totalCostOfSold += (sale.quantity || 0) * (sale.product.purchasePrice || 0);
+
+    for (
+      const sale of salesList
+    ) {
+
+      // ------------------------------------------------------
+      // Revenue
+      // ------------------------------------------------------
+      totalRevenue +=
+        sale.finalTotal ||
+        0;
+
+
+      // ------------------------------------------------------
+      // Cost of sold products
+      // ------------------------------------------------------
+      if (
+        sale.product
+      ) {
+
+        totalCostOfSold +=
+          (
+            sale.quantity ||
+            0
+          ) *
+          (
+            sale.product.purchasePrice ||
+            0
+          );
       }
     }
 
-    const returns = await Return.find();
-    const totalRefunded = returns.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
-    const finalAdjustedRevenue = totalRevenue - totalRefunded;
-    const grossProfit = finalAdjustedRevenue - totalCostOfSold;
 
-    // Total expenses sum
-    const totalExpensesValue = expensesList.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const netProfitValue = grossProfit - totalExpensesValue; // Khaalis dynamic net income
+    // ========================================================
+    // RETURNS
+    // ========================================================
+
+    const returns =
+      await Return.find({
+        shopId,
+      });
+
+
+    const totalRefunded =
+      returns.reduce(
+        (
+          sum,
+          returnRecord
+        ) =>
+          sum +
+          (
+            returnRecord.refundAmount ||
+            0
+          ),
+        0
+      );
+
+
+    // --------------------------------------------------------
+    // Revenue after refunds
+    // --------------------------------------------------------
+    const finalAdjustedRevenue =
+      totalRevenue -
+      totalRefunded;
+
+
+    // --------------------------------------------------------
+    // Gross Profit
+    // --------------------------------------------------------
+    const grossProfit =
+      finalAdjustedRevenue -
+      totalCostOfSold;
+
+
+    // ========================================================
+    // TOTAL EXPENSES
+    // ========================================================
+
+    const totalExpensesValue =
+      expensesList.reduce(
+        (
+          sum,
+          expense
+        ) =>
+          sum +
+          (
+            expense.amount ||
+            0
+          ),
+        0
+      );
+
+
+    // --------------------------------------------------------
+    // NET PROFIT
+    // --------------------------------------------------------
+    const netProfitValue =
+      grossProfit -
+      totalExpensesValue;
+
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
 
     return res.status(200).json({
+
       success: true,
+
       data: {
+
+        // ====================================================
+        // INVENTORY
+        // ====================================================
         inventory: {
+
           totalProducts,
+
           totalStockQuantity,
+
           lowStockCount,
+
           outOfStockCount,
-          inventoryCostValue
+
+          inventoryCostValue,
         },
+
+
+        // ====================================================
+        // CUSTOMERS
+        // ====================================================
         customers: {
-          totalCustomers
+
+          totalCustomers,
         },
+
+
+        // ====================================================
+        // SALES
+        // ====================================================
         sales: {
+
           todaySalesVal,
+
           weekSalesVal,
+
           monthSalesVal,
+
           totalSalesVal,
-          salesList 
+
+          salesList,
         },
+
+
+        // ====================================================
+        // INSTALLMENTS
+        // ====================================================
         installments: {
+
           activePlans,
+
           overduePlans,
+
           totalOutstandingAmount,
+
           todayCollectedPayments,
+
           activeFinancingList,
+
           paymentsList,
-          urgentInstallments 
+
+          urgentInstallments,
         },
+
+
+        // ====================================================
+        // EXPENSES
+        // ====================================================
         expenses: {
+
           totalExpensesValue,
-          expensesList // Return raw list for date filtration
+
+          expensesList,
         },
+
+
+        // ====================================================
+        // PROFIT
+        // ====================================================
         profit: {
-          totalRevenue: finalAdjustedRevenue,
-          totalCost: totalCostOfSold,
+
+          totalRevenue:
+            finalAdjustedRevenue,
+
+          totalCost:
+            totalCostOfSold,
+
           grossProfit,
-          totalExpenses: totalExpensesValue,
-          netProfit: netProfitValue // Final Net Profit
-        }
-      }
+
+          totalExpenses:
+            totalExpensesValue,
+
+          netProfit:
+            netProfitValue,
+        },
+      },
     });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to compile dashboard metrics', error: error.message });
+
+    console.error(
+      'Dashboard Stats Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        'Failed to compile dashboard metrics',
+
+      error:
+        error.message,
+    });
   }
 };
 
-module.exports = { getDashboardStats };
+
+// ============================================================
+// EXPORTS
+// ============================================================
+module.exports = {
+  getDashboardStats,
+};

@@ -1,4 +1,5 @@
 const Admin = require('../models/Admin');
+const Shop = require('../models/Shop');
 const { generateToken } = require('../utils/token');
 
 // @desc    Admin login & get token
@@ -38,18 +39,101 @@ const loginAdmin = async (req, res) => {
       });
     }
 
-    // Generate JWT and set authentication cookie
-    generateToken(res, admin._id);
+
+    // =====================================================
+    // CHECK SHOP ASSIGNMENT
+    // =====================================================
+
+    if (!admin.shopId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not assigned to a shop',
+      });
+    }
+
+
+    // =====================================================
+    // FIND SHOP
+    // =====================================================
+
+    const shop = await Shop.findById(admin.shopId);
+
+    if (!shop) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your shop account was not found',
+      });
+    }
+
+
+    // =====================================================
+    // CHECK SUSPENDED SHOP
+    // =====================================================
+
+    if (shop.subscriptionStatus === 'Suspended') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your shop account has been suspended. Please contact the administrator.',
+      });
+    }
+
+
+    // =====================================================
+    // CHECK SUBSCRIPTION EXPIRY
+    // =====================================================
+
+    if (
+      shop.subscriptionExpiresAt &&
+      new Date() >= new Date(shop.subscriptionExpiresAt)
+    ) {
+
+      // Automatically update status to Expired
+      if (shop.subscriptionStatus !== 'Expired') {
+        shop.subscriptionStatus = 'Expired';
+        await shop.save();
+      }
+
+      return res.status(403).json({
+        success: false,
+        message: 'Your subscription has expired. Please contact the administrator to renew your access.',
+      });
+    }
+
+
+    // =====================================================
+    // CHECK ALREADY EXPIRED STATUS
+    // =====================================================
+
+    if (shop.subscriptionStatus === 'Expired') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your subscription has expired. Please contact the administrator to renew your access.',
+      });
+    }
+
+
+    // =====================================================
+    // GENERATE JWT
+    // =====================================================
+
+    generateToken(
+      res,
+      admin._id,
+      admin.shopId
+    );
+
 
     return res.status(200).json({
       success: true,
       message: 'Logged in successfully',
       data: {
         email: admin.email,
+        shopId: admin.shopId,
       },
     });
 
   } catch (error) {
+
     console.error('Login Error:', error);
 
     return res.status(500).json({
@@ -65,10 +149,13 @@ const loginAdmin = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 const logoutAdmin = (req, res) => {
+
   res.cookie('token', '', {
     httpOnly: true,
-    secure: true,
-    sameSite: 'none',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production'
+      ? 'none'
+      : 'lax',
     expires: new Date(0),
   });
 
@@ -84,6 +171,7 @@ const logoutAdmin = (req, res) => {
 // @access  Private
 const getAdminProfile = async (req, res) => {
   try {
+
     if (!req.admin) {
       return res.status(404).json({
         success: false,
@@ -95,10 +183,12 @@ const getAdminProfile = async (req, res) => {
       success: true,
       data: {
         email: req.admin.email,
+        shopId: req.shopId,
       },
     });
 
   } catch (error) {
+
     console.error('Get Admin Profile Error:', error);
 
     return res.status(500).json({

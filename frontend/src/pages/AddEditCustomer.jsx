@@ -126,15 +126,57 @@ const AddEditCustomer = () => {
     });
   };
 
+  const validatePakistaniMobile = (number) => {
+    const cleaned = number.replace(/\s+/g, '');
+    // Matches 03xxxxxxxxx or +923xxxxxxxxx
+    const regex = /^(03\d{9}|(\+92|92)3\d{9})$/;
+    return regex.test(cleaned);
+  };
+
+  const validateCNIC = (cnic) => {
+    const cleaned = cnic.replace(/-/g, '');
+    return cleaned.length === 13 && /^\d+$/.test(cleaned);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
 
-    if (formData.cnic.length !== 15) {
-      setErrorMsg(
-        'CNIC must be a valid 13-digit Pakistani ID card format (e.g. 35401-1234567-1).'
-      );
+    // 1. Validate Main Customer Mobile
+    if (!validatePakistaniMobile(formData.mobileNumber)) {
+      setErrorMsg('Please enter a valid Pakistani mobile number (e.g., 03001234567).');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Validate Main Customer CNIC
+    if (!validateCNIC(formData.cnic)) {
+      setErrorMsg('CNIC must be a valid 13-digit Pakistani ID card format (e.g., 35401-1234567-1).');
+      setLoading(false);
+      return;
+    }
+
+    // 3. Validate Guarantor 1
+    if (formData.guarantor1?.mobileNumber && !validatePakistaniMobile(formData.guarantor1.mobileNumber)) {
+      setErrorMsg('Zamanti 1 mobile number is invalid.');
+      setLoading(false);
+      return;
+    }
+    if (formData.guarantor1?.cnic && !validateCNIC(formData.guarantor1.cnic)) {
+      setErrorMsg('Zamanti 1 CNIC is invalid.');
+      setLoading(false);
+      return;
+    }
+
+    // 4. Validate Guarantor 2
+    if (formData.guarantor2?.mobileNumber && !validatePakistaniMobile(formData.guarantor2.mobileNumber)) {
+      setErrorMsg('Zamanti 2 mobile number is invalid.');
+      setLoading(false);
+      return;
+    }
+    if (formData.guarantor2?.cnic && !validateCNIC(formData.guarantor2.cnic)) {
+      setErrorMsg('Zamanti 2 CNIC is invalid.');
       setLoading(false);
       return;
     }

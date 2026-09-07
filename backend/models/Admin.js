@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+
 const adminSchema = new mongoose.Schema(
   {
     email: {
@@ -11,19 +12,23 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
     },
 
+    shopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop',
+      default: null,
+    },
+
     password: {
       type: String,
       required: true,
     },
 
     // Deletion Mode
-    // Default OFF for safety
     deletionMode: {
       type: Boolean,
       default: false,
     },
 
-    // Optional: automatically disable deletion mode after a period
     deletionModeExpiresAt: {
       type: Date,
       default: null,

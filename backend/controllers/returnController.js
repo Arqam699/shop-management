@@ -6,15 +6,28 @@ const InstallmentPlan = require('../models/InstallmentPlan');
 const Installment = require('../models/Installment');
 const Settings = require('../models/Settings');
 
-const generateReturnID = async () => {
+
+// ============================================================
+// GENERATE RETURN ID
+// SaaS: Generate return ID separately for each shop
+// Shop A: RET-0001, RET-0002...
+// Shop B: RET-0001, RET-0002...
+// ============================================================
+const generateReturnID = async (shopId) => {
   try {
-    const lastReturn = await Return.findOne({ returnId: /^RET-\d+$/ }).sort({ returnId: -1 });
+    const lastReturn = await Return.findOne({
+      shopId,
+      returnId: /^RET-\d+$/,
+    }).sort({ returnId: -1 });
 
     if (!lastReturn || !lastReturn.returnId) {
       return 'RET-0001';
     }
 
-    const lastIdNum = parseInt(lastReturn.returnId.split('-')[1], 10);
+    const lastIdNum = parseInt(
+      lastReturn.returnId.split('-')[1],
+      10
+    );
 
     return `RET-${String(lastIdNum + 1).padStart(4, '0')}`;
   } catch (err) {
@@ -22,9 +35,15 @@ const generateReturnID = async () => {
   }
 };
 
-// Check whether global deletion is currently allowed
-const checkDeletionMode = async () => {
-  const settings = await Settings.findOne();
+
+// ============================================================
+// CHECK DELETION MODE
+// SaaS: Current shop only
+// ============================================================
+const checkDeletionMode = async (shopId) => {
+  const settings = await Settings.findOne({
+    shopId,
+  });
 
   if (!settings || !settings.allowGlobalDeletion) {
     return {
@@ -56,13 +75,29 @@ const checkDeletionMode = async () => {
   };
 };
 
-// @desc    Get all returns history
+
+// ============================================================
+// GET ALL RETURNS
+// @route GET /api/returns
+// @access Private
+// ============================================================
 const getReturns = async (req, res) => {
   try {
-    const returnsList = await Return.find()
-      .populate('customer', 'fullName mobileNumber customerId')
-      .populate('product', 'name brand model sku')
-      .populate('sale', 'saleId finalTotal')
+    const returnsList = await Return.find({
+      shopId: req.shopId,
+    })
+      .populate(
+        'customer',
+        'fullName mobileNumber customerId'
+      )
+      .populate(
+        'product',
+        'name brand model sku'
+      )
+      .populate(
+        'sale',
+        'saleId finalTotal'
+      )
       .sort({ createdAt: 1 });
 
     return res.status(200).json({
@@ -78,14 +113,48 @@ const getReturns = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// CREATE RETURN
+// @route POST /api/returns
+// @access Private
+// ============================================================
 const createReturn = async (req, res) => {
   try {
-    const { saleId, returnedQty, refundAmount, reason } = req.body;
+    const {
+      saleId,
+      returnedQty,
+      refundAmount,
+      reason,
+    } = req.body;
 
     const rQty = Number(returnedQty);
     const refund = Number(refundAmount || 0);
 
-    const sale = await Sale.findById(saleId);
+    // --------------------------------------------------------
+    // Validate quantity
+    // --------------------------------------------------------
+    if (isNaN(rQty) || rQty <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Returned quantity must be a valid positive number.',
+      });
+    }
+
+    if (isNaN(refund) || refund < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Refund amount must be a valid positive number.',
+      });
+    }
+
+    // --------------------------------------------------------
+    // SaaS: Sale must belong to current shop
+    // --------------------------------------------------------
+    const sale = await Sale.findOne({
+      _id: saleId,
+      shopId: req.shopId,
+    });
 
     if (!sale) {
       return res.status(404).json({
@@ -97,11 +166,18 @@ const createReturn = async (req, res) => {
     if (rQty > sale.quantity) {
       return res.status(400).json({
         success: false,
-        message: `Returned quantity cannot exceed sold quantity (${sale.quantity} units).`,
+        message:
+          `Returned quantity cannot exceed sold quantity (${sale.quantity} units).`,
       });
     }
 
-    const productDoc = await Product.findById(sale.product);
+    // --------------------------------------------------------
+    // SaaS: Product must belong to current shop
+    // --------------------------------------------------------
+    const productDoc = await Product.findOne({
+      _id: sale.product,
+      shopId: req.shopId,
+    });
 
     if (productDoc) {
       const origQty = productDoc.quantity;
@@ -110,22 +186,33 @@ const createReturn = async (req, res) => {
 
       await productDoc.save();
 
+      // ------------------------------------------------------
+      // SaaS: Stock movement belongs to current shop
+      // ------------------------------------------------------
       const returnMovement = new StockMovement({
+        shopId: req.shopId,
         product: productDoc._id,
         type: 'Return',
         quantity: rQty,
         previousQuantity: origQty,
         newQuantity: productDoc.quantity,
-        reason: `Product returned by customer. Return Code: RET (linked to: ${sale.saleId})`,
+        reason:
+          `Product returned by customer. Return Code: RET (linked to: ${sale.saleId})`,
         reference: sale.saleId,
       });
 
       await returnMovement.save();
     }
 
-    const returnId = await generateReturnID();
+    // --------------------------------------------------------
+    // SaaS: Return ID generated per shop
+    // --------------------------------------------------------
+    const returnId = await generateReturnID(
+      req.shopId
+    );
 
     const returnLog = new Return({
+      shopId: req.shopId,
       returnId,
       sale: sale._id,
       customer: sale.customer,
@@ -137,9 +224,17 @@ const createReturn = async (req, res) => {
 
     await returnLog.save();
 
+    // ========================================================
+    // INSTALLMENT SALE
+    // ========================================================
     if (sale.paymentType === 'Installment') {
+
+      // ------------------------------------------------------
+      // SaaS: Plan must belong to current shop
+      // ------------------------------------------------------
       const plan = await InstallmentPlan.findOne({
         sale: sale._id,
+        shopId: req.shopId,
       });
 
       if (plan) {
@@ -154,32 +249,48 @@ const createReturn = async (req, res) => {
 
         await plan.save();
 
-        const unpaidInstallments = await Installment.find({
-          installmentPlan: plan._id,
-          status: { $ne: 'Paid' },
-        }).sort({ installmentNumber: 1 });
+        // ----------------------------------------------------
+        // SaaS: Installments must belong to current shop
+        // ----------------------------------------------------
+        const unpaidInstallments =
+          await Installment.find({
+            installmentPlan: plan._id,
+            shopId: req.shopId,
+            status: { $ne: 'Paid' },
+          }).sort({
+            installmentNumber: 1,
+          });
 
         if (unpaidInstallments.length > 0) {
           const newInstallmentBase = Math.floor(
-            plan.remainingBalance / unpaidInstallments.length
+            plan.remainingBalance /
+              unpaidInstallments.length
           );
 
           const roundingDiff =
             plan.remainingBalance -
-            newInstallmentBase * unpaidInstallments.length;
+            newInstallmentBase *
+              unpaidInstallments.length;
 
-          for (let i = 0; i < unpaidInstallments.length; i++) {
+          for (
+            let i = 0;
+            i < unpaidInstallments.length;
+            i++
+          ) {
             const isLast =
-              i === unpaidInstallments.length - 1;
+              i ===
+              unpaidInstallments.length - 1;
 
-            const instDoc = unpaidInstallments[i];
+            const instDoc =
+              unpaidInstallments[i];
 
             instDoc.amount = isLast
               ? newInstallmentBase + roundingDiff
               : newInstallmentBase;
 
             instDoc.remainingAmount =
-              instDoc.amount - instDoc.paidAmount;
+              instDoc.amount -
+              instDoc.paidAmount;
 
             if (instDoc.remainingAmount <= 0) {
               instDoc.status = 'Paid';
@@ -189,18 +300,27 @@ const createReturn = async (req, res) => {
           }
         }
 
-        sale.remainingBalance = plan.remainingBalance;
+        sale.remainingBalance =
+          plan.remainingBalance;
       }
     }
 
-    sale.quantity = Math.max(0, sale.quantity - rQty);
+    // ========================================================
+    // UPDATE SALE
+    // ========================================================
+    sale.quantity = Math.max(
+      0,
+      sale.quantity - rQty
+    );
 
     sale.subtotal =
-      sale.quantity * sale.unitPrice;
+      sale.quantity *
+      sale.unitPrice;
 
     sale.finalTotal = Math.max(
       0,
-      sale.subtotal - sale.discount
+      sale.subtotal -
+      sale.discount
     );
 
     await sale.save({
@@ -212,6 +332,7 @@ const createReturn = async (req, res) => {
       message: 'Return processed successfully!',
       data: returnLog,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -220,13 +341,21 @@ const createReturn = async (req, res) => {
   }
 };
 
-// @desc    Delete return record
-// @route   DELETE /api/returns/:id
-// @access  Private
+
+// ============================================================
+// DELETE RETURN
+// @route DELETE /api/returns/:id
+// @access Private
+// ============================================================
 const deleteReturn = async (req, res) => {
   try {
-    // 🔐 Deletion Mode check
-    const deletionCheck = await checkDeletionMode();
+    // --------------------------------------------------------
+    // Deletion Mode
+    // --------------------------------------------------------
+    const deletionCheck =
+      await checkDeletionMode(
+        req.shopId
+      );
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
@@ -235,10 +364,14 @@ const deleteReturn = async (req, res) => {
       });
     }
 
-    const returnId = req.params.id;
-
+    // --------------------------------------------------------
+    // SaaS: Delete only current shop's return
+    // --------------------------------------------------------
     const deletedReturn =
-      await Return.findByIdAndDelete(returnId);
+      await Return.findOneAndDelete({
+        _id: req.params.id,
+        shopId: req.shopId,
+      });
 
     if (!deletedReturn) {
       return res.status(404).json({
@@ -249,17 +382,24 @@ const deleteReturn = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Return record removed successfully!',
+      message:
+        'Return record removed successfully!',
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
       message:
-        'Failed to remove return record: ' + error.message,
+        'Failed to remove return record: ' +
+        error.message,
     });
   }
 };
 
+
+// ============================================================
+// EXPORTS
+// ============================================================
 module.exports = {
   getReturns,
   createReturn,

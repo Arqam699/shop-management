@@ -18,6 +18,7 @@ const AddEditProduct = () => {
     model: '',
     serialNumber: '',
     imei: '',
+    chassisNumber: '',
     purchasePrice: '',
     salePrice: '',
     quantity: '',
@@ -41,6 +42,7 @@ const AddEditProduct = () => {
     'Laptops',
     'Accessories',
     'Speakers',
+    'Motorbikes',
     'Other'
   ];
 
@@ -83,9 +85,34 @@ const AddEditProduct = () => {
     setErrorMsg('');
     setLoading(true);
 
-    // Form Price Validations
-    if (Number(formData.purchasePrice) > Number(formData.salePrice)) {
+    // 1. Numeric Validations
+    const pPrice = Number(formData.purchasePrice);
+    const sPrice = Number(formData.salePrice);
+    const qty = Number(formData.quantity);
+    const mStock = Number(formData.minStockLevel);
+
+    if (isNaN(pPrice) || pPrice < 0 || isNaN(sPrice) || sPrice < 0 || isNaN(qty) || qty < 0) {
+      setErrorMsg('Prices and Quantity must be valid positive numbers.');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Pricing Logic Validation
+    if (pPrice > sPrice) {
       setErrorMsg('Purchase Price cannot be greater than Selling Price.');
+      setLoading(false);
+      return;
+    }
+
+    // 3. Category-Specific Validation
+    if (formData.category === 'Motorbikes' && !formData.chassisNumber?.trim()) {
+      setErrorMsg('Chassis Number is required for Motorbikes.');
+      setLoading(false);
+      return;
+    }
+
+    if (formData.category === 'Mobile Phones' && !formData.imei?.trim()) {
+      setErrorMsg('IMEI number is required for Mobile Phones.');
       setLoading(false);
       return;
     }
@@ -265,18 +292,33 @@ const AddEditProduct = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500">
-                  IMEI (For Phones only)
-                </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    IMEI (For Phones only)
+                  </label>
 
-                <input
-                  type="text"
-                  name="imei"
-                  value={formData.imei}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                  <input
+                    type="text"
+                    name="imei"
+                    value={formData.imei}
+                    onChange={handleChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-gray-500">
+                    Chassis Number (For Bikes)
+                  </label>
+
+                  <input
+                    type="text"
+                    name="chassisNumber"
+                    value={formData.chassisNumber}
+                    onChange={handleChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
             </div>
 

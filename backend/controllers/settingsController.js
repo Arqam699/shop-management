@@ -1,25 +1,42 @@
 const Settings = require('../models/Settings');
 const Admin = require('../models/Admin');
 
-// @desc    Get current shop settings
-// @route   GET /api/settings
-// @access  Private
+
+// ============================================================
+// GET CURRENT SHOP SETTINGS
+// @route GET /api/settings
+// @access Private
+// ============================================================
 const getSettings = async (req, res) => {
   try {
-    let settings = await Settings.findOne();
+    // ========================================================
+    // SaaS: Current shop only
+    // ========================================================
+    let settings =
+      await Settings.findOne({
+        shopId: req.shopId,
+      });
 
     if (!settings) {
-      settings = await Settings.create({});
+      settings = await Settings.create({
+        shopId: req.shopId,
+      });
     }
 
+    // ========================================================
     // Automatically disable deletion mode if expired
+    // ========================================================
     if (
       settings.allowGlobalDeletion &&
       settings.deletionModeExpiresAt &&
-      new Date() > settings.deletionModeExpiresAt
+      new Date() >
+        settings.deletionModeExpiresAt
     ) {
-      settings.allowGlobalDeletion = false;
-      settings.deletionModeExpiresAt = null;
+      settings.allowGlobalDeletion =
+        false;
+
+      settings.deletionModeExpiresAt =
+        null;
 
       await settings.save();
     }
@@ -28,178 +45,306 @@ const getSettings = async (req, res) => {
       success: true,
       data: settings,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to retrieve settings',
+      message:
+        'Failed to retrieve settings',
       error: error.message,
     });
   }
 };
 
 
-// @desc    Update normal shop settings
-// @route   PUT /api/settings
-// @access  Private
-const updateSettings = async (req, res) => {
+// ============================================================
+// UPDATE NORMAL SHOP SETTINGS
+// @route PUT /api/settings
+// @access Private
+// ============================================================
+const updateSettings = async (
+  req,
+  res
+) => {
   try {
-    let settings = await Settings.findOne();
+    // ========================================================
+    // SaaS: Current shop only
+    // ========================================================
+    let settings =
+      await Settings.findOne({
+        shopId: req.shopId,
+      });
 
     if (!settings) {
-      settings = new Settings();
+      settings = new Settings({
+        shopId: req.shopId,
+      });
     }
 
     /*
-      IMPORTANT:
-      Normal settings update is NOT allowed to change
-      deletion mode or deletion expiry.
+      IMPORTANT SECURITY RULES:
+
+      Frontend is NOT allowed to modify:
+      - shopId
+      - allowGlobalDeletion
+      - deletionModeExpiresAt
+
+      These are controlled by backend.
     */
     const {
+      shopId,
       allowGlobalDeletion,
       deletionModeExpiresAt,
       ...safeSettings
     } = req.body;
 
-    Object.assign(settings, safeSettings);
+    // Prevent unused-variable warnings while
+    // intentionally blocking protected fields.
+    void shopId;
+    void allowGlobalDeletion;
+    void deletionModeExpiresAt;
+
+    Object.assign(
+      settings,
+      safeSettings
+    );
+
+    // ========================================================
+    // ALWAYS force correct tenant ownership
+    // ========================================================
+    settings.shopId =
+      req.shopId;
 
     await settings.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Settings updated successfully',
+      message:
+        'Settings updated successfully',
       data: settings,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to update settings',
+      message:
+        'Failed to update settings',
       error: error.message,
     });
   }
 };
 
 
-// @desc    Enable deletion mode after admin password verification
-// @route   POST /api/settings/deletion-mode/enable
-// @access  Private
-const enableDeletionMode = async (req, res) => {
+// ============================================================
+// ENABLE DELETION MODE
+// @route POST /api/settings/deletion-mode/enable
+// @access Private
+// ============================================================
+const enableDeletionMode = async (
+  req,
+  res
+) => {
   try {
-    const { password } = req.body;
+    const {
+      password,
+    } = req.body;
 
     if (!password) {
       return res.status(400).json({
         success: false,
-        message: 'Admin password is required',
+        message:
+          'Admin password is required',
       });
     }
 
-    const admin = await Admin.findById(req.admin._id);
+    // ========================================================
+    // Authenticated Admin
+    // ========================================================
+    const admin =
+      await Admin.findOne({
+        _id: req.admin._id,
+        shopId: req.shopId,
+      });
 
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: 'Admin account not found',
+        message:
+          'Admin account not found',
       });
     }
 
-    // Verify existing admin password
-    const isPasswordCorrect = await admin.comparePassword(password);
+    // ========================================================
+    // Verify Admin password
+    // ========================================================
+    const isPasswordCorrect =
+      await admin.comparePassword(
+        password
+      );
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: 'Incorrect Admin Password. Access Denied.',
+        message:
+          'Incorrect Admin Password. Access Denied.',
       });
     }
 
-    let settings = await Settings.findOne();
+    // ========================================================
+    // Current shop settings only
+    // ========================================================
+    let settings =
+      await Settings.findOne({
+        shopId: req.shopId,
+      });
 
     if (!settings) {
-      settings = new Settings();
+      settings = new Settings({
+        shopId: req.shopId,
+      });
     }
 
+    // ========================================================
     // Enable deletion mode for 30 minutes
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    // ========================================================
+    const expiresAt =
+      new Date(
+        Date.now() +
+        30 * 60 * 1000
+      );
 
-    settings.allowGlobalDeletion = true;
-    settings.deletionModeExpiresAt = expiresAt;
+    settings.allowGlobalDeletion =
+      true;
+
+    settings.deletionModeExpiresAt =
+      expiresAt;
+
+    // Always enforce ownership
+    settings.shopId =
+      req.shopId;
 
     await settings.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Deletion Mode enabled for 30 minutes.',
+      message:
+        'Deletion Mode enabled for 30 minutes.',
       data: settings,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to enable deletion mode',
+      message:
+        'Failed to enable deletion mode',
       error: error.message,
     });
   }
 };
 
 
-// @desc    Disable deletion mode after admin password verification
-// @route   POST /api/settings/deletion-mode/disable
-// @access  Private
-const disableDeletionMode = async (req, res) => {
+// ============================================================
+// DISABLE DELETION MODE
+// @route POST /api/settings/deletion-mode/disable
+// @access Private
+// ============================================================
+const disableDeletionMode = async (
+  req,
+  res
+) => {
   try {
-    const { password } = req.body;
+    const {
+      password,
+    } = req.body;
 
     if (!password) {
       return res.status(400).json({
         success: false,
-        message: 'Admin password is required',
+        message:
+          'Admin password is required',
       });
     }
 
-    const admin = await Admin.findById(req.admin._id);
+    // ========================================================
+    // Authenticated Admin
+    // ========================================================
+    const admin =
+      await Admin.findOne({
+        _id: req.admin._id,
+        shopId: req.shopId,
+      });
 
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: 'Admin account not found',
+        message:
+          'Admin account not found',
       });
     }
 
-    // Verify existing admin password
-    const isPasswordCorrect = await admin.comparePassword(password);
+    // ========================================================
+    // Verify Admin password
+    // ========================================================
+    const isPasswordCorrect =
+      await admin.comparePassword(
+        password
+      );
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: 'Incorrect Admin Password. Access Denied.',
+        message:
+          'Incorrect Admin Password. Access Denied.',
       });
     }
 
-    let settings = await Settings.findOne();
+    // ========================================================
+    // Current shop settings only
+    // ========================================================
+    let settings =
+      await Settings.findOne({
+        shopId: req.shopId,
+      });
 
     if (!settings) {
-      settings = new Settings();
+      settings = new Settings({
+        shopId: req.shopId,
+      });
     }
 
-    settings.allowGlobalDeletion = false;
-    settings.deletionModeExpiresAt = null;
+    settings.allowGlobalDeletion =
+      false;
+
+    settings.deletionModeExpiresAt =
+      null;
+
+    // Always enforce ownership
+    settings.shopId =
+      req.shopId;
 
     await settings.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Deletion Mode disabled successfully.',
+      message:
+        'Deletion Mode disabled successfully.',
       data: settings,
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to disable deletion mode',
+      message:
+        'Failed to disable deletion mode',
       error: error.message,
     });
   }
 };
 
 
+// ============================================================
+// EXPORTS
+// ============================================================
 module.exports = {
   getSettings,
   updateSettings,

@@ -1,3 +1,4 @@
+
 const Product = require('../models/Product');
 const StockMovement = require('../models/StockMovement');
 const Settings = require('../models/Settings');
@@ -5,9 +6,12 @@ const Settings = require('../models/Settings');
 
 // ============================================================
 // DELETION MODE CHECK
+// SaaS: Check deletion mode for current shop only
 // ============================================================
-const checkDeletionMode = async () => {
-  const settings = await Settings.findOne();
+const checkDeletionMode = async (shopId) => {
+  const settings = await Settings.findOne({
+    shopId,
+  });
 
   // Deletion Mode OFF
   if (!settings || !settings.allowGlobalDeletion) {
@@ -42,30 +46,58 @@ const checkDeletionMode = async () => {
 
 
 // ============================================================
-// SIMPLE PRODUCT SKU/ID GENERATOR
+// GENERATE PRODUCT SKU
+//
+// IMPORTANT SaaS RULE:
+// SKU generation is PER SHOP.
+//
+// Shop A:
+// 01, 02, 03
+//
+// Shop B:
+// 01, 02, 03
+//
+// One shop cannot affect another shop's SKU sequence.
 // ============================================================
-const generateSKU = async () => {
+const generateSKU = async (shopId) => {
   try {
-    const products = await Product.find({}, 'sku');
+    const products = await Product.find(
+      {
+        shopId,
+      },
+      'sku'
+    );
 
     let maxNum = 0;
 
-    products.forEach(p => {
-      if (p.sku) {
-        const num = parseInt(
-          p.sku.replace(/[^0-9]/g, ''),
-          10
-        );
+    products.forEach((product) => {
+      if (!product.sku) {
+        return;
+      }
 
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
+      const num = parseInt(
+        product.sku.replace(/[^0-9]/g, ''),
+        10
+      );
+
+      if (
+        !isNaN(num) &&
+        num > maxNum
+      ) {
+        maxNum = num;
       }
     });
 
-    return String(maxNum + 1).padStart(2, '0');
+    return String(
+      maxNum + 1
+    ).padStart(2, '0');
 
-  } catch (err) {
+  } catch (error) {
+    console.error(
+      'SKU Generation Error:',
+      error
+    );
+
     return '01';
   }
 };
@@ -81,10 +113,16 @@ const getProducts = async (req, res) => {
     const {
       search,
       category,
-      status
+      status,
     } = req.query;
 
-    let query = {};
+    // --------------------------------------------------------
+    // IMPORTANT SaaS SECURITY:
+    // Always start query with current shopId.
+    // --------------------------------------------------------
+    const query = {
+      shopId: req.shopId,
+    };
 
     if (category) {
       query.category = category;
@@ -99,42 +137,53 @@ const getProducts = async (req, res) => {
         {
           name: {
             $regex: search,
-            $options: 'i'
-          }
+            $options: 'i',
+          },
         },
         {
           brand: {
             $regex: search,
-            $options: 'i'
-          }
+            $options: 'i',
+          },
         },
         {
           model: {
             $regex: search,
-            $options: 'i'
-          }
+            $options: 'i',
+          },
         },
         {
           sku: {
             $regex: search,
-            $options: 'i'
-          }
-        }
+            $options: 'i',
+          },
+        },
       ];
     }
 
-    const products = await Product.find(query)
-      .sort({ createdAt: 1 });
+    const products =
+      await Product.find(query)
+        .sort({
+          createdAt: 1,
+        });
 
     return res.status(200).json({
       success: true,
-      data: products
+      data: products,
     });
 
   } catch (error) {
+
+    console.error(
+      'Get Products Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: error.message
+      message:
+        'Failed to load products',
+      error: error.message,
     });
   }
 };
@@ -147,26 +196,42 @@ const getProducts = async (req, res) => {
 // ============================================================
 const getProductById = async (req, res) => {
   try {
+
+    // --------------------------------------------------------
+    // IMPORTANT SaaS SECURITY:
+    // Product must belong to current shop.
+    // --------------------------------------------------------
     const product =
-      await Product.findById(req.params.id);
+      await Product.findOne({
+        _id: req.params.id,
+        shopId: req.shopId,
+      });
 
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message:
+          'Product not found',
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: product
+      data: product,
     });
 
   } catch (error) {
+
+    console.error(
+      'Get Product By ID Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch product details',
-      error: error.message
+      message:
+        'Failed to fetch product details',
+      error: error.message,
     });
   }
 };
@@ -179,17 +244,25 @@ const getProductById = async (req, res) => {
 // ============================================================
 const createProduct = async (req, res) => {
   try {
+
     const {
       purchasePrice,
       salePrice,
       quantity,
-      minStockLevel
+      minStockLevel,
     } = req.body;
 
-    const pPrice = Number(purchasePrice);
-    const sPrice = Number(salePrice);
-    const qty = Number(quantity);
-    const mStock = Number(minStockLevel);
+    const pPrice =
+      Number(purchasePrice);
+
+    const sPrice =
+      Number(salePrice);
+
+    const qty =
+      Number(quantity);
+
+    const mStock =
+      Number(minStockLevel);
 
     if (
       isNaN(pPrice) ||
@@ -199,52 +272,107 @@ const createProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          'Pricing and Quantity values must be valid numbers'
+          'Pricing and Quantity values must be valid numbers',
       });
     }
 
-    const sku = await generateSKU();
+    // --------------------------------------------------------
+    // Generate SKU from current shop only
+    // --------------------------------------------------------
+    const sku =
+      await generateSKU(
+        req.shopId
+      );
 
+    // --------------------------------------------------------
+    // IMPORTANT SaaS SECURITY:
+    // Never trust shopId coming from frontend.
+    // Backend always assigns authenticated shopId.
+    // --------------------------------------------------------
     const productData = {
       ...req.body,
+
+      shopId:
+        req.shopId,
+
       sku,
-      purchasePrice: pPrice,
-      salePrice: sPrice,
-      quantity: qty,
+
+      purchasePrice:
+        pPrice,
+
+      salePrice:
+        sPrice,
+
+      quantity:
+        qty,
+
       minStockLevel:
-        isNaN(mStock) ? 5 : mStock
+        isNaN(mStock)
+          ? 5
+          : mStock,
     };
 
     const product =
-      new Product(productData);
+      new Product(
+        productData
+      );
 
     await product.save();
 
+
+    // ========================================================
+    // CREATE INITIAL STOCK MOVEMENT
+    // ========================================================
     const initialMovement =
       new StockMovement({
-        product: product._id,
-        type: 'Stock Added',
-        quantity: qty,
-        previousQuantity: 0,
-        newQuantity: qty,
-        reason: 'Initial setup purchase',
-        reference: sku
+        shopId:
+          req.shopId,
+
+        product:
+          product._id,
+
+        type:
+          'Stock Added',
+
+        quantity:
+          qty,
+
+        previousQuantity:
+          0,
+
+        newQuantity:
+          qty,
+
+        reason:
+          'Initial setup purchase',
+
+        reference:
+          sku,
       });
 
     await initialMovement.save();
 
+
     return res.status(201).json({
       success: true,
-      message: 'Product added successfully',
-      data: product
+      message:
+        'Product added successfully',
+      data:
+        product,
     });
 
   } catch (error) {
+
+    console.error(
+      'Create Product Error:',
+      error
+    );
+
     return res.status(400).json({
       success: false,
       message:
         error.message ||
-        'Failed to create product'
+        'Failed to create product',
     });
   }
 };
@@ -257,89 +385,171 @@ const createProduct = async (req, res) => {
 // ============================================================
 const updateProduct = async (req, res) => {
   try {
+
+    // --------------------------------------------------------
+    // IMPORTANT SaaS SECURITY:
+    // Find product by BOTH id and current shopId.
+    // --------------------------------------------------------
     const product =
-      await Product.findById(req.params.id);
+      await Product.findOne({
+        _id:
+          req.params.id,
+
+        shopId:
+          req.shopId,
+      });
 
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message:
+          'Product not found',
       });
     }
+
 
     const previousQty =
       product.quantity;
 
+
     const newQty =
       req.body.quantity !== undefined
-        ? Number(req.body.quantity)
+        ? Number(
+            req.body.quantity
+          )
         : previousQty;
 
+
+    // --------------------------------------------------------
+    // Convert numeric fields
+    // --------------------------------------------------------
     if (
-      req.body.purchasePrice !== undefined
+      req.body.purchasePrice !==
+      undefined
     ) {
       req.body.purchasePrice =
-        Number(req.body.purchasePrice);
+        Number(
+          req.body.purchasePrice
+        );
     }
 
+
     if (
-      req.body.salePrice !== undefined
+      req.body.salePrice !==
+      undefined
     ) {
       req.body.salePrice =
-        Number(req.body.salePrice);
+        Number(
+          req.body.salePrice
+        );
     }
 
+
     if (
-      req.body.quantity !== undefined
+      req.body.quantity !==
+      undefined
     ) {
       req.body.quantity =
-        Number(req.body.quantity);
+        Number(
+          req.body.quantity
+        );
     }
+
 
     if (
-      req.body.minStockLevel !== undefined
+      req.body.minStockLevel !==
+      undefined
     ) {
       req.body.minStockLevel =
-        Number(req.body.minStockLevel);
+        Number(
+          req.body.minStockLevel
+        );
     }
 
-    Object.assign(product, req.body);
+
+    // --------------------------------------------------------
+    // Update product fields
+    // --------------------------------------------------------
+    Object.assign(
+      product,
+      req.body
+    );
+
+
+    // --------------------------------------------------------
+    // IMPORTANT SaaS SECURITY:
+    // Never allow frontend to change ownership.
+    // --------------------------------------------------------
+    product.shopId =
+      req.shopId;
+
 
     await product.save();
 
-    if (previousQty !== newQty) {
+
+    // ========================================================
+    // CREATE STOCK ADJUSTMENT MOVEMENT
+    // ========================================================
+    if (
+      previousQty !==
+      newQty
+    ) {
+
       const adjustmentMovement =
         new StockMovement({
-          product: product._id,
-          type: 'Adjustment',
+          shopId:
+            req.shopId,
+
+          product:
+            product._id,
+
+          type:
+            'Adjustment',
+
           quantity:
             Math.abs(
-              newQty - previousQty
+              newQty -
+              previousQty
             ),
-          previousQuantity: previousQty,
-          newQuantity: newQty,
+
+          previousQuantity:
+            previousQty,
+
+          newQuantity:
+            newQty,
+
           reason:
             req.body.adjustmentReason ||
             'Manual stock override',
-          reference: product.sku
+
+          reference:
+            product.sku,
         });
 
       await adjustmentMovement.save();
     }
 
+
     return res.status(200).json({
       success: true,
       message:
         'Product updated successfully',
-      data: product
+      data:
+        product,
     });
 
   } catch (error) {
+
+    console.error(
+      'Update Product Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message:
         'Failed to update product',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -354,50 +564,76 @@ const deleteProduct = async (req, res) => {
   try {
 
     // --------------------------------------------------------
-    // CHECK DELETION MODE FIRST
+    // CHECK DELETION MODE
     // --------------------------------------------------------
     const deletionCheck =
-      await checkDeletionMode();
+      await checkDeletionMode(
+        req.shopId
+      );
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
         success: false,
-        message: deletionCheck.message
+        message:
+          deletionCheck.message,
       });
     }
 
+
     // --------------------------------------------------------
     // DELETE PRODUCT
+    // IMPORTANT SaaS SECURITY:
+    // Only delete product belonging to current shop.
     // --------------------------------------------------------
     const product =
-      await Product.findByIdAndDelete(
-        req.params.id
-      );
+      await Product.findOneAndDelete({
+        _id:
+          req.params.id,
+
+        shopId:
+          req.shopId,
+      });
 
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message:
+          'Product not found',
       });
     }
 
-    // Delete related stock movements
+
+    // ========================================================
+    // DELETE RELATED STOCK MOVEMENTS
+    // Only current shop's movements
+    // ========================================================
     await StockMovement.deleteMany({
-      product: req.params.id
+      product:
+        req.params.id,
+
+      shopId:
+        req.shopId,
     });
+
 
     return res.status(200).json({
       success: true,
       message:
-        'Product removed from database'
+        'Product removed from database',
     });
 
   } catch (error) {
+
+    console.error(
+      'Delete Product Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message:
         'Failed to delete product',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -410,24 +646,62 @@ const deleteProduct = async (req, res) => {
 // ============================================================
 const getStockMovements = async (req, res) => {
   try {
+
+    // --------------------------------------------------------
+    // FIRST VERIFY PRODUCT BELONGS TO CURRENT SHOP
+    // --------------------------------------------------------
+    const product =
+      await Product.findOne({
+        _id:
+          req.params.id,
+
+        shopId:
+          req.shopId,
+      });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Product not found',
+      });
+    }
+
+
+    // ========================================================
+    // GET STOCK MOVEMENTS
+    // Only current shop's movements
+    // ========================================================
     const movements =
       await StockMovement.find({
-        product: req.params.id
+        product:
+          req.params.id,
+
+        shopId:
+          req.shopId,
       }).sort({
-        createdAt: 1
+        createdAt: 1,
       });
+
 
     return res.status(200).json({
       success: true,
-      data: movements
+      data:
+        movements,
     });
 
   } catch (error) {
+
+    console.error(
+      'Get Stock Movements Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message:
         'Failed to load stock movements',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -442,5 +716,5 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
-  getStockMovements
+  getStockMovements,
 };

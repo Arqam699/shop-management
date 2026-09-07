@@ -4,9 +4,12 @@ const Settings = require('../models/Settings');
 
 // ============================================================
 // DELETION MODE CHECK
+// SaaS: Check deletion mode for current shop only
 // ============================================================
-const checkDeletionMode = async () => {
-  const settings = await Settings.findOne();
+const checkDeletionMode = async (shopId) => {
+  const settings = await Settings.findOne({
+    shopId,
+  });
 
   // Deletion Mode OFF
   if (!settings || !settings.allowGlobalDeletion) {
@@ -43,32 +46,35 @@ const checkDeletionMode = async () => {
 // ============================================================
 // GET PAYMENTS
 // @desc Get active payments history
+// @route GET /api/payments
+// @access Private
 // ============================================================
 const getPayments = async (req, res) => {
   try {
-    const payments = await Payment.find()
+    const payments = await Payment.find({
+      shopId: req.shopId,
+    })
       .populate('customer')
       .populate('sale')
       .populate({
         path: 'installmentPlan',
         populate: [
           { path: 'product' },
-          { path: 'sale' }
-        ]
+          { path: 'sale' },
+        ],
       })
       .populate('installment')
       .sort({ createdAt: 1 });
 
     return res.status(200).json({
       success: true,
-      data: payments
+      data: payments,
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: 'Failed to load payments history',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -76,10 +82,15 @@ const getPayments = async (req, res) => {
 
 // ============================================================
 // GET PAYMENT BY ID
+// @route GET /api/payments/:id
+// @access Private
 // ============================================================
 const getPaymentById = async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.id)
+    const payment = await Payment.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    })
       .populate('customer')
       .populate('sale')
       .populate('installmentPlan')
@@ -88,20 +99,19 @@ const getPaymentById = async (req, res) => {
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message: 'Payment record not found'
+        message: 'Payment record not found',
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: payment
+      data: payment,
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch payment details',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -109,49 +119,52 @@ const getPaymentById = async (req, res) => {
 
 // ============================================================
 // DELETE PAYMENT
+// @route DELETE /api/payments/:id
+// @access Private
 // ============================================================
 const deletePayment = async (req, res) => {
   try {
-
     // --------------------------------------------------------
-    // CHECK DELETION MODE FIRST
+    // CHECK DELETION MODE
+    // SaaS: Current shop only
     // --------------------------------------------------------
-    const deletionCheck = await checkDeletionMode();
+    const deletionCheck = await checkDeletionMode(
+      req.shopId
+    );
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
         success: false,
-        message: deletionCheck.message
+        message: deletionCheck.message,
       });
     }
 
     // --------------------------------------------------------
     // DELETE PAYMENT
+    // SaaS: Current shop only
     // --------------------------------------------------------
-    const paymentId = req.params.id;
-
-    const payment = await Payment.findByIdAndDelete(
-      paymentId
-    );
+    const payment = await Payment.findOneAndDelete({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message: 'Payment record not found'
+        message: 'Payment record not found',
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Payment record removed successfully!'
+      message: 'Payment record removed successfully!',
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
       message:
         'Failed to remove payment: ' +
-        error.message
+        error.message,
     });
   }
 };
@@ -163,5 +176,5 @@ const deletePayment = async (req, res) => {
 module.exports = {
   getPayments,
   getPaymentById,
-  deletePayment
+  deletePayment,
 };

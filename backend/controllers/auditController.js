@@ -3,9 +3,12 @@ const Settings = require('../models/Settings');
 
 // ============================================================
 // Helper: Check Deletion Mode
+// SaaS: Check deletion mode for current shop only
 // ============================================================
-const checkDeletionMode = async () => {
-  const settings = await Settings.findOne();
+const checkDeletionMode = async (shopId) => {
+  const settings = await Settings.findOne({
+    shopId,
+  });
 
   // Deletion Mode is OFF
   if (!settings || !settings.allowGlobalDeletion) {
@@ -43,7 +46,9 @@ const checkDeletionMode = async () => {
 // @access  Private
 const getYearlyAudits = async (req, res) => {
   try {
-    const audits = await YearlyAudit.find().sort({ year: 1 });
+    const audits = await YearlyAudit.find({
+      shopId: req.shopId,
+    }).sort({ year: 1 });
 
     return res.status(200).json({
       success: true,
@@ -75,6 +80,7 @@ const createYearlyAudit = async (req, res) => {
 
     const existingYear = await YearlyAudit.findOne({
       year: yr,
+      shopId: req.shopId,
     });
 
     if (existingYear) {
@@ -85,6 +91,7 @@ const createYearlyAudit = async (req, res) => {
     }
 
     const newAudit = new YearlyAudit({
+      shopId: req.shopId,
       year: yr,
     });
 
@@ -108,7 +115,10 @@ const createYearlyAudit = async (req, res) => {
 // @access  Private
 const getYearlyAuditById = async (req, res) => {
   try {
-    const audit = await YearlyAudit.findById(req.params.id);
+    const audit = await YearlyAudit.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!audit) {
       return res.status(404).json({
@@ -144,9 +154,10 @@ const addPurchasedProduct = async (req, res) => {
     const qty = Number(quantity);
     const price = Number(purchasePrice);
 
-    const audit = await YearlyAudit.findById(
-      req.params.id
-    );
+    const audit = await YearlyAudit.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!audit) {
       return res.status(404).json({
@@ -208,9 +219,10 @@ const addSoldProduct = async (req, res) => {
     const dur = Number(planDuration || 0);
     const down = Number(downPayment || 0);
 
-    const audit = await YearlyAudit.findById(
-      req.params.id
-    );
+    const audit = await YearlyAudit.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!audit) {
       return res.status(404).json({
@@ -279,9 +291,10 @@ const deleteAuditItem = async (req, res) => {
   try {
     // ========================================================
     // SECURITY: Check Deletion Mode
+    // SaaS: Check current shop's deletion mode
     // ========================================================
     const deletionCheck =
-      await checkDeletionMode();
+      await checkDeletionMode(req.shopId);
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
@@ -292,9 +305,10 @@ const deleteAuditItem = async (req, res) => {
 
     const { type } = req.query;
 
-    const audit = await YearlyAudit.findById(
-      req.params.id
-    );
+    const audit = await YearlyAudit.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!audit) {
       return res.status(404).json({
@@ -370,9 +384,10 @@ const deleteYearlyAudit = async (req, res) => {
   try {
     // ========================================================
     // SECURITY: Check Deletion Mode
+    // SaaS: Check current shop's deletion mode
     // ========================================================
     const deletionCheck =
-      await checkDeletionMode();
+      await checkDeletionMode(req.shopId);
 
     if (!deletionCheck.allowed) {
       return res.status(403).json({
@@ -382,9 +397,10 @@ const deleteYearlyAudit = async (req, res) => {
     }
 
     const audit =
-      await YearlyAudit.findByIdAndDelete(
-        req.params.id
-      );
+      await YearlyAudit.findOneAndDelete({
+        _id: req.params.id,
+        shopId: req.shopId,
+      });
 
     if (!audit) {
       return res.status(404).json({

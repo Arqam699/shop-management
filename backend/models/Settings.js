@@ -2,6 +2,16 @@ const mongoose = require('mongoose');
 
 const settingsSchema = new mongoose.Schema(
   {
+    // ============================================================
+    // SaaS: Settings belong to a specific shop
+    // ============================================================
+    shopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop',
+      required: true,
+      unique: true,
+    },
+
     shopName: {
       type: String,
       default: 'My Electronics Shop',
@@ -47,14 +57,18 @@ const settingsSchema = new mongoose.Schema(
       default: 'CUST',
     },
 
+    // ============================================================
     // Master deletion switch
     // Default is OFF
+    // ============================================================
     allowGlobalDeletion: {
       type: Boolean,
       default: false,
     },
 
+    // ============================================================
     // Automatic deletion-mode expiry
+    // ============================================================
     deletionModeExpiresAt: {
       type: Date,
       default: null,
