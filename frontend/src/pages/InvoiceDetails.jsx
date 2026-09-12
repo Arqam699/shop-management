@@ -1,13 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import {
   ArrowLeft,
   Printer,
-  Calculator,
-  Layers,
   RefreshCw,
   X,
   AlertCircle
@@ -35,6 +33,9 @@ const InvoiceDetails = () => {
   const [processingExchange, setProcessingExchange] = useState(false);
   const [exchangeError, setExchangeError] = useState('');
 
+  // =========================================================
+  // FETCH INVOICE + PRODUCTS
+  // =========================================================
   const fetchInvoiceAndProducts = async () => {
     try {
       setLoading(true);
@@ -45,8 +46,15 @@ const InvoiceDetails = () => {
       ]);
 
       if (saleRes.data && saleRes.data.success) {
-        setInvoice(saleRes.data.data);
-        setRefundAmount(saleRes.data.data.finalTotal || 0);
+        const sale = saleRes.data.data;
+
+        setInvoice(sale);
+
+        setRefundAmount(
+          sale.finalTotal ||
+          sale.totalAmount ||
+          0
+        );
       }
 
       if (prodRes.data && prodRes.data.success) {
@@ -70,10 +78,16 @@ const InvoiceDetails = () => {
     fetchInvoiceAndProducts();
   }, [id]);
 
+  // =========================================================
+  // PRINT
+  // =========================================================
   const handlePrint = () => {
     window.print();
   };
 
+  // =========================================================
+  // DATE FORMAT
+  // =========================================================
   const formatDateTime = (dateStr) => {
     if (!dateStr) return 'N/A';
 
@@ -89,6 +103,17 @@ const InvoiceDetails = () => {
     });
   };
 
+  const getImageSource = (image) => {
+    if (!image || typeof image !== 'string') return '';
+    if (image.startsWith('data:image/') || image.startsWith('http://') || image.startsWith('https://') || image.startsWith('blob:')) {
+      return image;
+    }
+    return `data:image/jpeg;base64,${image}`;
+  };
+
+  // =========================================================
+  // RETURN
+  // =========================================================
   const handleReturnSubmit = async (e) => {
     e.preventDefault();
 
@@ -101,20 +126,21 @@ const InvoiceDetails = () => {
       setReturnError(
         `Cannot return more than purchased quantity (${invoiceQty} units).`
       );
+
       setProcessingReturn(false);
       return;
     }
 
     try {
       const response = await api.post('/api/returns', {
-        saleId: invoice._id,
+        saleId: invoice.sale._id,
         returnedQty,
         refundAmount,
         reason: returnReason
       });
 
       if (response.data && response.data.success) {
-        alert(
+        toast.success(
           'Return processed successfully! Stock restored and dues adjusted.'
         );
 
@@ -124,13 +150,16 @@ const InvoiceDetails = () => {
     } catch (error) {
       setReturnError(
         error.response?.data?.message ||
-        'Failed to submit return request.'
+          'Failed to submit return request.'
       );
     } finally {
       setProcessingReturn(false);
     }
   };
 
+  // =========================================================
+  // PRODUCT CHANGE
+  // =========================================================
   const handleProductChange = (e) => {
     const prodId = e.target.value;
 
@@ -145,6 +174,9 @@ const InvoiceDetails = () => {
     );
   };
 
+  // =========================================================
+  // EXCHANGE
+  // =========================================================
   const handleExchangeSubmit = async (e) => {
     e.preventDefault();
 
@@ -155,13 +187,14 @@ const InvoiceDetails = () => {
       setExchangeError(
         'Please select a target product for exchange.'
       );
+
       setProcessingExchange(false);
       return;
     }
 
     try {
       const res = await api.post(
-        `/api/sales/${invoice._id}/exchange`,
+        `/api/sales/${invoice.sale._id}/exchange`,
         {
           newProductId: selectedNewProduct,
           newPrice: newProductPrice
@@ -169,7 +202,7 @@ const InvoiceDetails = () => {
       );
 
       if (res.data && res.data.success) {
-        alert(
+        toast.success(
           'Exchange processed successfully! Stocks swapped and dynamic kist adjusted!'
         );
 
@@ -179,13 +212,16 @@ const InvoiceDetails = () => {
     } catch (error) {
       setExchangeError(
         error.response?.data?.message ||
-        'Failed to complete exchange.'
+          'Failed to complete exchange.'
       );
     } finally {
       setProcessingExchange(false);
     }
   };
 
+  // =========================================================
+  // LOADING
+  // =========================================================
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-10 space-y-3">
@@ -198,6 +234,9 @@ const InvoiceDetails = () => {
     );
   }
 
+  // =========================================================
+  // NO INVOICE
+  // =========================================================
   if (!invoice) {
     return (
       <div className="text-center p-10 text-red-600">
@@ -206,61 +245,121 @@ const InvoiceDetails = () => {
     );
   }
 
-  const originalPrice = invoice.finalTotal || 0;
-  const duration = invoice.installmentDuration || 0;
+  // =========================================================
+  // INVOICE VALUES
+  // =========================================================
 
-  const markupAmount = invoice.installmentPlan
-    ? (invoice.installmentPlan.totalAmount || 0) -
-      originalPrice
-    : 0;
+  /*
+    IMPORTANT:
 
-  const totalCostWithPlan =
-    originalPrice + markupAmount;
+    InvoiceDetails sirf already-saved sale values read karta hai.
+
+    Yahan installment ka naya calculation nahi ho raha.
+
+    Iska matlab:
+    - Invoice banne ke waqt jo plan save hua
+    - Jo total amount save hua
+    - Jo installments save hui
+
+    wahi invoice par show hongi.
+  */
 
   const downPaymentPaid =
-    invoice.downPayment || 0;
+    Number(invoice.sale.downPayment || 0);
 
-  const installmentsArray =
-    invoice.installments || [];
+  /*
+    Final installment plan amount.
 
-  const totalInstallmentsCount =
-    installmentsArray.length;
+    Prefer saved installmentPlan.totalAmount.
+    Agar available na ho to finalTotal use hoga.
+  */
+  const totalAmount =
+    Number(
+      invoice.plan?.totalAmount ??
+      invoice.sale.finalTotal ??
+      invoice.sale.totalAmount ??
+      0
+    );
 
-  const paidInstallmentsCount =
-    installmentsArray.filter(
-      (inst) => inst.status === 'Paid'
-    ).length;
+  /*
+    Remaining amount:
 
-  const remainingInstallmentsCount =
-    totalInstallmentsCount -
-    paidInstallmentsCount;
+    Total Plan Amount - Down Payment
 
-  const totalPaidInstallmentsValue =
-    installmentsArray
-      .filter((inst) => inst.status === 'Paid')
-      .reduce(
-        (sum, inst) =>
-          sum + (inst.amount || 0),
-        0
-      );
-
-  const totalPaidSoFar =
-    downPaymentPaid +
-    totalPaidInstallmentsValue;
-
-  const remainingBalanceDue =
-    invoice.remainingBalance || 0;
-
-  const invoiceUnitPrice =
-    invoice.unitPrice || 0;
+    Agar Down Payment 0 hai:
+    Total Amount - 0 = Total Amount
+  */
+  const remainingAmount = Math.max(
+    totalAmount - downPaymentPaid,
+    0
+  );
 
   const invoiceQuantity =
-    invoice.quantity || 0;
+    invoice.sale.quantity || 0;
+
+  // =========================================================
+  // INSTALLMENT VALUES
+  // =========================================================
+
+  const installments =
+    Array.isArray(invoice.installments)
+      ? invoice.installments
+      : [];
+
+  /*
+    IMPORTANT:
+
+    Total plan duration kabhi change nahi hogi.
+
+    Example:
+    6 months plan + DP:
+      Total Monthly Plan = 6
+      Remaining Installments = 5
+
+    6 months plan + no DP:
+      Total Monthly Plan = 6
+      Remaining Installments = 6
+  */
+
+  const originalPlanMonths =
+    Number(
+      invoice.sale.installmentDuration ||
+      invoice.plan?.months ||
+      0
+    );
+
+  /*
+    Current remaining installments.
+    The invoice represents the original agreement, so we show the total
+    plan duration regardless of payments or down payment settings.
+  */
+  const remainingInstallments = originalPlanMonths;
+
+  /*
+    Installment amount.
+
+    Existing saved installment schedule ko priority di ja rahi hai.
+  */
+  const firstPendingInstallment =
+    installments.find(
+      (inst) =>
+        String(inst.status || '').toLowerCase() !==
+        'paid'
+    );
+
+  const installmentAmount =
+    Number(
+      firstPendingInstallment?.amount ||
+      installments[0]?.amount ||
+      0
+    );
 
   return (
     <div className="max-w-md mx-auto space-y-6">
 
-      {/* PURE NO-SCROLL PRINT & SCREEN STYLES */}
+      {/* =====================================================
+          PRINT STYLES
+      ===================================================== */}
       <style>{`
         #printable-thermal-invoice,
         #printable-thermal-invoice * {
@@ -323,8 +422,11 @@ const InvoiceDetails = () => {
         }
       `}</style>
 
-      {/* Action Header controls */}
+      {/* =====================================================
+          ACTION HEADER
+      ===================================================== */}
       <div className="flex justify-between items-center bg-white p-4 border border-gray-200 rounded-xl shadow-sm print:hidden">
+
         <Link
           to="/invoices"
           className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
@@ -333,6 +435,8 @@ const InvoiceDetails = () => {
         </Link>
 
         <div className="flex space-x-1.5">
+
+          {/* EXCHANGE */}
           {invoiceQuantity > 0 && (
             <>
               <button
@@ -346,9 +450,13 @@ const InvoiceDetails = () => {
                 title="Swap Product with another item"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Exchange</span>
+
+                <span>
+                  Exchange
+                </span>
               </button>
 
+              {/* RETURN */}
               <button
                 onClick={() => {
                   setShowReturnModal(true);
@@ -358,29 +466,42 @@ const InvoiceDetails = () => {
                 className="flex items-center space-x-1 border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[10px] px-2.5 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Return</span>
+
+                <span>
+                  Return
+                </span>
               </button>
             </>
           )}
 
+          {/* PRINT */}
           <button
             onClick={handlePrint}
             className="flex items-center space-x-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] px-3.5 py-2 rounded-lg shadow transition-colors"
           >
             <Printer className="w-4 h-4" />
-            <span>Print Slip</span>
+
+            <span>
+              Print Slip
+            </span>
           </button>
+
         </div>
       </div>
 
-      {/* RESTORED PREVIOUS COMFORTABLE DESIGN */}
+      {/* =====================================================
+          PRINTABLE INVOICE
+      ===================================================== */}
       <div
-        className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm space-y-4 text-xs font-mono text-slate-800 overflow-visible print:p-0 print:border-none print:shadow-none"
         id="printable-thermal-invoice"
+        className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm space-y-4 text-xs font-mono text-slate-800 overflow-visible print:p-0 print:border-none print:shadow-none"
       >
 
-        {/* SHOP HEADER */}
+        {/* =====================================================
+            SHOP HEADER
+        ===================================================== */}
         <div className="text-center space-y-1 pb-2 border-b border-dashed border-slate-300">
+
           <h1 className="text-lg font-black tracking-wider uppercase">
             {settings.shopName}
           </h1>
@@ -396,189 +517,203 @@ const InvoiceDetails = () => {
           <p className="text-[10px] font-bold text-indigo-600 tracking-wider">
             SALE SLIP / TAX INVOICE
           </p>
+
         </div>
 
-        {/* INVOICE METADATA */}
+        {/* =====================================================
+            INVOICE METADATA
+        ===================================================== */}
         <div className="grid grid-cols-2 text-[10px] py-1 border-b border-dashed border-slate-300 gap-1 font-bold">
+
           <div>
-            Invoice: {invoice.saleId}
+            Invoice: {invoice.sale.saleId}
           </div>
 
           <div className="text-right">
-            {formatDateTime(invoice.saleDate)}
+            {formatDateTime(invoice.sale.saleDate)}
           </div>
+
         </div>
 
-        {/* CUSTOMER & PRODUCT ROW */}
+        {/* =====================================================
+            CUSTOMER + PRODUCT
+        ===================================================== */}
         <div className="grid grid-cols-2 gap-4 py-1 border-b border-dashed border-slate-300 text-[11px]">
+
+          {/* CUSTOMER */}
           <div className="space-y-0.5 border-r border-dashed border-slate-200 pr-2">
+
             <span className="text-[9px] uppercase font-bold text-gray-400 block">
               Customer
             </span>
 
             <p className="font-extrabold text-slate-900 truncate">
-              {invoice.customer?.fullName || 'Walk-in'}
+              {invoice.sale.customer?.fullName || 'Walk-in'}
             </p>
 
             <p className="text-slate-600 font-bold text-[10px]">
-              {invoice.customer?.mobileNumber || 'N/A'}
+              {invoice.sale.customer?.mobileNumber || 'N/A'}
             </p>
+
+            {/* CUSTOMER ADDRESS */}
+            <p className="text-slate-600 font-bold text-[10px] break-words">
+              {invoice.sale.customer?.address || 'N/A'}
+            </p>
+            <div className="mt-2 flex space-x-2">
+              {invoice.sale.customer?.fingerprintImage && (
+                <img
+                  src={getImageSource(invoice.sale.customer.fingerprintImage)}
+                  alt="Fingerprint"
+                  className="w-10 h-10 border border-gray-300 object-cover grayscale contrast-125"
+                />
+              )}
+              {invoice.sale.customer?.liveImage && (
+                <img
+                  src={getImageSource(invoice.sale.customer.liveImage)}
+                  alt="Live Photo"
+                  className="w-10 h-10 border border-gray-300 object-cover"
+                />
+              )}
+            </div>
+
           </div>
 
+          {/* PRODUCT */}
           <div className="space-y-0.5 pl-1">
+
             <span className="text-[9px] uppercase font-bold text-gray-400 block">
               Product
             </span>
 
             <p className="font-extrabold text-slate-900 truncate">
-              {invoice.product?.name || 'Item'}
+              {invoice.sale.product?.name || 'Item'}
             </p>
 
             <p className="text-slate-600 font-bold text-[10px] truncate">
-              {invoice.product?.brand} {invoice.product?.model}
+              {invoice.sale.product?.brand}{' '}
+              {invoice.sale.product?.model}
             </p>
-            {invoice.product?.imei && (
+
+            {invoice.sale.product?.imei && (
               <p className="text-slate-600 font-bold text-[10px] truncate">
-                IMEI: {invoice.product.imei}
+                IMEI: {invoice.sale.product.imei}
               </p>
             )}
-            {invoice.product?.chassisNumber && (
+
+            {invoice.sale.product?.chassisNumber && (
               <p className="text-slate-600 font-bold text-[10px] truncate">
-                Chassis: {invoice.product.chassisNumber}
+                Chassis: {invoice.sale.product.chassisNumber}
               </p>
             )}
+
           </div>
+
         </div>
 
-        {/* PRICING & BREAKDOWN */}
-        <div className="space-y-1.5 py-1 text-[11px] font-bold text-slate-800">
-          <div className="flex justify-between">
-            <span>Cash Net Price:</span>
+        {/* =====================================================
+            URDU INSTALLMENT AGREEMENT
+        ===================================================== */}
+        {invoice.sale.paymentType === 'Installment' &&
+          invoice.plan && (
+            <div
+              dir="rtl"
+              className="py-2 border-b border-dashed border-slate-300 text-[10px] leading-relaxed text-right"
+            >
+
+              <p className="font-black text-slate-900 mb-1">
+                قسطوں کے معاہدے کی تصدیق
+              </p>
+
+              {/* ORIGINAL PLAN DURATION
+                  This will stay 3 / 6 / 12 */}
+              <p>
+                ٹوٹل ماہانہ پلان:{' '}
+                <span className="font-black">
+                  {originalPlanMonths} ماہ
+                </span>
+              </p>
+
+              {/* CURRENT REMAINING INSTALLMENTS */}
+              <p>
+                باقی اقساط:{' '}
+                <span className="font-black">
+                  {remainingInstallments}
+                </span>
+              </p>
+
+              <p>
+                ہر قسط:{' '}
+                <span className="font-black">
+                  {settings.currency}{' '}
+                  {installmentAmount.toLocaleString()}
+                </span>
+              </p>
+
+              <p className="mt-1">
+                ہر قسط ہر ماہ کی اس تاریخ تک دینا لازم ہے۔
+                لیٹ ادائیگی کی صورت میں جرمانہ اور دیگر
+                شرائط لاگو ہو سکتی ہیں۔ میں تصدیق کرتا ہوں
+                کہ میں نے سامان وصول کر لیا ہے اور معاہدے
+                کی تمام شرائط و ضوابط کو قبول کرتا ہوں۔
+              </p>
+
+            </div>
+          )}
+
+        {/* =====================================================
+            PAYMENT SUMMARY
+        ===================================================== */}
+        <div className="space-y-2 py-2 text-[12px] font-bold">
+
+          {/* TOTAL AMOUNT */}
+          <div className="flex justify-between border-t border-dashed border-slate-300 pt-2 text-slate-900 font-black">
+
+            <span>
+              Total Amount:
+            </span>
 
             <span>
               {settings.currency}{' '}
-              {(originalPrice || 0).toLocaleString()}
+              {totalAmount.toLocaleString()}
             </span>
+
           </div>
 
-          {invoice.paymentType === 'Installment' &&
-          invoice.installmentPlan ? (
-            <div className="space-y-1.5 border-t border-dashed border-slate-300 pt-1.5">
-              <div className="flex justify-between text-purple-900">
-                <span>Selected Plan:</span>
+          {/* DOWN PAYMENT */}
+          <div className="flex justify-between text-green-700">
 
-                <span className="text-indigo-600 font-black">
-                  {duration} Months Plan
-                </span>
-              </div>
+            <span>
+              Down Payment:
+            </span>
 
-              <div className="flex justify-between text-purple-700">
-                <span>
-                  Plan Markup Added (
-                  {invoice.installmentDuration === 3
-                    ? '15%'
-                    : invoice.installmentDuration === 6
-                    ? '25%'
-                    : '50%'}
-                  ):
-                </span>
+            <span>
+              {settings.currency}{' '}
+              {downPaymentPaid.toLocaleString()}
+            </span>
 
-                <span>
-                  +{settings.currency}{' '}
-                  {(markupAmount || 0).toLocaleString()}
-                </span>
-              </div>
+          </div>
 
-              <div className="flex justify-between text-green-700">
-                <span>Down Payment Paid:</span>
+          {/* REMAINING AMOUNT */}
+          <div className="flex justify-between text-red-600 font-black text-sm">
 
-                <span>
-                  -{settings.currency}{' '}
-                  {(downPaymentPaid || 0).toLocaleString()}
-                </span>
-              </div>
+            <span>
+              Remaining Amount:
+            </span>
 
-              <div className="flex justify-between text-slate-900 font-black border-t border-dashed border-slate-200 pt-1">
-                <span>Total Cost (Plan Included):</span>
+            <span>
+              {settings.currency}{' '}
+              {remainingAmount.toLocaleString()}
+            </span>
 
-                <span>
-                  {settings.currency}{' '}
-                  {(totalCostWithPlan || 0).toLocaleString()}
-                </span>
-              </div>
+          </div>
 
-              <div className="border-t border-dashed border-slate-200 pt-1.5 space-y-1 text-[10px] text-gray-500">
-                <div className="flex justify-between">
-                  <span>Paid Installments:</span>
-
-                  <span className="text-green-700 font-bold">
-                    {paidInstallmentsCount} /{' '}
-                    {totalInstallmentsCount} Months
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span>Remaining Installments:</span>
-
-                  <span className="text-amber-700 font-bold">
-                    {remainingInstallmentsCount} /{' '}
-                    {totalInstallmentsCount} Months
-                  </span>
-                </div>
-
-                <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 text-green-700 font-bold">
-                  <span>Total Paid (So far):</span>
-
-                  <span>
-                    {settings.currency}{' '}
-                    {(totalPaidSoFar || 0).toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="flex justify-between text-red-600 font-black text-sm pt-0.5">
-                  <span>Remaining Balance:</span>
-
-                  <span>
-                    {settings.currency}{' '}
-                    {(remainingBalanceDue || 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Installments Schedule Brief */}
-              <div className="bg-purple-50/50 p-2 rounded-lg border border-purple-100 mt-2 text-[9px] overflow-visible">
-                <p className="font-extrabold text-purple-950 uppercase mb-1">
-                  Financing Installments List:
-                </p>
-
-                {invoice.installments &&
-                  invoice.installments.map((inst) => (
-                    <div
-                      key={inst._id}
-                      className="flex justify-between py-0.5 border-b border-dashed border-purple-100/60 last:border-b-0"
-                    >
-                      <span>
-                        Month #{inst.installmentNumber} ({inst.status})
-                      </span>
-
-                      <span>
-                        {settings.currency}{' '}
-                        {(inst.amount || 0).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <div className="border-t border-dashed border-slate-200 pt-1.5 flex justify-between text-green-700 font-bold">
-              <span>Payment Status:</span>
-              <span>Fully Settled (Cash)</span>
-            </div>
-          )}
         </div>
 
-        {/* SIGNATURES */}
+        {/* =====================================================
+            SIGNATURES
+        ===================================================== */}
         <div className="pt-8 flex justify-between items-end text-center text-[9px] font-bold border-t border-dashed border-slate-300">
+
           <div className="border-t border-dashed border-gray-400 w-24 pt-1">
             Buyer Sign
           </div>
@@ -586,26 +721,43 @@ const InvoiceDetails = () => {
           <div className="border-t border-dashed border-gray-400 w-24 pt-1">
             Cashier Sign
           </div>
+
         </div>
 
+        {/* =====================================================
+            THANK YOU
+        ===================================================== */}
         <div className="text-center pt-2">
+
           <p className="text-[9px] text-gray-400 uppercase tracking-widest font-extrabold">
             *** Thank You! Visit Again ***
           </p>
+
         </div>
+
       </div>
 
-      {/* MODAL RETURN */}
+      {/* =====================================================
+          RETURN MODAL
+      ===================================================== */}
       {showReturnModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:hidden">
+
           <form
             onSubmit={handleReturnSubmit}
             className="bg-white border rounded-2xl w-full max-w-lg shadow-xl overflow-hidden"
           >
+
             <div className="p-5 border-b bg-gray-50 flex justify-between items-center">
+
               <span className="font-extrabold text-sm uppercase text-purple-800 tracking-wider flex items-center space-x-1.5">
+
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Process Item Return</span>
+
+                <span>
+                  Process Item Return
+                </span>
+
               </span>
 
               <button
@@ -617,21 +769,27 @@ const InvoiceDetails = () => {
               >
                 <X className="w-5 h-5" />
               </button>
+
             </div>
 
             <div className="p-6 space-y-4">
+
               {returnError && (
                 <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded flex items-start space-x-2 text-red-800 text-xs">
+
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
 
                   <span className="font-semibold">
                     {returnError}
                   </span>
+
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
+
                 <div>
+
                   <label className="block text-xs font-bold uppercase text-gray-500">
                     Return Qty (Max: {invoiceQuantity})
                   </label>
@@ -649,13 +807,17 @@ const InvoiceDetails = () => {
                     className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold"
                     required
                   />
+
                 </div>
 
                 <div>
+
                   <label className="block text-xs font-bold uppercase text-gray-500">
+
                     {invoice.paymentType === 'Installment'
                       ? 'Adjust Value / Refund'
                       : 'Refund Cash Amount'}
+
                   </label>
 
                   <input
@@ -669,10 +831,13 @@ const InvoiceDetails = () => {
                     className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold"
                     required
                   />
+
                 </div>
+
               </div>
 
               <div>
+
                 <label className="block text-xs font-bold uppercase text-gray-500">
                   Return Reason
                 </label>
@@ -680,17 +845,22 @@ const InvoiceDetails = () => {
                 <textarea
                   value={returnReason}
                   onChange={(e) =>
-                    setReturnReason(e.target.value)
+                    setReturnReason(
+                      e.target.value
+                    )
                   }
                   placeholder="Explain why the customer is returning this item..."
                   rows="3"
                   className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   required
                 />
+
               </div>
+
             </div>
 
             <div className="p-4 bg-gray-50 border-t flex justify-end">
+
               <button
                 type="submit"
                 disabled={processingReturn}
@@ -700,22 +870,35 @@ const InvoiceDetails = () => {
                   ? 'Processing...'
                   : 'Complete Return'}
               </button>
+
             </div>
+
           </form>
+
         </div>
       )}
 
-      {/* MODAL EXCHANGE */}
+      {/* =====================================================
+          EXCHANGE MODAL
+      ===================================================== */}
       {showExchangeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:hidden">
+
           <form
             onSubmit={handleExchangeSubmit}
             className="bg-white border rounded-2xl w-full max-w-md shadow-xl overflow-hidden"
           >
+
             <div className="p-5 border-b bg-gray-50 flex justify-between items-center">
+
               <span className="font-extrabold text-sm uppercase text-indigo-800 tracking-wider flex items-center space-x-1.5">
+
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Exchange & Swap Product</span>
+
+                <span>
+                  Exchange & Swap Product
+                </span>
+
               </span>
 
               <button
@@ -727,20 +910,25 @@ const InvoiceDetails = () => {
               >
                 <X className="w-5 h-5" />
               </button>
+
             </div>
 
             <div className="p-6 space-y-4">
+
               {exchangeError && (
                 <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded flex items-start space-x-2 text-red-800 text-xs">
+
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
 
                   <span className="font-semibold">
                     {exchangeError}
                   </span>
+
                 </div>
               )}
 
               <div>
+
                 <label className="block text-xs font-bold uppercase text-gray-500">
                   Select New Exchange Item
                 </label>
@@ -751,6 +939,7 @@ const InvoiceDetails = () => {
                   className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-bold text-gray-800"
                   required
                 >
+
                   <option value="">
                     -- Select Product --
                   </option>
@@ -760,14 +949,18 @@ const InvoiceDetails = () => {
                       key={p._id}
                       value={p._id}
                     >
-                      {p.name} ({p.brand} {p.model}) -
-                      Stock: {p.quantity}
+                      {p.name} ({p.brand}{' '}
+                      {p.model}) - Stock:{' '}
+                      {p.quantity}
                     </option>
                   ))}
+
                 </select>
+
               </div>
 
               <div>
+
                 <label className="block text-xs font-bold uppercase text-gray-500">
                   New Item Deal Price ({settings.currency})
                 </label>
@@ -784,10 +977,13 @@ const InvoiceDetails = () => {
                   required
                   min="0"
                 />
+
               </div>
+
             </div>
 
             <div className="p-4 bg-gray-50 border-t flex justify-end">
+
               <button
                 type="submit"
                 disabled={processingExchange}
@@ -797,10 +993,14 @@ const InvoiceDetails = () => {
                   ? 'Processing...'
                   : 'Complete Exchange'}
               </button>
+
             </div>
+
           </form>
+
         </div>
       )}
+
     </div>
   );
 };

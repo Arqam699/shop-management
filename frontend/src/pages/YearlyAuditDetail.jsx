@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
@@ -19,6 +21,8 @@ const YearlyAuditDetail = () => {
 
   const [audit, setAudit] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   const [purchaseForm, setPurchaseForm] = useState({
     name: '',
@@ -90,7 +94,7 @@ const YearlyAuditDetail = () => {
         });
       }
     } catch (err) {
-      alert(
+      toast.error(
         'Failed to log purchase item.'
       );
     }
@@ -123,47 +127,46 @@ const YearlyAuditDetail = () => {
         });
       }
     } catch (err) {
-      alert(
+      toast.error(
         'Failed to log selling item.'
       );
     }
   };
 
-  const handleDeleteItem = async (
+  const handleDeleteItem = (
     itemId,
     type
   ) => {
-    // Frontend protection
     if (!isDeletionUnlocked) {
-      alert(
+      toast.error(
         'Deletion Mode is disabled. Enable it from Settings first.'
       );
       return;
     }
 
-    if (
-      window.confirm(
-        'Are you sure you want to delete this historical entry?'
-      )
-    ) {
-      try {
-        const res = await api.delete(
-          `/api/audits/${id}/item/${itemId}?type=${type}`
-        );
+    setConfirmConfig({
+      title: 'Delete Entry',
+      message: 'Are you sure you want to delete this historical entry?',
+      onConfirm: async () => {
+        try {
+          const res = await api.delete(
+            `/api/audits/${id}/item/${itemId}?type=${type}`
+          );
 
-        if (
-          res.data &&
-          res.data.success
-        ) {
-          setAudit(res.data.data);
+          if (
+            res.data &&
+            res.data.success
+          ) {
+            setAudit(res.data.data);
+          }
+        } catch (err) {
+          toast.error(
+            err.response?.data?.message ||
+              'Deletion failed.'
+          );
         }
-      } catch (err) {
-        alert(
-          err.response?.data?.message ||
-            'Deletion failed.'
-        );
-      }
-    }
+      },
+    });
   };
 
   if (loading && !audit) {
@@ -852,6 +855,18 @@ const YearlyAuditDetail = () => {
         </div>
       </div>
 
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

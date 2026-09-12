@@ -5,179 +5,1481 @@ const InstallmentPlan = require('../models/InstallmentPlan');
 const Installment = require('../models/Installment');
 const Settings = require('../models/Settings');
 const Customer = require('../models/Customer');
-
+const Payment = require('../models/Payment');
 
 // ============================================================
-// HELPER: CHECK DELETION MODE
-// SaaS: Current shop only
+// HELPERS
 // ============================================================
+
+const roundMoney = (value) => {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+};
+
+const normalizeNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const normalizeDate = (value) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+};
+
+// ============================================================
+// STOCK MOVEMENT
+// IMPORTANT: Product model uses "quantity", NOT "stock"
+// ============================================================
+
+const createSaleStockMovement = async ({
+  shopId,
+  product,
+  quantity,
+  previousQuantity,
+  newQuantity,
+  reference,
+  reason
+}) => {
+  return StockMovement.create({
+    shopId,
+    product,
+    type: 'Sale',
+    quantity: Number(quantity),
+    previousQuantity: Number(previousQuantity),
+    newQuantity: Number(newQuantity),
+    reason,
+    reference: String(reference || '')
+  });
+};
+
+// ============================================================
+// DELETION ACCESS
+// ============================================================
+
 const checkDeletionMode = async (shopId) => {
   const settings = await Settings.findOne({
-    shopId,
+    shopId
   });
 
-  if (!settings || !settings.allowGlobalDeletion) {
+  if (!settings) {
+    return false;
+  }
+
+  if (!settings.allowGlobalDeletion) {
+    return false;
+  }
+
+  if (
+    settings.globalDeletionExpiry &&
+    new Date(settings.globalDeletionExpiry) < new Date()
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+// ============================================================
+// SALE ID
+// ============================================================
+
+const generateSaleID = async (shopId) => {
+  const sales = await Sale.find({
+    shopId
+  })
+    .select('saleId')
+    .lean();
+
+  let maxNumber = 0;
+
+  for (const sale of sales) {
+    if (!sale.saleId) continue;
+
+    const match = String(sale.saleId).match(/SALE-(\d+)/i);
+
+    if (match) {
+      maxNumber = Math.max(
+        maxNumber,
+        Number(match[1])
+      );
+    }
+  }
+
+  return `SALE-${String(maxNumber + 1).padStart(4, '0')}`;
+};
+
+// ============================================================
+// PLAN ID
+// ============================================================
+
+const generatePlanID = async (shopId) => {
+  const plans = await InstallmentPlan.find({
+    shopId
+  })
+    .select('planId')
+    .lean();
+
+  let maxNumber = 0;
+
+  for (const plan of plans) {
+    if (!plan.planId) continue;
+
+    const match = String(plan.planId).match(/\d+/);
+
+    if (match) {
+      maxNumber = Math.max(
+        maxNumber,
+        Number(match[0])
+      );
+    }
+  }
+
+  return String(maxNumber + 1).padStart(2, '0');
+};
+
+// ============================================================
+// DEFAULT INSTALLMENT SCHEDULE
+// ============================================================
+
+const buildDefaultSchedule = ({
+  financedAmount,
+  duration,
+  firstDueDate,
+  startingInstallmentNumber = 1
+}) => {
+  const total = roundMoney(financedAmount);
+  const count = Number(duration);
+
+  if (
+    !Number.isInteger(count) ||
+    count <= 0
+  ) {
+    return [];
+  }
+
+  const monthly = roundMoney(total / count);
+
+  const schedule = [];
+
+  let allocated = 0;
+
+  const startDate = firstDueDate
+    ? new Date(firstDueDate)
+    : new Date();
+
+  for (let i = 0; i < count; i++) {
+    const amount =
+      i === count - 1
+        ? roundMoney(total - allocated)
+        : monthly;
+
+    allocated = roundMoney(
+      allocated + amount
+    );
+
+    const dueDate = new Date(startDate);
+
+    dueDate.setMonth(
+      dueDate.getMonth() + i
+    );
+
+    schedule.push({
+      installmentNumber:
+        startingInstallmentNumber + i,
+
+      amount,
+
+      dueDate
+    });
+  }
+
+  return schedule;
+};
+
+// ============================================================
+// VALIDATE CUSTOM INSTALLMENT SCHEDULE
+// ============================================================
+
+const validateSchedule = ({
+  installments,
+  expectedCount,
+  expectedTotal,
+  startingInstallmentNumber = 1
+}) => {
+  if (!Array.isArray(installments)) {
     return {
-      allowed: false,
+      valid: false,
       message:
-        'Deletion Mode is disabled. Enable it from Settings first.',
+        'Installment schedule is required.'
     };
   }
 
   if (
-    settings.deletionModeExpiresAt &&
-    new Date() > settings.deletionModeExpiresAt
+    installments.length !==
+    Number(expectedCount)
   ) {
-    settings.allowGlobalDeletion = false;
-    settings.deletionModeExpiresAt = null;
-
-    await settings.save();
-
     return {
-      allowed: false,
+      valid: false,
       message:
-        'Deletion Mode has expired. Enable it again from Settings.',
+        `Installment schedule must contain exactly ${expectedCount} installments.`
+    };
+  }
+
+  let total = 0;
+
+  const normalized = [];
+
+  for (
+    let index = 0;
+    index < installments.length;
+    index++
+  ) {
+    const item = installments[index];
+
+    const expectedNumber =
+      Number(startingInstallmentNumber) + index;
+
+    const installmentNumber = Number(
+      item.installmentNumber ?? expectedNumber
+    );
+
+    const amount = roundMoney(
+      Number(item.amount)
+    );
+
+    const dueDate = normalizeDate(
+      item.dueDate
+    );
+
+    if (
+      !Number.isInteger(installmentNumber) ||
+      installmentNumber !== expectedNumber
+    ) {
+      return {
+        valid: false,
+        message:
+          `Invalid installment number at row ${index + 1}. Expected ${expectedNumber}.`
+      };
+    }
+
+    if (
+      !Number.isFinite(amount) ||
+      amount < 0
+    ) {
+      return {
+        valid: false,
+        message:
+          `Invalid installment amount at row ${index + 1}.`
+      };
+    }
+
+    if (!dueDate) {
+      return {
+        valid: false,
+        message:
+          `Invalid due date at row ${index + 1}.`
+      };
+    }
+
+    total = roundMoney(
+      total + amount
+    );
+
+    normalized.push({
+      installmentNumber,
+      amount,
+      dueDate
+    });
+  }
+
+  const difference = roundMoney(
+    total - Number(expectedTotal)
+  );
+
+  if (Math.abs(difference) > 0.01) {
+    return {
+      valid: false,
+      message:
+        `Installment schedule total must be Rs. ${roundMoney(expectedTotal).toLocaleString()}, but it is Rs. ${total.toLocaleString()}.`
     };
   }
 
   return {
-    allowed: true,
+    valid: true,
+    schedule: normalized
   };
 };
 
-
 // ============================================================
-// GENERATE SALE ID
-// SaaS: Sale ID generated separately for each shop
+// BUILD INSTALLMENT CALCULATION
 // ============================================================
-const generateSaleID = async (shopId) => {
-  try {
-    const lastSale = await Sale.findOne({
-      shopId,
-      saleId: /^SALE-\d+$/,
-    }).sort({ saleId: -1 });
 
-    if (!lastSale || !lastSale.saleId) {
-      return 'SALE-0001';
-    }
+const calculateInstallmentSale = ({
+  finalTotal,
+  downPayment,
+  markupPercentage,
+  selectedDuration,
+  treatDownPaymentAsFirstInstallment
+}) => {
+  const saleTotal = roundMoney(finalTotal);
+  const dPayment = roundMoney(downPayment);
+  const markup = roundMoney(markupPercentage);
+  const selected = Number(selectedDuration);
 
-    const lastIdNum = parseInt(
-      lastSale.saleId.split('-')[1],
-      10
+  const treatDownPayment = Boolean(
+    treatDownPaymentAsFirstInstallment
+  );
+
+  let financedAmount;
+  let markupAmount;
+  let remainingBeforeMarkup;
+  let actualInstallmentCount;
+
+  if (treatDownPayment) {
+    remainingBeforeMarkup = roundMoney(
+      Math.max(
+        0,
+        saleTotal - dPayment
+      )
     );
 
-    return `SALE-${String(
-      lastIdNum + 1
-    ).padStart(4, '0')}`;
+    markupAmount = roundMoney(
+      remainingBeforeMarkup *
+      (markup / 100)
+    );
 
-  } catch (err) {
-    return `SALE-${Date.now()
-      .toString()
-      .slice(-4)}`;
+    financedAmount = roundMoney(
+      remainingBeforeMarkup +
+      markupAmount
+    );
+
+    actualInstallmentCount = Math.max(
+      0,
+      selected - 1
+    );
+  } else {
+    const totalWithMarkupBeforeDP =
+      roundMoney(
+        saleTotal *
+        (1 + markup / 100)
+      );
+
+    markupAmount = roundMoney(
+      totalWithMarkupBeforeDP -
+      saleTotal
+    );
+
+    financedAmount = roundMoney(
+      Math.max(
+        0,
+        totalWithMarkupBeforeDP -
+        dPayment
+      )
+    );
+
+    actualInstallmentCount = selected;
+
+    remainingBeforeMarkup = saleTotal;
   }
+
+  return {
+    saleTotal,
+    downPayment: dPayment,
+    remainingBeforeMarkup,
+    markupPercentage: markup,
+    markupAmount,
+    totalWithMarkup: roundMoney(
+      dPayment + financedAmount
+    ),
+    financedAmount,
+    selectedDuration: selected,
+    actualInstallmentCount,
+    treatDownPaymentAsFirstInstallment:
+      treatDownPayment
+  };
 };
 
+// ============================================================
+// CREATE SALE
+// ============================================================
 
-// ============================================================
-// GENERATE INSTALLMENT PLAN ID
-// SaaS: Plan ID generated separately for each shop
-// ============================================================
-const generatePlanID = async (shopId) => {
+const createSale = async (req, res) => {
   try {
-    const plans = await InstallmentPlan.find(
-      {
-        shopId,
-      },
-      'planId'
-    );
+    const shopId = req.shopId;
 
-    let maxNum = 0;
+    const {
+      manualInvoiceNumber,
+      customer,
+      product,
+      quantity = 1,
+      unitPrice,
+      discount = 0,
+      paymentType = 'Cash',
+      downPayment = 0,
+      markupPercentage = 0,
+      installmentDuration = 0,
+      selectedInstallmentDuration = 0,
+      treatDownPaymentAsFirstInstallment = false,
+      installments = []
+    } = req.body;
 
-    plans.forEach((p) => {
-      if (p.planId) {
-        const num = parseInt(
-          p.planId.replace(/[^0-9]/g, ''),
-          10
+    // --------------------------------------------------------
+    // BASIC VALIDATION
+    // --------------------------------------------------------
+
+    if (!customer) {
+      return res.status(400).json({
+        message: 'Customer is required.'
+      });
+    }
+
+    if (!product) {
+      return res.status(400).json({
+        message: 'Product is required.'
+      });
+    }
+
+    const qty = Number(quantity);
+    const price = roundMoney(unitPrice);
+    const discountAmount = roundMoney(discount);
+    const dPayment = roundMoney(downPayment);
+    const markup = roundMoney(markupPercentage);
+
+    if (
+      !Number.isInteger(qty) ||
+      qty <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'Quantity must be a valid positive number.'
+      });
+    }
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      return res.status(400).json({
+        message:
+          'Invalid unit price.'
+      });
+    }
+
+    if (discountAmount < 0) {
+      return res.status(400).json({
+        message:
+          'Discount cannot be negative.'
+      });
+    }
+
+    if (markup < 0) {
+      return res.status(400).json({
+        message:
+          'Markup percentage cannot be negative.'
+      });
+    }
+
+    if (
+      paymentType !== 'Cash' &&
+      paymentType !== 'Installment'
+    ) {
+      return res.status(400).json({
+        message:
+          'Invalid payment type.'
+      });
+    }
+
+    // ========================================================
+    // STRICT CASH / INSTALLMENT SEPARATION
+    // ========================================================
+
+    if (paymentType === 'Cash') {
+      const hasInstallmentData =
+        Number(dPayment) !== 0 ||
+        Number(markup) !== 0 ||
+        Number(installmentDuration) !== 0 ||
+        Number(selectedInstallmentDuration) !== 0 ||
+        Boolean(
+          treatDownPaymentAsFirstInstallment
+        ) ||
+        (
+          Array.isArray(installments) &&
+          installments.length > 0
         );
 
-        if (
-          !isNaN(num) &&
-          num > maxNum
-        ) {
-          maxNum = num;
+      if (hasInstallmentData) {
+        return res.status(400).json({
+          message:
+            'Cash sale cannot contain installment information.'
+        });
+      }
+    }
+
+    if (paymentType === 'Installment') {
+      const selectedDurationCheck =
+        Number(
+          selectedInstallmentDuration ||
+          installmentDuration
+        );
+
+      if (
+        !Number.isInteger(
+          selectedDurationCheck
+        ) ||
+        selectedDurationCheck <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            'Installment sale requires a valid installment duration.'
+        });
+      }
+    }
+
+    // --------------------------------------------------------
+    // CUSTOMER
+    // --------------------------------------------------------
+
+    const customerDoc =
+      await Customer.findOne({
+        _id: customer,
+        shopId
+      });
+
+    if (!customerDoc) {
+      return res.status(404).json({
+        message:
+          'Customer not found.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // PRODUCT
+    // --------------------------------------------------------
+
+    const productDoc =
+      await Product.findOne({
+        _id: product,
+        shopId
+      });
+
+    if (!productDoc) {
+      return res.status(404).json({
+        message:
+          'Product not found.'
+      });
+    }
+
+    const currentStock =
+      Number(productDoc.quantity || 0);
+
+    if (currentStock < qty) {
+      return res.status(400).json({
+        message:
+          `Insufficient stock. Available quantity: ${currentStock}`
+      });
+    }
+
+    // --------------------------------------------------------
+    // SALE TOTAL
+    // --------------------------------------------------------
+
+    const subtotal =
+      roundMoney(
+        qty * price
+      );
+
+    const finalTotal =
+      roundMoney(
+        Math.max(
+          0,
+          subtotal - discountAmount
+        )
+      );
+
+    // ========================================================
+    // CASH SALE
+    // ========================================================
+
+    if (paymentType === 'Cash') {
+      const saleId =
+        await generateSaleID(shopId);
+
+      let invoiceNumber =
+        manualInvoiceNumber
+          ? String(manualInvoiceNumber).trim()
+          : saleId;
+
+      if (!invoiceNumber) {
+        invoiceNumber = saleId;
+      }
+
+      const duplicate =
+        await Sale.findOne({
+          shopId,
+          saleId: invoiceNumber
+        });
+
+      if (duplicate) {
+        return res.status(400).json({
+          message:
+            'Invoice number already exists.'
+        });
+      }
+
+      const previousQuantity =
+        Number(productDoc.quantity || 0);
+
+      const newQuantity =
+        previousQuantity - qty;
+
+      productDoc.quantity =
+        newQuantity;
+
+      await productDoc.save();
+
+      const sale =
+        await Sale.create({
+          shopId,
+
+          saleId:
+            invoiceNumber,
+
+          customer,
+
+          product,
+
+          quantity:
+            qty,
+
+          unitPrice:
+            price,
+
+          discount:
+            discountAmount,
+
+          subtotal,
+
+          finalTotal,
+
+          markupPercentage:
+            0,
+
+          markupAmount:
+            0,
+
+          totalWithMarkup:
+            finalTotal,
+
+          paymentType:
+            'Cash',
+
+          downPayment:
+            finalTotal,
+
+          remainingBalance:
+            0,
+
+          installmentDuration:
+            0,
+
+          selectedInstallmentDuration:
+            0,
+
+          treatDownPaymentAsFirstInstallment:
+            false,
+
+          installmentScheduleSnapshot:
+            [],
+
+          saleDate:
+            new Date()
+        });
+
+      await createSaleStockMovement({
+        shopId,
+
+        product:
+          productDoc._id,
+
+        quantity:
+          qty,
+
+        previousQuantity,
+
+        newQuantity,
+
+        reference:
+          invoiceNumber,
+
+        reason:
+          `Sale ${invoiceNumber}`
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          'Cash sale created successfully.',
+
+        data: {
+          sale
+        }
+      });
+    }
+
+    // ========================================================
+    // INSTALLMENT SALE
+    // ========================================================
+
+    const selectedDuration =
+      Number(
+        selectedInstallmentDuration ||
+        installmentDuration
+      );
+
+    if (
+      !Number.isInteger(
+        selectedDuration
+      ) ||
+      selectedDuration <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'Installment duration must be greater than zero.'
+      });
+    }
+
+    const treatDownPayment =
+      Boolean(
+        treatDownPaymentAsFirstInstallment
+      );
+
+    // --------------------------------------------------------
+    // DOWN PAYMENT VALIDATION
+    // --------------------------------------------------------
+
+    if (dPayment < 0) {
+      return res.status(400).json({
+        message:
+          'Down payment cannot be negative.'
+      });
+    }
+
+    if (dPayment > finalTotal) {
+      return res.status(400).json({
+        message:
+          'Down payment cannot be greater than sale total.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // CALCULATION
+    // --------------------------------------------------------
+
+    const calculation =
+      calculateInstallmentSale({
+        finalTotal,
+
+        downPayment:
+          dPayment,
+
+        markupPercentage:
+          markup,
+
+        selectedDuration,
+
+        treatDownPaymentAsFirstInstallment:
+          treatDownPayment
+      });
+
+    const {
+      remainingBeforeMarkup,
+      markupAmount,
+      totalWithMarkup,
+      financedAmount,
+      actualInstallmentCount
+    } = calculation;
+
+    if (
+      actualInstallmentCount === 0 &&
+      financedAmount > 0
+    ) {
+      return res.status(400).json({
+        message:
+          'There must be at least one future installment for the remaining financed amount.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // SCHEDULE
+    // --------------------------------------------------------
+
+    let futureSchedule = [];
+
+    if (financedAmount > 0) {
+      if (
+        Array.isArray(installments) &&
+        installments.length > 0
+      ) {
+        const startingNumber =
+          treatDownPayment
+            ? 2
+            : 1;
+
+        const validation =
+          validateSchedule({
+            installments,
+
+            expectedCount:
+              actualInstallmentCount,
+
+            expectedTotal:
+              financedAmount,
+
+            startingInstallmentNumber:
+              startingNumber
+          });
+
+        if (!validation.valid) {
+          return res.status(400).json({
+            message:
+              validation.message
+          });
+        }
+
+        futureSchedule =
+          validation.schedule;
+      } else {
+        const firstDueDate =
+          new Date();
+
+        firstDueDate.setMonth(
+          firstDueDate.getMonth() + 1
+        );
+
+        futureSchedule =
+          buildDefaultSchedule({
+            financedAmount,
+
+            duration:
+              actualInstallmentCount,
+
+            firstDueDate,
+
+            startingInstallmentNumber:
+              treatDownPayment
+                ? 2
+                : 1
+          });
+      }
+    }
+
+    // --------------------------------------------------------
+    // COMPLETE INVOICE SCHEDULE
+    // --------------------------------------------------------
+
+    const invoiceSchedule = [];
+
+    if (
+      treatDownPayment &&
+      dPayment > 0
+    ) {
+      invoiceSchedule.push({
+        installmentNumber: 1,
+
+        amount:
+          dPayment,
+
+        dueDate:
+          new Date()
+      });
+    }
+
+    invoiceSchedule.push(
+      ...futureSchedule
+    );
+
+    // --------------------------------------------------------
+    // FINAL INVOICE NUMBER
+    // --------------------------------------------------------
+
+    const saleId =
+      await generateSaleID(shopId);
+
+    let invoiceNumber =
+      manualInvoiceNumber
+        ? String(manualInvoiceNumber).trim()
+        : saleId;
+
+    if (!invoiceNumber) {
+      invoiceNumber = saleId;
+    }
+
+    const duplicate =
+      await Sale.findOne({
+        shopId,
+        saleId: invoiceNumber
+      });
+
+    if (duplicate) {
+      return res.status(400).json({
+        message:
+          'Invoice number already exists.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // STOCK
+    // --------------------------------------------------------
+
+    const previousQuantity =
+      Number(productDoc.quantity || 0);
+
+    const newQuantity =
+      previousQuantity - qty;
+
+    productDoc.quantity =
+      newQuantity;
+
+    await productDoc.save();
+
+    // --------------------------------------------------------
+    // SALE
+    // --------------------------------------------------------
+
+    const sale =
+      await Sale.create({
+        shopId,
+
+        saleId:
+          invoiceNumber,
+
+        customer,
+
+        product,
+
+        quantity:
+          qty,
+
+        unitPrice:
+          price,
+
+        discount:
+          discountAmount,
+
+        subtotal,
+
+        finalTotal,
+
+        markupPercentage:
+          markup,
+
+        markupAmount,
+
+        totalWithMarkup,
+
+        paymentType:
+          'Installment',
+
+        downPayment:
+          dPayment,
+
+        remainingBalance:
+          financedAmount,
+
+        installmentDuration:
+          actualInstallmentCount,
+
+        selectedInstallmentDuration:
+          selectedDuration,
+
+        treatDownPaymentAsFirstInstallment:
+          treatDownPayment,
+
+        installmentScheduleSnapshot:
+          invoiceSchedule.map(
+            (item) => ({
+              installmentNumber:
+                item.installmentNumber,
+
+              amount:
+                item.amount,
+
+              dueDate:
+                item.dueDate
+            })
+          ),
+
+        saleDate:
+          new Date()
+      });
+
+    // --------------------------------------------------------
+    // STOCK MOVEMENT
+    // --------------------------------------------------------
+
+    await createSaleStockMovement({
+      shopId,
+
+      product:
+        productDoc._id,
+
+      quantity:
+        qty,
+
+      previousQuantity,
+
+      newQuantity,
+
+      reference:
+        invoiceNumber,
+
+      reason:
+        `Installment Sale ${invoiceNumber}`
+    });
+
+    // --------------------------------------------------------
+    // PLAN
+    // --------------------------------------------------------
+
+    const planId =
+      await generatePlanID(shopId);
+
+    const firstDueDate =
+      futureSchedule.length > 0
+        ? futureSchedule[0].dueDate
+        : new Date();
+
+    const plan =
+      await InstallmentPlan.create({
+        shopId,
+
+        planId,
+
+        sale:
+          sale._id,
+
+        customer,
+
+        product,
+
+        totalAmount:
+          totalWithMarkup,
+
+        downPayment:
+          dPayment,
+
+        remainingBalance:
+          financedAmount,
+
+        duration:
+          actualInstallmentCount,
+
+        selectedDuration:
+          selectedDuration,
+
+        treatDownPaymentAsFirstInstallment:
+          treatDownPayment,
+
+        status:
+          financedAmount > 0
+            ? 'Active'
+            : 'Completed',
+
+        firstDueDate,
+
+        invoiceSnapshot: {
+          selectedDuration:
+            selectedDuration,
+
+          duration:
+            actualInstallmentCount,
+
+          downPayment:
+            dPayment,
+
+          treatDownPaymentAsFirstInstallment:
+            treatDownPayment,
+
+          financedAmount,
+
+          installments:
+            invoiceSchedule.map(
+              (item) => ({
+                installmentNumber:
+                  item.installmentNumber,
+
+                amount:
+                  item.amount,
+
+                dueDate:
+                  item.dueDate
+              })
+            ),
+
+          createdAt:
+            new Date()
+        }
+      });
+
+    // --------------------------------------------------------
+    // CREATE INSTALLMENT RECORDS
+    // --------------------------------------------------------
+
+    const installmentDocuments = [];
+
+    if (
+      treatDownPayment &&
+      dPayment > 0
+    ) {
+      installmentDocuments.push({
+        shopId,
+
+        installmentPlan:
+          plan._id,
+
+        installmentNumber:
+          1,
+
+        amount:
+          dPayment,
+
+        originalAmount:
+          dPayment,
+
+        paidAmount:
+          dPayment,
+
+        remainingAmount:
+          0,
+
+        dueDate:
+          new Date(),
+
+        status:
+          'Paid',
+
+        paidDate:
+          new Date(),
+
+        isSettledByPlanPayment:
+          false
+      });
+    }
+
+    if (futureSchedule.length > 0) {
+      installmentDocuments.push(
+        ...futureSchedule.map(
+          (item) => ({
+            shopId,
+
+            installmentPlan:
+              plan._id,
+
+            installmentNumber:
+              item.installmentNumber,
+
+            amount:
+              item.amount,
+
+            originalAmount:
+              item.amount,
+
+            paidAmount:
+              0,
+
+            remainingAmount:
+              item.amount,
+
+            dueDate:
+              item.dueDate,
+
+            status:
+              'Pending'
+          })
+        )
+      );
+    }
+
+    if (
+      installmentDocuments.length > 0
+    ) {
+      await Installment.insertMany(
+        installmentDocuments
+      );
+    }
+
+    // --------------------------------------------------------
+    // CREATE PAYMENT RECORD FOR DOWN PAYMENT
+    // --------------------------------------------------------
+
+    if (
+      treatDownPayment &&
+      dPayment > 0
+    ) {
+      const firstInst =
+        await Installment.findOne({
+          shopId,
+
+          installmentPlan:
+            plan._id,
+
+          installmentNumber:
+            1
+        });
+
+      if (firstInst) {
+        await Payment.create({
+          shopId,
+
+          paymentId:
+            `DP-${invoiceNumber}`,
+
+          customer,
+
+          sale:
+            sale._id,
+
+          installmentPlan:
+            plan._id,
+
+          installment:
+            firstInst._id,
+
+          amount:
+            dPayment,
+
+          paymentMethod:
+            'Cash',
+
+          paymentDate:
+            new Date(),
+
+          allocations: [
+            {
+              installment:
+                firstInst._id,
+
+              installmentNumber:
+                1,
+
+              amount:
+                dPayment,
+
+              previousRemaining:
+                dPayment,
+
+              remainingAfterPayment:
+                0
+            }
+          ],
+
+          notes:
+            `Down Payment for ${invoiceNumber} (Treated as 1st Installment)`
+        });
+      }
+    }
+
+    // --------------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------------
+
+    const createdSale =
+      await Sale.findOne({
+        _id:
+          sale._id,
+
+        shopId
+      })
+        .populate('customer')
+        .populate('product');
+
+    const createdPlan =
+      await InstallmentPlan.findOne({
+        _id:
+          plan._id,
+
+        shopId
+      });
+
+    const createdInstallments =
+      await Installment.find({
+        shopId,
+
+        installmentPlan:
+          plan._id
+      })
+        .sort({
+          installmentNumber: 1
+        });
+
+    return res.status(201).json({
+      success: true,
+
+      message:
+        'Installment sale created successfully.',
+
+      data: {
+        sale:
+          createdSale,
+
+        plan:
+          createdPlan,
+
+        installments:
+          createdInstallments,
+
+        calculation: {
+          saleTotal:
+            finalTotal,
+
+          downPayment:
+            dPayment,
+
+          remainingBeforeMarkup,
+
+          markupPercentage:
+            markup,
+
+          markupAmount,
+
+          totalWithMarkup,
+
+          financedAmount,
+
+          selectedDuration,
+
+          actualInstallmentCount,
+
+          treatDownPaymentAsFirstInstallment:
+            treatDownPayment
         }
       }
     });
 
-    return String(
-      maxNum + 1
-    ).padStart(2, '0');
+  } catch (error) {
+    console.error(
+      'CREATE SALE ERROR:',
+      error
+    );
 
-  } catch (err) {
-    return '01';
+    return res.status(500).json({
+      message:
+        'Failed to create sale.',
+
+      error:
+        error.message
+    });
   }
 };
 
+// ============================================================
+// GET ALL SALES
+// ============================================================
 
-// ============================================================
-// GET SALES
-// @route GET /api/sales
-// @access Private
-// ============================================================
 const getSales = async (req, res) => {
   try {
-    const sales = await Sale.find({
-      shopId: req.shopId,
-    })
-      .populate(
-        'customer',
-        'fullName mobileNumber customerId'
+    const shopId =
+      req.shopId;
+
+    const requestedType =
+      String(
+        req.query.type || ''
       )
-      .populate(
-        'product',
-        'name brand model sku'
-      )
-      .sort({ createdAt: 1 });
+        .trim()
+        .toLowerCase();
+
+    const filter = {
+      shopId
+    };
+
+    // --------------------------------------------------------
+    // STRICT TYPE FILTER
+    // --------------------------------------------------------
+
+    if (
+      requestedType === 'cash'
+    ) {
+      filter.paymentType =
+        'Cash';
+    }
+
+    if (
+      requestedType === 'installment'
+    ) {
+      filter.paymentType =
+        'Installment';
+    }
+
+    const sales =
+      await Sale.find(filter)
+        .populate('customer')
+        .populate('product')
+        .sort({
+          createdAt: -1
+        });
 
     return res.status(200).json({
       success: true,
-      data: sales,
+
+      data:
+        sales
     });
 
   } catch (error) {
+    console.error(
+      'GET SALES ERROR:',
+      error
+    );
+
     return res.status(500).json({
-      success: false,
-      message: error.message,
+      message:
+        'Failed to fetch sales',
+
+      error:
+        error.message
     });
   }
 };
 
+// ============================================================
+// GET SINGLE SALE
+// ============================================================
 
-// ============================================================
-// GET SALE BY ID
-// @route GET /api/sales/:id
-// @access Private
-// ============================================================
 const getSaleById = async (req, res) => {
   try {
-    const sale = await Sale.findOne({
-      _id: req.params.id,
-      shopId: req.shopId,
-    })
-      .populate('customer')
-      .populate('product');
+    const {
+      id
+    } = req.params;
+
+    const shopId =
+      req.shopId;
+
+    const sale =
+      await Sale.findOne({
+        _id: id,
+        shopId
+      })
+        .populate('customer')
+        .populate('product');
 
     if (!sale) {
       return res.status(404).json({
-        success: false,
-        message: 'Sale record not found',
+        message:
+          'Sale not found'
       });
     }
 
     const plan =
       await InstallmentPlan.findOne({
-        sale: sale._id,
-        shopId: req.shopId,
+        sale:
+          sale._id,
+
+        shopId
       });
 
     let installments = [];
@@ -185,1121 +1487,2065 @@ const getSaleById = async (req, res) => {
     if (plan) {
       installments =
         await Installment.find({
-          installmentPlan: plan._id,
-          shopId: req.shopId,
-        }).sort({
-          installmentNumber: 1,
-        });
+          shopId,
+
+          installmentPlan:
+            plan._id
+        })
+          .sort({
+            installmentNumber: 1
+          });
     }
 
     return res.status(200).json({
       success: true,
+
       data: {
-        ...sale.toObject(),
-        installmentPlan: plan,
+        sale,
+
+        plan,
+
         installments,
-      },
+
+        invoiceSchedule:
+          sale.installmentScheduleSnapshot ||
+          []
+      }
     });
 
   } catch (error) {
+    console.error(
+      'GET SALE ERROR:',
+      error
+    );
+
     return res.status(500).json({
-      success: false,
-      message: 'Failed to load details',
-      error: error.message,
+      message:
+        'Failed to fetch sale',
+
+      error:
+        error.message
     });
   }
 };
 
+// ============================================================
+// UPDATE SALE
+// ============================================================
 
-// ============================================================
-// CREATE SALE
-// @route POST /api/sales
-// @access Private
-// ============================================================
-const createSale = async (req, res) => {
+const updateSale = async (req, res) => {
   try {
+    const shopId =
+      req.shopId;
+
     const {
-      customer,
-      product,
-      quantity,
-      unitPrice,
-      discount,
-      paymentType,
-      downPayment,
-      installmentDuration,
-      manualInvoiceNumber,
-    } = req.body;
+      id
+    } = req.params;
 
-    const qty = Number(quantity);
-    const uPrice = Number(unitPrice);
-    const disc = Number(discount || 0);
-    const dPayment = Number(
-      downPayment || 0
-    );
-    const duration = Number(
-      installmentDuration || 0
-    );
+    const sale =
+      await Sale.findOne({
+        _id: id,
+        shopId
+      });
 
-    const calculatedSubtotal =
-      qty * uPrice;
-
-    const calculatedFinalTotal =
-      calculatedSubtotal - disc;
-
-    const initialRemaining =
-      calculatedFinalTotal - dPayment;
-
-    if (calculatedFinalTotal < 0) {
-      return res.status(400).json({
-        success: false,
+    if (!sale) {
+      return res.status(404).json({
         message:
-          'Discount cannot be greater than subtotal.',
+          'Sale not found'
       });
     }
 
-    // ========================================================
-    // CUSTOMER MUST BELONG TO CURRENT SHOP
-    // ========================================================
+    // --------------------------------------------------------
+    // PAYMENT HISTORY PROTECTION
+    // --------------------------------------------------------
+
+    const existingPayment =
+      await Payment.exists({
+        shopId,
+
+        sale:
+          sale._id
+      });
+
+    if (existingPayment) {
+      return res.status(400).json({
+        message:
+          'This sale already has payments. It cannot be edited because its invoice and installment history are immutable.'
+      });
+    }
+
+    const {
+      customer =
+        sale.customer,
+
+      product =
+        sale.product,
+
+      quantity =
+        sale.quantity,
+
+      unitPrice =
+        sale.unitPrice,
+
+      discount =
+        sale.discount,
+
+      paymentType =
+        sale.paymentType,
+
+      downPayment =
+        sale.downPayment,
+
+      markupPercentage =
+        sale.markupPercentage || 0,
+
+      installmentDuration =
+        sale.selectedInstallmentDuration ||
+        sale.installmentDuration,
+
+      selectedInstallmentDuration =
+        sale.selectedInstallmentDuration ||
+        sale.installmentDuration,
+
+      treatDownPaymentAsFirstInstallment =
+        sale.treatDownPaymentAsFirstInstallment,
+
+      installments = []
+    } = req.body;
+
+    // --------------------------------------------------------
+    // STRICT PAYMENT TYPE
+    // --------------------------------------------------------
+
+    if (
+      paymentType !== 'Cash' &&
+      paymentType !== 'Installment'
+    ) {
+      return res.status(400).json({
+        message:
+          'Invalid payment type.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // SALE TYPE CANNOT CHANGE
+    // --------------------------------------------------------
+
+    if (
+      paymentType !==
+      sale.paymentType
+    ) {
+      return res.status(400).json({
+        message:
+          'Sale type cannot be changed after the sale has been created.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // CUSTOMER
+    // --------------------------------------------------------
+
     const customerDoc =
       await Customer.findOne({
-        _id: customer,
-        shopId: req.shopId,
+        _id:
+          customer,
+
+        shopId
       });
 
     if (!customerDoc) {
       return res.status(404).json({
-        success: false,
-        message: 'Customer not found.',
-      });
-    }
-
-    // ========================================================
-    // SALE ID
-    // SaaS: Generate per shop
-    // ========================================================
-    const saleId =
-      manualInvoiceNumber
-        ? manualInvoiceNumber
-            .trim()
-            .toUpperCase()
-        : await generateSaleID(
-            req.shopId
-          );
-
-    // ========================================================
-    // IMPORTANT:
-    // Duplicate invoice check must also be shop-specific
-    // ========================================================
-    const existingSale =
-      await Sale.findOne({
-        saleId,
-        shopId: req.shopId,
-      });
-
-    if (existingSale) {
-      return res.status(400).json({
-        success: false,
         message:
-          `Invoice / Bill Number "${saleId}" already exists. Please use a unique bill number.`,
+          'Customer not found'
       });
     }
 
-    // ========================================================
-    // PRODUCT MUST BELONG TO CURRENT SHOP
-    // ========================================================
-    const prodDoc =
+    // --------------------------------------------------------
+    // PRODUCT
+    // --------------------------------------------------------
+
+    const newProduct =
       await Product.findOne({
-        _id: product,
-        shopId: req.shopId,
+        _id:
+          product,
+
+        shopId
       });
 
-    if (!prodDoc) {
+    if (!newProduct) {
       return res.status(404).json({
-        success: false,
-        message: 'Product not found.',
-      });
-    }
-
-    if (prodDoc.quantity < qty) {
-      return res.status(400).json({
-        success: false,
         message:
-          'Insufficient stock available.',
+          'Product not found'
       });
     }
 
-    const previousQty =
-      prodDoc.quantity;
+    // --------------------------------------------------------
+    // NUMBERS
+    // --------------------------------------------------------
 
-    prodDoc.quantity -= qty;
+    const qty =
+      Number(quantity);
 
-    await prodDoc.save();
+    const price =
+      roundMoney(unitPrice);
 
-    // ========================================================
-    // INSTALLMENT MARKUP
-    // ========================================================
-    let markupPercent = 0;
+    const discountAmount =
+      roundMoney(discount);
+
+    const dPayment =
+      roundMoney(downPayment);
+
+    const markup =
+      roundMoney(markupPercentage);
 
     if (
-      paymentType === 'Installment'
+      !Number.isInteger(qty) ||
+      qty <= 0
     ) {
-      if (duration === 3) {
-        markupPercent = 0.15;
-      } else if (duration === 6) {
-        markupPercent = 0.25;
-      } else if (duration === 12) {
-        markupPercent = 0.50;
-      } else {
-        if (duration <= 3) {
-          markupPercent = 0.15;
-        } else if (duration <= 6) {
-          markupPercent = 0.25;
-        } else {
-          markupPercent = 0.50;
-        }
-      }
+      return res.status(400).json({
+        message:
+          'Quantity must be a valid positive number.'
+      });
     }
 
-    const markupAmount =
-      Math.round(
-        initialRemaining *
-          markupPercent
-      );
-
-    const totalFinancedAmount =
-      initialRemaining +
-      markupAmount;
-
-    // ========================================================
-    // CREATE SALE
-    // ========================================================
-    const sale = new Sale({
-      shopId: req.shopId,
-      saleId,
-      customer: customerDoc._id,
-      product: prodDoc._id,
-      quantity: qty,
-      unitPrice: uPrice,
-      discount: disc,
-      subtotal: calculatedSubtotal,
-      finalTotal:
-        calculatedFinalTotal,
-      paymentType,
-      downPayment:
-        paymentType === 'Installment'
-          ? dPayment
-          : 0,
-      remainingBalance:
-        paymentType === 'Installment'
-          ? totalFinancedAmount
-          : 0,
-      installmentDuration:
-        paymentType === 'Installment'
-          ? duration
-          : 0,
-    });
-
-    await sale.save();
-
-    // ========================================================
-    // STOCK MOVEMENT
-    // ========================================================
-    const stockMovement =
-      new StockMovement({
-        shopId: req.shopId,
-        product: prodDoc._id,
-        type: 'Sale',
-        quantity: qty,
-        previousQuantity:
-          previousQty,
-        newQuantity:
-          prodDoc.quantity,
-        reason:
-          `Sold to customer (${saleId})`,
-        reference: saleId,
-      });
-
-    await stockMovement.save();
-
-    // ========================================================
-    // CREATE INSTALLMENT PLAN
-    // ========================================================
     if (
-      paymentType === 'Installment'
+      !Number.isFinite(price) ||
+      price < 0
     ) {
-      const planId =
-        await generatePlanID(
-          req.shopId
-        );
+      return res.status(400).json({
+        message:
+          'Invalid unit price.'
+      });
+    }
 
-      const firstDueDate =
-        new Date();
+    if (discountAmount < 0) {
+      return res.status(400).json({
+        message:
+          'Discount cannot be negative.'
+      });
+    }
 
-      firstDueDate.setMonth(
-        firstDueDate.getMonth() + 1
+    if (markup < 0) {
+      return res.status(400).json({
+        message:
+          'Markup cannot be negative.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // CORRECT TOTAL CALCULATION
+    // IMPORTANT: This was missing in your old updateSale()
+    // --------------------------------------------------------
+
+    const subtotal =
+      roundMoney(
+        qty * price
       );
 
-      const plan =
-        new InstallmentPlan({
-          shopId: req.shopId,
-          planId,
-          sale: sale._id,
-          customer:
-            customerDoc._id,
-          product:
-            prodDoc._id,
-          totalAmount:
-            calculatedFinalTotal +
-            markupAmount,
-          downPayment: dPayment,
-          remainingBalance:
-            totalFinancedAmount,
-          duration,
-          firstDueDate,
-        });
+    const finalTotal =
+      roundMoney(
+        Math.max(
+          0,
+          subtotal - discountAmount
+        )
+      );
 
-      await plan.save();
+    // ========================================================
+    // CASH UPDATE
+    // ========================================================
 
-      const baseAmount =
-        Math.floor(
-          totalFinancedAmount /
-            duration
-        );
+    if (
+      paymentType === 'Cash'
+    ) {
+      // Cash sale MUST NOT contain installment information.
 
-      const roundingDiff =
-        totalFinancedAmount -
-        baseAmount * duration;
-
-      let currentDueDate =
-        new Date(firstDueDate);
-
-      const installmentsArray = [];
-
-      for (
-        let i = 1;
-        i <= duration;
-        i++
+      if (
+        Number(dPayment) !==
+          Number(sale.finalTotal) &&
+        Number(dPayment) !== 0
       ) {
-        const isLast =
-          i === duration;
-
-        const installmentAmount =
-          isLast
-            ? baseAmount +
-              roundingDiff
-            : baseAmount;
-
-        installmentsArray.push({
-          shopId: req.shopId,
-          installmentPlan:
-            plan._id,
-          installmentNumber: i,
-          amount:
-            installmentAmount,
-          originalAmount:
-            installmentAmount,
-          paidAmount: 0,
-          remainingAmount:
-            installmentAmount,
-          dueDate:
-            new Date(
-              currentDueDate
-            ),
-          status: 'Pending',
+        return res.status(400).json({
+          message:
+            'Cash sale cannot contain installment down payment information.'
         });
-
-        currentDueDate.setMonth(
-          currentDueDate.getMonth() + 1
-        );
       }
 
-      await Installment.insertMany(
-        installmentsArray
-      );
+      if (
+        Number(markup) !== 0 ||
+        Number(installmentDuration) !== 0 ||
+        Number(selectedInstallmentDuration) !== 0 ||
+        Boolean(
+          treatDownPaymentAsFirstInstallment
+        ) ||
+        (
+          Array.isArray(installments) &&
+          installments.length > 0
+        )
+      ) {
+        return res.status(400).json({
+          message:
+            'Cash sale cannot contain installment information.'
+        });
+      }
+
+      const oldProduct =
+        await Product.findOne({
+          _id:
+            sale.product,
+
+          shopId
+        });
+
+      if (!oldProduct) {
+        return res.status(404).json({
+          message:
+            'Original product not found.'
+        });
+      }
+
+      const oldPreviousQuantity =
+        Number(
+          oldProduct.quantity || 0
+        );
+
+      const restoredOldQuantity =
+        oldPreviousQuantity +
+        Number(sale.quantity);
+
+      const newProductQuantity =
+        Number(
+          newProduct.quantity || 0
+        );
+
+      if (
+        String(oldProduct._id) ===
+        String(newProduct._id)
+      ) {
+        if (
+          restoredOldQuantity <
+          qty
+        ) {
+          return res.status(400).json({
+            message:
+              `Insufficient stock. Available quantity: ${restoredOldQuantity}`
+          });
+        }
+
+        const finalQuantity =
+          restoredOldQuantity -
+          qty;
+
+        oldProduct.quantity =
+          finalQuantity;
+
+        await oldProduct.save();
+
+        await StockMovement.deleteMany({
+          shopId,
+
+          reference:
+            sale.saleId
+        });
+
+        await StockMovement.create({
+          shopId,
+
+          product:
+            newProduct._id,
+
+          type:
+            'Sale',
+
+          quantity:
+            qty,
+
+          previousQuantity:
+            oldPreviousQuantity,
+
+          newQuantity:
+            finalQuantity,
+
+          reason:
+            `Updated Sale ${sale.saleId}`,
+
+          reference:
+            sale.saleId
+        });
+      } else {
+        if (
+          newProductQuantity <
+          qty
+        ) {
+          return res.status(400).json({
+            message:
+              `Insufficient stock. Available quantity: ${newProductQuantity}`
+          });
+        }
+
+        oldProduct.quantity =
+          restoredOldQuantity;
+
+        await oldProduct.save();
+
+        const finalNewQuantity =
+          newProductQuantity -
+          qty;
+
+        newProduct.quantity =
+          finalNewQuantity;
+
+        await newProduct.save();
+
+        await StockMovement.deleteMany({
+          shopId,
+
+          reference:
+            sale.saleId
+        });
+
+        await StockMovement.create({
+          shopId,
+
+          product:
+            newProduct._id,
+
+          type:
+            'Sale',
+
+          quantity:
+            qty,
+
+          previousQuantity:
+            newProductQuantity,
+
+          newQuantity:
+            finalNewQuantity,
+
+          reason:
+            `Updated Sale ${sale.saleId}`,
+
+          reference:
+            sale.saleId
+        });
+      }
+
+      // ------------------------------------------------------
+      // REMOVE OLD PLAN IF ANY
+      // ------------------------------------------------------
+
+      const oldPlan =
+        await InstallmentPlan.findOne({
+          sale:
+            sale._id,
+
+          shopId
+        });
+
+      if (oldPlan) {
+        await Installment.deleteMany({
+          shopId,
+
+          installmentPlan:
+            oldPlan._id
+        });
+
+        await InstallmentPlan.deleteOne({
+          _id:
+            oldPlan._id,
+
+          shopId
+        });
+      }
+
+      // ------------------------------------------------------
+      // UPDATE CASH SALE
+      // ------------------------------------------------------
+
+      sale.customer =
+        customer;
+
+      sale.product =
+        product;
+
+      sale.quantity =
+        qty;
+
+      sale.unitPrice =
+        price;
+
+      sale.discount =
+        discountAmount;
+
+      sale.subtotal =
+        subtotal;
+
+      sale.finalTotal =
+        finalTotal;
+
+      sale.markupPercentage =
+        0;
+
+      sale.markupAmount =
+        0;
+
+      sale.totalWithMarkup =
+        finalTotal;
+
+      sale.paymentType =
+        'Cash';
+
+      sale.downPayment =
+        finalTotal;
+
+      sale.remainingBalance =
+        0;
+
+      sale.installmentDuration =
+        0;
+
+      sale.selectedInstallmentDuration =
+        0;
+
+      sale.treatDownPaymentAsFirstInstallment =
+        false;
+
+      sale.installmentScheduleSnapshot =
+        [];
+
+      await sale.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          'Cash sale updated successfully',
+
+        data: {
+          sale
+        }
+      });
     }
 
-    return res.status(201).json({
-      success: true,
-      message:
-        'Sale completed successfully!',
-      data: sale,
-    });
+    // ========================================================
+    // INSTALLMENT UPDATE
+    // ========================================================
 
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+    if (
+      paymentType !==
+      'Installment'
+    ) {
+      return res.status(400).json({
+        message:
+          'Invalid payment type.'
+      });
+    }
 
+    const selectedDuration =
+      Number(
+        selectedInstallmentDuration ||
+        installmentDuration
+      );
 
-// ============================================================
-// UPDATE SALE
-// @route PUT /api/sales/:id
-// @access Private
-// ============================================================
-const updateSale = async (req, res) => {
-  try {
-    const saleId = req.params.id;
+    if (
+      !Number.isInteger(
+        selectedDuration
+      ) ||
+      selectedDuration <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'Installment duration must be greater than zero.'
+      });
+    }
+
+    const treatDownPayment =
+      Boolean(
+        treatDownPaymentAsFirstInstallment
+      );
+
+    // --------------------------------------------------------
+    // DOWN PAYMENT
+    // --------------------------------------------------------
+
+    if (dPayment < 0) {
+      return res.status(400).json({
+        message:
+          'Down payment cannot be negative.'
+      });
+    }
+
+    if (
+      dPayment >
+      finalTotal
+    ) {
+      return res.status(400).json({
+        message:
+          'Down payment cannot be greater than sale total.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // CALCULATION
+    // --------------------------------------------------------
+
+    const calculation =
+      calculateInstallmentSale({
+        finalTotal,
+
+        downPayment:
+          dPayment,
+
+        markupPercentage:
+          markup,
+
+        selectedDuration,
+
+        treatDownPaymentAsFirstInstallment:
+          treatDownPayment
+      });
 
     const {
-      product,
-      quantity,
-      unitPrice,
-      discount,
-      paymentType,
-      downPayment,
-      installmentDuration,
-    } = req.body;
-
-    // ========================================================
-    // SALE MUST BELONG TO CURRENT SHOP
-    // ========================================================
-    const sale =
-      await Sale.findOne({
-        _id: saleId,
-        shopId: req.shopId,
-      });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Sale record not found',
-      });
-    }
-
-    const qty = Number(quantity);
-    const uPrice = Number(unitPrice);
-    const disc = Number(
-      discount || 0
-    );
-    const dPayment = Number(
-      downPayment || 0
-    );
-    const duration = Number(
-      installmentDuration || 0
-    );
-
-    // ========================================================
-    // ORIGINAL PRODUCT
-    // ========================================================
-    const origProduct =
-      await Product.findOne({
-        _id: sale.product,
-        shopId: req.shopId,
-      });
-
-    if (origProduct) {
-      origProduct.quantity +=
-        sale.quantity;
-
-      await origProduct.save();
-    }
-
-    // ========================================================
-    // TARGET PRODUCT
-    // ========================================================
-    const targetProduct =
-      await Product.findOne({
-        _id: product,
-        shopId: req.shopId,
-      });
+      remainingBeforeMarkup,
+      markupAmount,
+      totalWithMarkup,
+      financedAmount,
+      actualInstallmentCount
+    } = calculation;
 
     if (
-      !targetProduct ||
-      targetProduct.quantity < qty
+      actualInstallmentCount === 0 &&
+      financedAmount > 0
     ) {
       return res.status(400).json({
-        success: false,
         message:
-          'Insufficient stock available.',
+          'There must be at least one future installment for the remaining financed amount.'
       });
     }
 
-    const prevStockQty =
-      targetProduct.quantity;
+    // --------------------------------------------------------
+    // BUILD SCHEDULE
+    // --------------------------------------------------------
 
-    targetProduct.quantity -= qty;
+    let futureSchedule = [];
 
-    await targetProduct.save();
+    if (financedAmount > 0) {
+      if (
+        Array.isArray(installments) &&
+        installments.length > 0
+      ) {
+        const validation =
+          validateSchedule({
+            installments,
 
-    // ========================================================
-    // OLD INSTALLMENT PLAN
-    // ========================================================
+            expectedCount:
+              actualInstallmentCount,
+
+            expectedTotal:
+              financedAmount,
+
+            startingInstallmentNumber:
+              treatDownPayment
+                ? 2
+                : 1
+          });
+
+        if (!validation.valid) {
+          return res.status(400).json({
+            message:
+              validation.message
+          });
+        }
+
+        futureSchedule =
+          validation.schedule;
+      } else {
+        const firstDueDate =
+          new Date();
+
+        firstDueDate.setMonth(
+          firstDueDate.getMonth() + 1
+        );
+
+        futureSchedule =
+          buildDefaultSchedule({
+            financedAmount,
+
+            duration:
+              actualInstallmentCount,
+
+            firstDueDate,
+
+            startingInstallmentNumber:
+              treatDownPayment
+                ? 2
+                : 1
+          });
+      }
+    }
+
+    // --------------------------------------------------------
+    // COMPLETE INVOICE SCHEDULE
+    // --------------------------------------------------------
+
+    const invoiceSchedule = [];
+
+    if (
+      treatDownPayment &&
+      dPayment > 0
+    ) {
+      invoiceSchedule.push({
+        installmentNumber:
+          1,
+
+        amount:
+          dPayment,
+
+        dueDate:
+          new Date()
+      });
+    }
+
+    invoiceSchedule.push(
+      ...futureSchedule
+    );
+
+    // --------------------------------------------------------
+    // STOCK
+    // --------------------------------------------------------
+
+    const oldProduct =
+      await Product.findOne({
+        _id:
+          sale.product,
+
+        shopId
+      });
+
+    if (!oldProduct) {
+      return res.status(404).json({
+        message:
+          'Original product not found.'
+      });
+    }
+
+    const oldProductQuantity =
+      Number(
+        oldProduct.quantity || 0
+      );
+
+    const restoredOldQuantity =
+      oldProductQuantity +
+      Number(sale.quantity);
+
+    const newProductQuantity =
+      Number(
+        newProduct.quantity || 0
+      );
+
+    if (
+      String(oldProduct._id) ===
+      String(newProduct._id)
+    ) {
+      if (
+        restoredOldQuantity <
+        qty
+      ) {
+        return res.status(400).json({
+          message:
+            `Insufficient stock. Available quantity: ${restoredOldQuantity}`
+        });
+      }
+
+      const finalQuantity =
+        restoredOldQuantity -
+        qty;
+
+      oldProduct.quantity =
+        finalQuantity;
+
+      await oldProduct.save();
+
+      await StockMovement.deleteMany({
+        shopId,
+
+        reference:
+          sale.saleId
+      });
+
+      await StockMovement.create({
+        shopId,
+
+        product:
+          newProduct._id,
+
+        type:
+          'Sale',
+
+        quantity:
+          qty,
+
+        previousQuantity:
+          oldProductQuantity,
+
+        newQuantity:
+          finalQuantity,
+
+        reason:
+          `Updated Installment Sale ${sale.saleId}`,
+
+        reference:
+          sale.saleId
+      });
+    } else {
+      if (
+        newProductQuantity <
+        qty
+      ) {
+        return res.status(400).json({
+          message:
+            `Insufficient stock. Available quantity: ${newProductQuantity}`
+        });
+      }
+
+      oldProduct.quantity =
+        restoredOldQuantity;
+
+      await oldProduct.save();
+
+      const finalNewQuantity =
+        newProductQuantity -
+        qty;
+
+      newProduct.quantity =
+        finalNewQuantity;
+
+      await newProduct.save();
+
+      await StockMovement.deleteMany({
+        shopId,
+
+        reference:
+          sale.saleId
+      });
+
+      await StockMovement.create({
+        shopId,
+
+        product:
+          newProduct._id,
+
+        type:
+          'Sale',
+
+        quantity:
+          qty,
+
+        previousQuantity:
+          newProductQuantity,
+
+        newQuantity:
+          finalNewQuantity,
+
+        reason:
+          `Updated Installment Sale ${sale.saleId}`,
+
+        reference:
+          sale.saleId
+      });
+    }
+
+    // --------------------------------------------------------
+    // REMOVE OLD PLAN
+    // --------------------------------------------------------
+
     const oldPlan =
       await InstallmentPlan.findOne({
-        sale: sale._id,
-        shopId: req.shopId,
+        sale:
+          sale._id,
+
+        shopId
       });
 
     if (oldPlan) {
       await Installment.deleteMany({
+        shopId,
+
         installmentPlan:
+          oldPlan._id
+      });
+
+      await InstallmentPlan.deleteOne({
+        _id:
           oldPlan._id,
-        shopId: req.shopId,
-      });
 
-      await InstallmentPlan.findOneAndDelete({
-        _id: oldPlan._id,
-        shopId: req.shopId,
+        shopId
       });
     }
 
-    const calculatedSubtotal =
-      qty * uPrice;
+    // --------------------------------------------------------
+    // UPDATE INSTALLMENT SALE
+    // --------------------------------------------------------
 
-    const calculatedFinalTotal =
-      calculatedSubtotal - disc;
+    sale.customer =
+      customer;
 
-    const initialRemaining =
-      calculatedFinalTotal -
-      dPayment;
-
-    if (calculatedFinalTotal < 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Discount cannot be greater than subtotal.',
-      });
-    }
-
-    // ========================================================
-    // INSTALLMENT MARKUP
-    // ========================================================
-    let markupPercent = 0;
-
-    if (
-      paymentType === 'Installment'
-    ) {
-      if (duration === 3) {
-        markupPercent = 0.15;
-      } else if (duration === 6) {
-        markupPercent = 0.25;
-      } else if (duration === 12) {
-        markupPercent = 0.50;
-      } else {
-        if (duration <= 3) {
-          markupPercent = 0.15;
-        } else if (duration <= 6) {
-          markupPercent = 0.25;
-        } else {
-          markupPercent = 0.50;
-        }
-      }
-    }
-
-    const markupAmount =
-      Math.round(
-        initialRemaining *
-          markupPercent
-      );
-
-    const totalFinancedAmount =
-      initialRemaining +
-      markupAmount;
-
-    // ========================================================
-    // UPDATE SALE
-    // ========================================================
     sale.product =
-      targetProduct._id;
+      product;
 
-    sale.quantity = qty;
+    sale.quantity =
+      qty;
 
-    sale.unitPrice = uPrice;
+    sale.unitPrice =
+      price;
 
-    sale.discount = disc;
+    sale.discount =
+      discountAmount;
 
     sale.subtotal =
-      sale.quantity * uPrice;
+      subtotal;
 
     sale.finalTotal =
-      calculatedFinalTotal;
+      finalTotal;
+
+    sale.markupPercentage =
+      markup;
+
+    sale.markupAmount =
+      markupAmount;
+
+    sale.totalWithMarkup =
+      totalWithMarkup;
 
     sale.paymentType =
-      paymentType;
+      'Installment';
 
     sale.downPayment =
-      paymentType === 'Installment'
-        ? dPayment
-        : 0;
+      dPayment;
 
     sale.remainingBalance =
-      paymentType === 'Installment'
-        ? totalFinancedAmount
-        : 0;
+      financedAmount;
 
     sale.installmentDuration =
-      paymentType === 'Installment'
-        ? duration
-        : 0;
+      actualInstallmentCount;
+
+    sale.selectedInstallmentDuration =
+      selectedDuration;
+
+    sale.treatDownPaymentAsFirstInstallment =
+      treatDownPayment;
+
+    sale.installmentScheduleSnapshot =
+      invoiceSchedule.map(
+        (item) => ({
+          installmentNumber:
+            item.installmentNumber,
+
+          amount:
+            item.amount,
+
+          dueDate:
+            item.dueDate
+        })
+      );
 
     await sale.save();
 
-    // ========================================================
-    // DELETE OLD SALE STOCK MOVEMENT
-    // CURRENT SHOP ONLY
-    // ========================================================
-    await StockMovement.deleteMany({
-      reference: sale.saleId,
-      shopId: req.shopId,
-    });
+    // --------------------------------------------------------
+    // NEW PLAN
+    // --------------------------------------------------------
 
-    // ========================================================
-    // CREATE UPDATED SALE MOVEMENT
-    // ========================================================
-    const updatedMovement =
-      new StockMovement({
-        shopId: req.shopId,
-        product:
-          targetProduct._id,
-        type: 'Sale',
-        quantity: qty,
-        previousQuantity:
-          prevStockQty,
-        newQuantity:
-          targetProduct.quantity,
-        reason:
-          `Corrected/Edited Sale (${sale.saleId})`,
-        reference:
-          sale.saleId,
-      });
-
-    await updatedMovement.save();
-
-    // ========================================================
-    // CREATE NEW INSTALLMENT PLAN
-    // ========================================================
-    if (
-      paymentType === 'Installment'
-    ) {
-      const planId =
-        await generatePlanID(
-          req.shopId
-        );
-
-      const firstDueDate =
-        new Date();
-
-      firstDueDate.setMonth(
-        firstDueDate.getMonth() + 1
+    const planId =
+      await generatePlanID(
+        shopId
       );
 
-      const plan =
-        new InstallmentPlan({
-          shopId: req.shopId,
-          planId,
-          sale: sale._id,
-          customer:
-            sale.customer,
-          product:
-            targetProduct._id,
-          totalAmount:
-            calculatedFinalTotal +
-            markupAmount,
-          downPayment: dPayment,
-          remainingBalance:
-            totalFinancedAmount,
-          duration,
-          firstDueDate,
-        });
+    const plan =
+      await InstallmentPlan.create({
+        shopId,
 
-      await plan.save();
+        planId,
 
-      const baseAmount =
-        Math.floor(
-          totalFinancedAmount /
-            duration
-        );
+        sale:
+          sale._id,
 
-      const roundingDiff =
-        totalFinancedAmount -
-        baseAmount * duration;
+        customer,
 
-      let currentDueDate =
-        new Date(firstDueDate);
+        product,
 
-      const installmentsArray = [];
+        totalAmount:
+          totalWithMarkup,
 
-      for (
-        let i = 1;
-        i <= duration;
-        i++
-      ) {
-        const isLast =
-          i === duration;
+        downPayment:
+          dPayment,
 
-        const installmentAmount =
-          isLast
-            ? baseAmount +
-              roundingDiff
-            : baseAmount;
+        remainingBalance:
+          financedAmount,
 
-        installmentsArray.push({
-          shopId: req.shopId,
+        duration:
+          actualInstallmentCount,
+
+        selectedDuration:
+          selectedDuration,
+
+        treatDownPaymentAsFirstInstallment:
+          treatDownPayment,
+
+        status:
+          financedAmount > 0
+            ? 'Active'
+            : 'Completed',
+
+        firstDueDate:
+          futureSchedule.length
+            ? futureSchedule[0].dueDate
+            : new Date(),
+
+        invoiceSnapshot: {
+          selectedDuration,
+
+          duration:
+            actualInstallmentCount,
+
+          downPayment:
+            dPayment,
+
+          treatDownPaymentAsFirstInstallment:
+            treatDownPayment,
+
+          financedAmount,
+
+          installments:
+            invoiceSchedule.map(
+              (item) => ({
+                installmentNumber:
+                  item.installmentNumber,
+
+                amount:
+                  item.amount,
+
+                dueDate:
+                  item.dueDate
+              })
+            ),
+
+          createdAt:
+            new Date()
+        }
+      });
+
+    // --------------------------------------------------------
+    // CREATE INSTALLMENT RECORDS
+    // --------------------------------------------------------
+
+    const installmentDocuments = [];
+
+    if (
+      treatDownPayment &&
+      dPayment > 0
+    ) {
+      installmentDocuments.push({
+        shopId,
+
+        installmentPlan:
+          plan._id,
+
+        installmentNumber:
+          1,
+
+        amount:
+          dPayment,
+
+        originalAmount:
+          dPayment,
+
+        paidAmount:
+          dPayment,
+
+        remainingAmount:
+          0,
+
+        dueDate:
+          new Date(),
+
+        status:
+          'Paid',
+
+        paidDate:
+          new Date(),
+
+        isSettledByPlanPayment:
+          false
+      });
+    }
+
+    installmentDocuments.push(
+      ...futureSchedule.map(
+        (item) => ({
+          shopId,
+
           installmentPlan:
             plan._id,
-          installmentNumber: i,
+
+          installmentNumber:
+            item.installmentNumber,
+
           amount:
-            installmentAmount,
+            item.amount,
+
           originalAmount:
-            installmentAmount,
-          paidAmount: 0,
+            item.amount,
+
+          paidAmount:
+            0,
+
           remainingAmount:
-            installmentAmount,
+            item.amount,
+
           dueDate:
-            new Date(
-              currentDueDate
-            ),
-          status: 'Pending',
-        });
+            item.dueDate,
 
-        currentDueDate.setMonth(
-          currentDueDate.getMonth() + 1
-        );
-      }
+          status:
+            'Pending'
+        })
+      )
+    );
 
+    if (
+      installmentDocuments.length > 0
+    ) {
       await Installment.insertMany(
-        installmentsArray
+        installmentDocuments
       );
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
+
       message:
-        'Sale updated and schedules synchronized!',
-      data: sale,
+        'Installment sale updated successfully',
+
+      data: {
+        sale,
+        plan,
+        installments:
+          installmentDocuments
+      }
     });
 
   } catch (error) {
+    console.error(
+      'UPDATE SALE ERROR:',
+      error
+    );
+
     return res.status(500).json({
-      success: false,
-      message: error.message,
+      message:
+        'Failed to update sale',
+
+      error:
+        error.message
     });
   }
 };
-
 
 // ============================================================
 // DELETE SALE
-// @route DELETE /api/sales/:id
-// @access Private
 // ============================================================
+
 const deleteSale = async (req, res) => {
   try {
-    const deletionCheck =
+    const shopId =
+      req.shopId;
+
+    const {
+      id
+    } = req.params;
+
+    const allowed =
       await checkDeletionMode(
-        req.shopId
+        shopId
       );
 
-    if (!deletionCheck.allowed) {
+    if (!allowed) {
       return res.status(403).json({
-        success: false,
         message:
-          deletionCheck.message,
+          'Global deletion access is locked.'
       });
     }
 
-    // ========================================================
-    // SALE MUST BELONG TO CURRENT SHOP
-    // ========================================================
     const sale =
       await Sale.findOne({
-        _id: req.params.id,
-        shopId: req.shopId,
+        _id:
+          id,
+
+        shopId
       });
 
     if (!sale) {
       return res.status(404).json({
-        success: false,
         message:
-          'Sale record not found',
+          'Sale not found'
       });
     }
 
-    // ========================================================
-    // RESTORE PRODUCT STOCK
-    // ========================================================
-    const productDoc =
+    const hasPayments =
+      await Payment.exists({
+        shopId,
+
+        sale:
+          sale._id
+      });
+
+    if (hasPayments) {
+      return res.status(400).json({
+        message:
+          'This sale has payment history and cannot be deleted.'
+      });
+    }
+
+    // --------------------------------------------------------
+    // RESTORE STOCK
+    // --------------------------------------------------------
+
+    const product =
       await Product.findOne({
-        _id: sale.product,
-        shopId: req.shopId,
+        _id:
+          sale.product,
+
+        shopId
       });
 
-    if (productDoc) {
-      const origQty =
-        productDoc.quantity;
+    if (product) {
+      const previousQuantity =
+        Number(
+          product.quantity || 0
+        );
 
-      productDoc.quantity +=
-        sale.quantity;
+      const newQuantity =
+        previousQuantity +
+        Number(sale.quantity);
 
-      await productDoc.save();
+      product.quantity =
+        newQuantity;
 
-      const restoreMovement =
-        new StockMovement({
-          shopId: req.shopId,
-          product:
-            productDoc._id,
-          type: 'Return',
-          quantity:
-            sale.quantity,
-          previousQuantity:
-            origQty,
-          newQuantity:
-            productDoc.quantity,
-          reason:
-            `Dukan sale cancelled & deleted (${sale.saleId})`,
-          reference:
-            sale.saleId,
-        });
+      await product.save();
 
-      await restoreMovement.save();
+      await StockMovement.deleteMany({
+        shopId,
+
+        reference:
+          sale.saleId,
+
+        type:
+          'Sale'
+      });
+
+      await StockMovement.create({
+        shopId,
+
+        product:
+          product._id,
+
+        type:
+          'Return',
+
+        quantity:
+          Number(sale.quantity),
+
+        previousQuantity,
+
+        newQuantity,
+
+        reason:
+          `Sale deleted ${sale.saleId}`,
+
+        reference:
+          sale.saleId
+      });
     }
 
-    // ========================================================
-    // DELETE INSTALLMENT PLAN
-    // ========================================================
-    const oldPlan =
+    // --------------------------------------------------------
+    // DELETE PLAN
+    // --------------------------------------------------------
+
+    const plan =
       await InstallmentPlan.findOne({
-        sale: sale._id,
-        shopId: req.shopId,
+        sale:
+          sale._id,
+
+        shopId
       });
 
-    if (oldPlan) {
+    if (plan) {
       await Installment.deleteMany({
+        shopId,
+
         installmentPlan:
-          oldPlan._id,
-        shopId: req.shopId,
+          plan._id
       });
 
-      await InstallmentPlan.findOneAndDelete({
-        _id: oldPlan._id,
-        shopId: req.shopId,
+      await InstallmentPlan.deleteOne({
+        _id:
+          plan._id,
+
+        shopId
       });
     }
 
-    // ========================================================
-    // DELETE SALE STOCK MOVEMENTS
-    // ========================================================
-    await StockMovement.deleteMany({
-      reference: sale.saleId,
-      shopId: req.shopId,
-    });
-
-    // ========================================================
+    // --------------------------------------------------------
     // DELETE SALE
-    // ========================================================
-    await Sale.findOneAndDelete({
-      _id: req.params.id,
-      shopId: req.shopId,
+    // --------------------------------------------------------
+
+    await Sale.deleteOne({
+      _id:
+        sale._id,
+
+      shopId
     });
 
-    return res.status(200).json({
+    return res.json({
       success: true,
+
       message:
-        'Sale deleted and stock restored successfully!',
+        'Sale deleted successfully'
     });
 
   } catch (error) {
+    console.error(
+      'DELETE SALE ERROR:',
+      error
+    );
+
     return res.status(500).json({
-      success: false,
-      message: error.message,
+      message:
+        'Failed to delete sale',
+
+      error:
+        error.message
     });
   }
 };
 
-
 // ============================================================
 // EXCHANGE SALE PRODUCT
-// @route PATCH /api/sales/:id/exchange
-// @access Private
 // ============================================================
+
 const exchangeSaleProduct = async (
   req,
   res
 ) => {
   try {
-    const saleId =
-      req.params.id;
+    const shopId =
+      req.shopId;
 
     const {
-      newProductId,
-      newPrice,
+      id
+    } = req.params;
+
+    const {
+      newProductId
     } = req.body;
 
-    const nPrice =
-      Number(newPrice);
-
-    if (
-      isNaN(nPrice) ||
-      nPrice < 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Please enter a valid positive exchange price.',
-      });
-    }
-
-    // ========================================================
-    // SALE MUST BELONG TO CURRENT SHOP
-    // ========================================================
     const sale =
       await Sale.findOne({
-        _id: saleId,
-        shopId: req.shopId,
+        _id:
+          id,
+
+        shopId
       });
 
     if (!sale) {
       return res.status(404).json({
-        success: false,
         message:
-          'Original invoice not found',
+          'Sale not found'
       });
     }
 
-    const oldProductId =
-      sale.product;
+    const hasPayments =
+      await Payment.exists({
+        shopId,
 
-    const oldPrice =
-      sale.unitPrice;
-
-    const priceDifference =
-      (nPrice - oldPrice) *
-      sale.quantity;
-
-    // ========================================================
-    // TARGET PRODUCT
-    // ========================================================
-    const targetProduct =
-      await Product.findOne({
-        _id: newProductId,
-        shopId: req.shopId,
+        sale:
+          sale._id
       });
 
     if (
-      !targetProduct ||
-      targetProduct.quantity <
-        sale.quantity
+      sale.paymentType ===
+        'Installment' &&
+      hasPayments
     ) {
       return res.status(400).json({
-        success: false,
         message:
-          'Insufficient stock in target product for exchange.',
+          'This sale already has payments. Product exchange cannot change its financial schedule.'
       });
     }
 
-    // ========================================================
-    // OLD PRODUCT
-    // ========================================================
-    const oldProductDoc =
+    const oldProduct =
       await Product.findOne({
-        _id: oldProductId,
-        shopId: req.shopId,
+        _id:
+          sale.product,
+
+        shopId
       });
 
-    if (oldProductDoc) {
-      const origQty =
-        oldProductDoc.quantity;
+    const newProduct =
+      await Product.findOne({
+        _id:
+          newProductId,
 
-      oldProductDoc.quantity +=
-        sale.quantity;
+        shopId
+      });
 
-      await oldProductDoc.save();
-
-      const returnMovement =
-        new StockMovement({
-          shopId: req.shopId,
-          product:
-            oldProductId,
-          type: 'Return',
-          quantity:
-            sale.quantity,
-          previousQuantity:
-            origQty,
-          newQuantity:
-            oldProductDoc.quantity,
-          reason:
-            `Exchanged and returned (linked to: ${sale.saleId})`,
-          reference:
-            sale.saleId,
-        });
-
-      await returnMovement.save();
+    if (!oldProduct) {
+      return res.status(404).json({
+        message:
+          'Old product not found'
+      });
     }
 
-    // ========================================================
-    // REMOVE TARGET PRODUCT FROM STOCK
-    // ========================================================
-    const prevTargetQty =
-      targetProduct.quantity;
-
-    targetProduct.quantity -=
-      sale.quantity;
-
-    await targetProduct.save();
-
-    // ========================================================
-    // SALE STOCK MOVEMENT
-    // ========================================================
-    const sellMovement =
-      new StockMovement({
-        shopId: req.shopId,
-        product:
-          newProductId,
-        type: 'Sale',
-        quantity:
-          sale.quantity,
-        previousQuantity:
-          prevTargetQty,
-        newQuantity:
-          targetProduct.quantity,
-        reason:
-          `Exchanged and checkout (linked to: ${sale.saleId})`,
-        reference:
-          sale.saleId,
+    if (!newProduct) {
+      return res.status(404).json({
+        message:
+          'New product not found'
       });
+    }
 
-    await sellMovement.save();
+    if (
+      String(oldProduct._id) ===
+      String(newProduct._id)
+    ) {
+      return res.status(400).json({
+        message:
+          'Please select a different product.'
+      });
+    }
 
-    // ========================================================
-    // UPDATE SALE
-    // ========================================================
-    sale.product =
-      targetProduct._id;
+    if (
+      Number(newProduct.quantity || 0) <
+      Number(sale.quantity)
+    ) {
+      return res.status(400).json({
+        message:
+          'Insufficient stock for exchange product.'
+      });
+    }
 
-    sale.unitPrice =
-      nPrice;
+    // --------------------------------------------------------
+    // PRICE
+    // --------------------------------------------------------
 
-    sale.subtotal =
-      sale.quantity * nPrice;
+    const newUnitPrice =
+      roundMoney(
+        newProduct.salePrice ??
+        sale.unitPrice
+      );
 
-    sale.finalTotal +=
-      priceDifference;
+    const newSubtotal =
+      roundMoney(
+        newUnitPrice *
+        sale.quantity
+      );
 
-    // ========================================================
-    // UPDATE INSTALLMENT PLAN
-    // ========================================================
+    const newFinalTotal =
+      roundMoney(
+        Math.max(
+          0,
+          newSubtotal -
+          Number(sale.discount || 0)
+        )
+      );
+
+    // --------------------------------------------------------
+    // FINANCIAL REBUILD
+    // --------------------------------------------------------
+
+    let newMarkupPercentage =
+      roundMoney(
+        sale.markupPercentage || 0
+      );
+
+    let newMarkupAmount = 0;
+
+    let newTotalWithMarkup =
+      newFinalTotal;
+
+    let newFinancedAmount = 0;
+
+    let newSchedule = [];
+
     if (
       sale.paymentType ===
       'Installment'
     ) {
-      const plan =
-        await InstallmentPlan.findOne({
-          sale: sale._id,
-          shopId: req.shopId,
+      const selectedDuration =
+        Number(
+          sale.selectedInstallmentDuration ||
+          sale.installmentDuration ||
+          0
+        );
+
+      const treatDownPayment =
+        Boolean(
+          sale.treatDownPaymentAsFirstInstallment
+        );
+
+      const dPayment =
+        roundMoney(
+          sale.downPayment || 0
+        );
+
+      if (dPayment > newFinalTotal) {
+        return res.status(400).json({
+          message:
+            'Existing down payment is greater than the exchanged product total.'
         });
+      }
 
-      if (plan) {
-        plan.product =
-          targetProduct._id;
-
-        plan.totalAmount +=
-          priceDifference;
-
-        plan.remainingBalance =
+      const remainingBeforeMarkup =
+        roundMoney(
           Math.max(
             0,
-            plan.remainingBalance +
-              priceDifference
-          );
+            newFinalTotal -
+            dPayment
+          )
+        );
 
-        await plan.save();
+      newMarkupAmount =
+        roundMoney(
+          remainingBeforeMarkup *
+          (newMarkupPercentage / 100)
+        );
 
-        sale.remainingBalance =
-          plan.remainingBalance;
+      newFinancedAmount =
+        roundMoney(
+          remainingBeforeMarkup +
+          newMarkupAmount
+        );
 
-        const unpaidInstallments =
-          await Installment.find({
-            installmentPlan:
-              plan._id,
-            shopId: req.shopId,
-            status: {
-              $ne: 'Paid',
-            },
-          }).sort({
-            installmentNumber: 1,
+      newTotalWithMarkup =
+        roundMoney(
+          dPayment +
+          newFinancedAmount
+        );
+
+      const actualCount =
+        treatDownPayment
+          ? Math.max(
+              0,
+              selectedDuration - 1
+            )
+          : selectedDuration;
+
+      if (
+        newFinancedAmount > 0 &&
+        actualCount <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            'Exchange cannot create a valid installment schedule.'
+        });
+      }
+
+      if (
+        newFinancedAmount > 0
+      ) {
+        const firstDueDate =
+          new Date();
+
+        firstDueDate.setMonth(
+          firstDueDate.getMonth() + 1
+        );
+
+        newSchedule =
+          buildDefaultSchedule({
+            financedAmount:
+              newFinancedAmount,
+
+            duration:
+              actualCount,
+
+            firstDueDate,
+
+            startingInstallmentNumber:
+              treatDownPayment
+                ? 2
+                : 1
           });
-
-        if (
-          unpaidInstallments.length >
-          0
-        ) {
-          const share =
-            Math.floor(
-              priceDifference /
-                unpaidInstallments.length
-            );
-
-          const roundingDiff =
-            priceDifference -
-            share *
-              unpaidInstallments.length;
-
-          for (
-            let i = 0;
-            i <
-            unpaidInstallments.length;
-            i++
-          ) {
-            const isLast =
-              i ===
-              unpaidInstallments.length - 1;
-
-            const instDoc =
-              unpaidInstallments[i];
-
-            const additionalAmount =
-              isLast
-                ? share +
-                  roundingDiff
-                : share;
-
-            instDoc.amount +=
-              additionalAmount;
-
-            instDoc.remainingAmount =
-              Math.max(
-                0,
-                instDoc.remainingAmount +
-                  additionalAmount
-              );
-
-            await instDoc.save();
-          }
-        }
       }
     }
 
-    await sale.save({
-      validateBeforeSave: false,
+    // --------------------------------------------------------
+    // STOCK
+    // --------------------------------------------------------
+
+    const oldProductPreviousQuantity =
+      Number(
+        oldProduct.quantity || 0
+      );
+
+    const newProductPreviousQuantity =
+      Number(
+        newProduct.quantity || 0
+      );
+
+    const oldProductNewQuantity =
+      oldProductPreviousQuantity +
+      Number(sale.quantity);
+
+    const newProductNewQuantity =
+      newProductPreviousQuantity -
+      Number(sale.quantity);
+
+    oldProduct.quantity =
+      oldProductNewQuantity;
+
+    await oldProduct.save();
+
+    newProduct.quantity =
+      newProductNewQuantity;
+
+    await newProduct.save();
+
+    // --------------------------------------------------------
+    // UPDATE SALE
+    // --------------------------------------------------------
+
+    sale.product =
+      newProduct._id;
+
+    sale.unitPrice =
+      newUnitPrice;
+
+    sale.subtotal =
+      newSubtotal;
+
+    sale.finalTotal =
+      newFinalTotal;
+
+    if (
+      sale.paymentType ===
+      'Cash'
+    ) {
+      sale.markupPercentage =
+        0;
+
+      sale.markupAmount =
+        0;
+
+      sale.totalWithMarkup =
+        newFinalTotal;
+
+      sale.downPayment =
+        newFinalTotal;
+
+      sale.remainingBalance =
+        0;
+
+      sale.installmentDuration =
+        0;
+
+      sale.selectedInstallmentDuration =
+        0;
+
+      sale.treatDownPaymentAsFirstInstallment =
+        false;
+
+      sale.installmentScheduleSnapshot =
+        [];
+    } else {
+      const selectedDuration =
+        Number(
+          sale.selectedInstallmentDuration ||
+          sale.installmentDuration
+        );
+
+      const treatDownPayment =
+        Boolean(
+          sale.treatDownPaymentAsFirstInstallment
+        );
+
+      const actualCount =
+        treatDownPayment
+          ? Math.max(
+              0,
+              selectedDuration - 1
+            )
+          : selectedDuration;
+
+      const invoiceSchedule = [];
+
+      if (
+        treatDownPayment &&
+        Number(sale.downPayment || 0) > 0
+      ) {
+        invoiceSchedule.push({
+          installmentNumber:
+            1,
+
+          amount:
+            roundMoney(
+              sale.downPayment
+            ),
+
+          dueDate:
+            new Date()
+        });
+      }
+
+      invoiceSchedule.push(
+        ...newSchedule
+      );
+
+      sale.markupPercentage =
+        newMarkupPercentage;
+
+      sale.markupAmount =
+        newMarkupAmount;
+
+      sale.totalWithMarkup =
+        newTotalWithMarkup;
+
+      sale.remainingBalance =
+        newFinancedAmount;
+
+      sale.installmentDuration =
+        actualCount;
+
+      sale.selectedInstallmentDuration =
+        selectedDuration;
+
+      sale.installmentScheduleSnapshot =
+        invoiceSchedule;
+    }
+
+    await sale.save();
+
+    // --------------------------------------------------------
+    // OLD PLAN
+    // --------------------------------------------------------
+
+    const oldPlan =
+      await InstallmentPlan.findOne({
+        sale:
+          sale._id,
+
+        shopId
+      });
+
+    if (oldPlan) {
+      await Installment.deleteMany({
+        shopId,
+
+        installmentPlan:
+          oldPlan._id
+      });
+
+      await InstallmentPlan.deleteOne({
+        _id:
+          oldPlan._id,
+
+        shopId
+      });
+    }
+
+    // --------------------------------------------------------
+    // NEW PLAN
+    // --------------------------------------------------------
+
+    if (
+      sale.paymentType ===
+      'Installment'
+    ) {
+      const planId =
+        await generatePlanID(
+          shopId
+        );
+
+      const selectedDuration =
+        Number(
+          sale.selectedInstallmentDuration ||
+          sale.installmentDuration
+        );
+
+      const treatDownPayment =
+        Boolean(
+          sale.treatDownPaymentAsFirstInstallment
+        );
+
+      const actualCount =
+        treatDownPayment
+          ? Math.max(
+              0,
+              selectedDuration - 1
+            )
+          : selectedDuration;
+
+      const invoiceSchedule =
+        sale.installmentScheduleSnapshot ||
+        [];
+
+      const plan =
+        await InstallmentPlan.create({
+          shopId,
+
+          planId,
+
+          sale:
+            sale._id,
+
+          customer:
+            sale.customer,
+
+          product:
+            newProduct._id,
+
+          totalAmount:
+            newTotalWithMarkup,
+
+          downPayment:
+            sale.downPayment,
+
+          remainingBalance:
+            newFinancedAmount,
+
+          duration:
+            actualCount,
+
+          selectedDuration,
+
+          treatDownPaymentAsFirstInstallment:
+            treatDownPayment,
+
+          status:
+            newFinancedAmount > 0
+              ? 'Active'
+              : 'Completed',
+
+          firstDueDate:
+            newSchedule.length
+              ? newSchedule[0].dueDate
+              : new Date(),
+
+          invoiceSnapshot: {
+            selectedDuration,
+
+            duration:
+              actualCount,
+
+            downPayment:
+              sale.downPayment,
+
+            treatDownPaymentAsFirstInstallment:
+              treatDownPayment,
+
+            financedAmount:
+              newFinancedAmount,
+
+            installments:
+              invoiceSchedule,
+
+            createdAt:
+              new Date()
+          }
+        });
+
+      const installmentDocuments = [];
+
+      if (
+        treatDownPayment &&
+        Number(sale.downPayment || 0) > 0
+      ) {
+        installmentDocuments.push({
+          shopId,
+
+          installmentPlan:
+            plan._id,
+
+          installmentNumber:
+            1,
+
+          amount:
+            roundMoney(
+              sale.downPayment
+            ),
+
+          originalAmount:
+            roundMoney(
+              sale.downPayment
+            ),
+
+          paidAmount:
+            roundMoney(
+              sale.downPayment
+            ),
+
+          remainingAmount:
+            0,
+
+          dueDate:
+            new Date(),
+
+          status:
+            'Paid',
+
+          paidDate:
+            new Date(),
+
+          isSettledByPlanPayment:
+            false
+        });
+      }
+
+      installmentDocuments.push(
+        ...newSchedule.map(
+          (item) => ({
+            shopId,
+
+            installmentPlan:
+              plan._id,
+
+            installmentNumber:
+              item.installmentNumber,
+
+            amount:
+              item.amount,
+
+            originalAmount:
+              item.amount,
+
+            paidAmount:
+              0,
+
+            remainingAmount:
+              item.amount,
+
+            dueDate:
+              item.dueDate,
+
+            status:
+              'Pending'
+          })
+        )
+      );
+
+      if (
+        installmentDocuments.length > 0
+      ) {
+        await Installment.insertMany(
+          installmentDocuments
+        );
+      }
+    }
+
+    // --------------------------------------------------------
+    // STOCK MOVEMENTS
+    // --------------------------------------------------------
+
+    await StockMovement.deleteMany({
+      shopId,
+
+      reference:
+        sale.saleId
     });
 
-    return res.status(200).json({
+    await createSaleStockMovement({
+      shopId,
+
+      product:
+        newProduct._id,
+
+      quantity:
+        sale.quantity,
+
+      previousQuantity:
+        newProductPreviousQuantity,
+
+      newQuantity:
+        newProductNewQuantity,
+
+      reference:
+        sale.saleId,
+
+      reason:
+        `Product exchange for ${sale.saleId}`
+    });
+
+    await StockMovement.create({
+      shopId,
+
+      product:
+        oldProduct._id,
+
+      type:
+        'Return',
+
+      quantity:
+        sale.quantity,
+
+      previousQuantity:
+        oldProductPreviousQuantity,
+
+      newQuantity:
+        oldProductNewQuantity,
+
+      reason:
+        `Product returned during exchange ${sale.saleId}`,
+
+      reference:
+        sale.saleId
+    });
+
+    // --------------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------------
+
+    const updatedSale =
+      await Sale.findOne({
+        _id:
+          sale._id,
+
+        shopId
+      })
+        .populate('customer')
+        .populate('product');
+
+    return res.json({
       success: true,
+
       message:
-        'Product exchanged and dynamic kiston re-balanced!',
+        'Product exchanged successfully',
+
+      data: {
+        sale:
+          updatedSale
+      }
     });
 
   } catch (error) {
+    console.error(
+      'EXCHANGE SALE ERROR:',
+      error
+    );
+
     return res.status(500).json({
-      success: false,
-      message: error.message,
+      message:
+        'Failed to exchange product',
+
+      error:
+        error.message
     });
   }
 };
 
-
 // ============================================================
 // EXPORTS
 // ============================================================
+
 module.exports = {
   getSales,
   getSaleById,
   createSale,
   updateSale,
   deleteSale,
-  exchangeSaleProduct,
+  exchangeSaleProduct
 };

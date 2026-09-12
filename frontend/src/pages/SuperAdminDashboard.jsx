@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 
 const API_URL = (
   import.meta.env.VITE_API_URL || 'http://localhost:5000'
@@ -74,6 +76,12 @@ const SuperAdminDashboard = () => {
   const [passwordModal, setPasswordModal] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // =====================================================
+  // CONFIRMATION MODAL
+  // =====================================================
+
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // =====================================================
   // API HELPER
@@ -423,16 +431,12 @@ const SuperAdminDashboard = () => {
   // SUSPEND SHOP
   // =====================================================
 
-  const handleSuspend = async (shopId) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to suspend this shop?'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
+  const handleSuspend = (shopId) => {
+    setConfirmConfig({
+      title: 'Suspend Shop',
+      message: 'Are you sure you want to suspend this shop?',
+      onConfirm: async () => {
+        try {
       setActionLoading(shopId);
       setError('');
 
@@ -462,22 +466,20 @@ const SuperAdminDashboard = () => {
     } finally {
       setActionLoading(null);
     }
+  },
+    });
   };
 
   // =====================================================
   // ACTIVATE SHOP
   // =====================================================
 
-  const handleActivate = async (shopId) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to activate this shop?'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
+  const handleActivate = (shopId) => {
+    setConfirmConfig({
+      title: 'Activate Shop',
+      message: 'Are you sure you want to activate this shop?',
+      onConfirm: async () => {
+        try {
       setActionLoading(shopId);
       setError('');
 
@@ -507,6 +509,8 @@ const SuperAdminDashboard = () => {
     } finally {
       setActionLoading(null);
     }
+  },
+    });
   };
 
   // =====================================================
@@ -850,7 +854,7 @@ const SuperAdminDashboard = () => {
       setNewPassword('');
       setConfirmPassword('');
 
-      alert(
+      toast.success(
         `Password for ${shopName} has been reset successfully.`
       );
 
@@ -2707,6 +2711,18 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

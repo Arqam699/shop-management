@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import {
@@ -22,6 +24,7 @@ const Expenses = () => {
 
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,50 +73,49 @@ const Expenses = () => {
   }, []);
 
   // Delete Expense
-  const handleDeleteExpense = async (
+  const handleDeleteExpense = (
     id,
     expenseId,
     amount
   ) => {
-    // Frontend protection
     if (!isDeletionUnlocked) {
-      alert(
+      toast.error(
         'Deletion Mode is disabled. Enable it from Settings first.'
       );
       return;
     }
 
-    if (
-      window.confirm(
-        `Are you sure you want to permanently delete Expense Voucher "${expenseId}" worth ${settings.currency} ${amount.toLocaleString()}?`
-      )
-    ) {
-      try {
-        const response = await api.delete(
-          `/api/expenses/${id}`
-        );
-
-        if (
-          response.data &&
-          response.data.success
-        ) {
-          setExpenses((currentExpenses) =>
-            currentExpenses.filter(
-              (e) => e._id !== id
-            )
+    setConfirmConfig({
+      title: 'Delete Expense Voucher',
+      message: `Are you sure you want to permanently delete Expense Voucher "${expenseId}" worth ${settings.currency} ${amount.toLocaleString()}?`,
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(
+            `/api/expenses/${id}`
           );
 
-          alert(
-            `Expense Voucher ${expenseId} removed successfully!`
+          if (
+            response.data &&
+            response.data.success
+          ) {
+            setExpenses((currentExpenses) =>
+              currentExpenses.filter(
+                (e) => e._id !== id
+              )
+            );
+
+            toast.success(
+              `Expense Voucher ${expenseId} removed successfully!`
+            );
+          }
+        } catch (error) {
+          toast.error(
+            error.response?.data?.message ||
+              'Failed to remove expense record.'
           );
         }
-      } catch (error) {
-        alert(
-          error.response?.data?.message ||
-            'Failed to remove expense record.'
-        );
-      }
-    }
+      },
+    });
   };
 
   const handleInputChange = (e) => {
@@ -152,7 +154,7 @@ const Expenses = () => {
         response.data &&
         response.data.success
       ) {
-        alert(
+        toast.success(
           'Expense Voucher registered successfully!'
         );
 
@@ -187,12 +189,26 @@ const Expenses = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
     if (filterPreset === 'all') {
       return true;
     }
 
     if (filterPreset === 'today') {
       return date.getTime() === today.getTime();
+    }
+
+    if (filterPreset === 'yesterday') {
+      return date.getTime() === yesterday.getTime();
+    }
+
+    if (filterPreset === 'dayBeforeYesterday') {
+      return date.getTime() === dayBeforeYesterday.getTime();
     }
 
     if (filterPreset === 'week') {
@@ -292,9 +308,10 @@ const Expenses = () => {
     if (
       filteredExpenses.length === 0
     ) {
-      return alert(
+      toast.error(
         'No expense logs found for this selected date range.'
       );
+      return;
     }
 
     const headers = [
@@ -441,12 +458,20 @@ const Expenses = () => {
 
             {[
               {
-                id: 'all',
-                label: 'All-Time'
-              },
-              {
                 id: 'today',
                 label: 'Today (Daily)'
+              },
+              {
+                id: 'yesterday',
+                label: 'Yesterday'
+              },
+              {
+                id: 'dayBeforeYesterday',
+                label: 'Day Before Yesterday'
+              },
+              {
+                id: 'all',
+                label: 'All-Time'
               },
               {
                 id: 'week',
@@ -872,6 +897,19 @@ const Expenses = () => {
           </form>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

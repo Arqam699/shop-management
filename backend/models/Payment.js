@@ -1,8 +1,41 @@
 const mongoose = require('mongoose');
 
+const paymentAllocationSchema = new mongoose.Schema(
+  {
+    installment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Installment',
+      required: true,
+    },
+
+    installmentNumber: {
+      type: Number,
+      required: true,
+    },
+
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    previousRemaining: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    remainingAfterPayment: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+  },
+  { _id: false }
+);
+
 const paymentSchema = new mongoose.Schema(
   {
-    // SaaS: payment belongs to a specific shop
     shopId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Shop',
@@ -10,71 +43,108 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
 
-    paymentId: { type: String }, // e.g. PAY-0001
+    paymentId: {
+      type: String,
+    },
 
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true
+      required: true,
     },
 
     sale: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Sale',
-      required: true
+      required: true,
     },
 
     installmentPlan: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'InstallmentPlan',
-      required: true
+      required: true,
     },
 
+    /*
+      Kept for backwards compatibility.
+      This points to the first installment affected
+      by this payment.
+    */
     installment: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Installment',
-      required: true
+      required: true,
     },
 
     amount: {
       type: Number,
-      required: true
+      required: true,
+      min: 0,
     },
 
     paymentMethod: {
       type: String,
-      enum: ['Cash', 'Bank Transfer', 'Easypaisa', 'JazzCash', 'Other'],
-      default: 'Cash'
+      enum: [
+        'Cash',
+        'Bank Transfer',
+        'Easypaisa',
+        'JazzCash',
+        'Other'
+      ],
+      default: 'Cash',
     },
 
     paymentDate: {
       type: Date,
-      default: Date.now
+      default: Date.now,
     },
 
     isArchived: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
-    // New dynamic carry-forward audit trackers
+    /*
+      New structure.
+      Example:
+      payment = 25000
+
+      allocations:
+      installment #3 = 10000
+      installment #4 = 10000
+      installment #5 = 5000
+    */
+    allocations: {
+      type: [paymentAllocationSchema],
+      default: [],
+    },
+
+    /*
+      Kept for old payment records / compatibility.
+    */
     originalInstallmentAmount: {
       type: Number,
-      default: 0
+      default: 0,
     },
 
+    /*
+      Actual amount that moved to future installments.
+    */
     carryForwardAmount: {
       type: Number,
-      default: 0
+      default: 0,
     },
 
     notes: {
-      type: String
-    }
+      type: String,
+    },
   },
   { timestamps: true }
 );
 
-paymentSchema.index({ shopId: 1, paymentId: 1 }, { unique: true });
+paymentSchema.index({
+  shopId: 1,
+  paymentId: 1,
+});
 
 module.exports = mongoose.model('Payment', paymentSchema);

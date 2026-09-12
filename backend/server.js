@@ -19,13 +19,6 @@ dotenv.config();
 
 
 // =====================================================
-// DATABASE
-// =====================================================
-
-connectDB();
-
-
-// =====================================================
 // APP
 // =====================================================
 
@@ -36,7 +29,15 @@ const app = express();
 // GLOBAL MIDDLEWARE
 // =====================================================
 
-app.use(express.json());
+// Increased limit because fingerprint images are sent as Base64
+app.use(express.json({ limit: '10mb' }));
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb',
+  })
+);
 
 app.use(cookieParser());
 
@@ -239,6 +240,7 @@ app.use(
 // =====================================================
 // SUPER ADMIN ROUTES
 // =====================================================
+//
 // Base URL:
 //
 // /api/super-admin
@@ -339,11 +341,10 @@ const seedAdminAccount = async () => {
     console.error(
       `[SEED ERROR]: ${err.message}`
     );
+
+    throw err;
   }
 };
-
-
-seedAdminAccount();
 
 
 // =====================================================
@@ -373,27 +374,71 @@ app.use(
 
 
 // =====================================================
-// SERVER
+// SERVER STARTUP
 // =====================================================
 
 const PORT =
   process.env.PORT || 5000;
 
 
-app.listen(
-  PORT,
-  () => {
+const startServer = async () => {
+
+  try {
+
+    // =================================================
+    // DATABASE MUST BE READY FIRST
+    // =================================================
+
+    await connectDB();
 
     console.log(
-      `Server executing in ${
-        process.env.NODE_ENV ||
-        'development'
-      } mode on port ${PORT}`
+      'MongoDB connection is ready.'
     );
 
-    console.log(
-      `API running on http://localhost:${PORT}`
+
+    // =================================================
+    // SEED ADMIN AFTER DATABASE CONNECTION
+    // =================================================
+
+    await seedAdminAccount();
+
+
+    // =================================================
+    // START SERVER ONLY AFTER DB + SEED
+    // =================================================
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          `Server executing in ${
+            process.env.NODE_ENV ||
+            'development'
+          } mode on port ${PORT}`
+        );
+
+        console.log(
+          `API running on http://localhost:${PORT}`
+        );
+
+      }
     );
 
+  } catch (error) {
+
+    console.error(
+      'SERVER STARTUP ERROR:',
+      error.message
+    );
+
+    process.exit(1);
   }
-);
+};
+
+
+// =====================================================
+// START APPLICATION
+// =====================================================
+
+startServer();

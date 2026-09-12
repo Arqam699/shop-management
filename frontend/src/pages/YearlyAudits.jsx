@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
@@ -23,6 +25,12 @@ const YearlyAudits = () => {
   const [newYear, setNewYear] = useState('');
   const [modalError, setModalError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // =====================================================
+  // CONFIRMATION MODAL
+  // =====================================================
+
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Deletion Mode status from Settings
   const isDeletionUnlocked =
@@ -60,7 +68,7 @@ const YearlyAudits = () => {
       });
 
       if (res.data && res.data.success) {
-        alert(
+        toast.success(
           `Audit Sheet for Year ${newYear} generated successfully!`
         );
 
@@ -79,39 +87,38 @@ const YearlyAudits = () => {
     }
   };
 
-  const handleDeleteYear = async (id, year) => {
-    // Frontend protection
+  const handleDeleteYear = (id, year) => {
     if (!isDeletionUnlocked) {
-      alert(
+      toast.error(
         'Deletion Mode is disabled. Enable it from Settings first.'
       );
       return;
     }
 
-    if (
-      window.confirm(
-        `DANGER: Are you sure you want to permanently delete Yearly Audit register for Year "${year}"?`
-      )
-    ) {
-      try {
-        await api.delete(`/api/audits/${id}`);
+    setConfirmConfig({
+      title: 'Delete Yearly Audit',
+      message: `DANGER: Are you sure you want to permanently delete Yearly Audit register for Year "${year}"?`,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/api/audits/${id}`);
 
-        setAudits((currentAudits) =>
-          currentAudits.filter(
-            (a) => a._id !== id
-          )
-        );
+          setAudits((currentAudits) =>
+            currentAudits.filter(
+              (a) => a._id !== id
+            )
+          );
 
-        alert(
-          `Yearly Audit register for ${year} deleted successfully.`
-        );
-      } catch (error) {
-        alert(
-          error.response?.data?.message ||
-            'Failed to remove yearly audit register.'
-        );
-      }
-    }
+          toast.success(
+            `Yearly Audit register for ${year} deleted successfully.`
+          );
+        } catch (error) {
+          toast.error(
+            error.response?.data?.message ||
+              'Failed to remove yearly audit register.'
+          );
+        }
+      },
+    });
   };
 
   return (
@@ -309,6 +316,19 @@ const YearlyAudits = () => {
           </form>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

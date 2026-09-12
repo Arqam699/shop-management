@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
+import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
 import {
   FileText,
@@ -17,6 +20,7 @@ const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Universal Date Filter states
   // Today, Week, Month, Custom, All-Time
@@ -51,39 +55,38 @@ const Invoices = () => {
     fetchInvoices();
   }, []);
 
-  const handleDeleteInvoice = async (id, saleId) => {
-    // Frontend protection
+  const handleDeleteInvoice = (id, saleId) => {
     if (!isDeletionUnlocked) {
-      alert(
+      toast.error(
         'Deletion Mode is disabled. Enable it from Settings first.'
       );
       return;
     }
 
-    if (
-      window.confirm(
-        `WARNING: Are you sure you want to cancel and permanently delete Invoice "${saleId}"?\n\nThis will delete the sale, wipe out any associated installment schedules, and automatically RESTORE the stock quantity back to your inventory.`
-      )
-    ) {
-      try {
-        await api.delete(`/api/sales/${id}`);
+    setConfirmConfig({
+      title: 'Cancel and Delete Invoice',
+      message: `WARNING: Are you sure you want to cancel and permanently delete Invoice "${saleId}"?\n\nThis will delete the sale, wipe out any associated installment schedules, and automatically RESTORE the stock quantity back to your inventory.`,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/api/sales/${id}`);
 
-        setInvoices((currentInvoices) =>
-          currentInvoices.filter(
-            (inv) => inv._id !== id
-          )
-        );
+          setInvoices((currentInvoices) =>
+            currentInvoices.filter(
+              (inv) => inv._id !== id
+            )
+          );
 
-        alert(
-          `Invoice ${saleId} deleted successfully and stock restored!`
-        );
-      } catch (error) {
-        alert(
-          error.response?.data?.message ||
-            'Failed to delete sale invoice.'
-        );
-      }
-    }
+          toast.success(
+            `Invoice ${saleId} deleted successfully and stock restored!`
+          );
+        } catch (error) {
+          toast.error(
+            error.response?.data?.message ||
+              'Failed to delete sale invoice.'
+          );
+        }
+      },
+    });
   };
 
   // Helper to filter dates
@@ -96,10 +99,24 @@ const Invoices = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
     if (filterPreset === 'all') return true;
 
     if (filterPreset === 'today') {
       return date.getTime() === today.getTime();
+    }
+
+    if (filterPreset === 'yesterday') {
+      return date.getTime() === yesterday.getTime();
+    }
+
+    if (filterPreset === 'dayBeforeYesterday') {
+      return date.getTime() === dayBeforeYesterday.getTime();
     }
 
     if (filterPreset === 'week') {
@@ -147,10 +164,16 @@ const Invoices = () => {
     const prodName =
       inv.product?.name?.toLowerCase() || '';
 
+    const custCnic = inv.customer?.cnic || inv.customer?.CNIC || '';
+
+    const custMobile = inv.customer?.mobileNumber || inv.customer?.mobile || '';
+
     const term = searchTerm.toLowerCase();
 
     const matchesSearch =
       custName.includes(term) ||
+      matchesMobileSearch(custMobile, term) ||
+      matchesCnicSearch(custCnic, term) ||
       sId.includes(term) ||
       prodName.includes(term);
 
@@ -183,10 +206,10 @@ const Invoices = () => {
 
           <input
             type="text"
-            placeholder="Search invoice files by Invoice / Bill Number (e.g. BILL-101), Customer Name, or Product..."
+            placeholder="Search invoices by invoice/bill number, customer name, mobile number, CNIC, or product..."
             value={searchTerm}
             onChange={(e) =>
-              setSearchTerm(e.target.value)
+              setSearchTerm(formatCnicSearchInput(e.target.value))
             }
             className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           />
@@ -197,12 +220,20 @@ const Invoices = () => {
           <div className="flex flex-wrap gap-1.5">
             {[
               {
-                id: 'all',
-                label: 'All-Time',
-              },
-              {
                 id: 'today',
                 label: 'Invoiced Today',
+              },
+              {
+                id: 'yesterday',
+                label: 'Invoiced Yesterday',
+              },
+              {
+                id: 'dayBeforeYesterday',
+                label: 'Invoiced Day Before Yesterday',
+              },
+              {
+                id: 'all',
+                label: 'All-Time',
               },
               {
                 id: 'week',
@@ -432,6 +463,19 @@ const Invoices = () => {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

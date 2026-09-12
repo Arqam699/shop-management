@@ -37,6 +37,7 @@ const expenseSchema = new mongoose.Schema(
 
     expenseDate: { type: Date, default: Date.now }
   },
+  
   { timestamps: true }
 );
 

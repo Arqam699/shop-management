@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
+
 import {
   Plus,
   Search,
@@ -24,6 +27,16 @@ const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+
+  // =====================================================
+  // DELETE MODAL STATE
+  // =====================================================
+
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    productId: null,
+    productName: '',
+  });
 
   // Date Filter states
   const [filterPreset, setFilterPreset] = useState('all');
@@ -62,32 +75,36 @@ const Inventory = () => {
     fetchProducts();
   }, []);
 
-  const handleDelete = async (id, name) => {
-    // Frontend protection
+  const triggerDeleteConfirmation = (id, name) => {
     if (!isDeletionUnlocked) {
-      alert(
-        'Deletion Mode is disabled. Enable it from Settings first.'
-      );
+      toast.error('Deletion Mode is disabled. Enable it from Settings first.');
       return;
     }
 
-    if (
-      window.confirm(
-        `Are you sure you want to delete "${name}"?`
-      )
-    ) {
-      try {
-        await api.delete(`/api/products/${id}`);
+    setDeleteModal({
+      isOpen: true,
+      productId: id,
+      productName: name,
+    });
+  };
 
-        setProducts((currentProducts) =>
-          currentProducts.filter((p) => p._id !== id)
-        );
-      } catch (error) {
-        alert(
-          error.response?.data?.message ||
-            'Failed to delete product.'
-        );
-      }
+  const confirmDelete = async () => {
+    const { productId } = deleteModal;
+
+    try {
+      await api.delete(`/api/products/${productId}`);
+
+      setProducts((currentProducts) =>
+        currentProducts.filter((p) => p._id !== productId)
+      );
+
+      toast.success(`Product ${deleteModal.productName} deleted successfully.`);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || 'Failed to delete product.'
+      );
+    } finally {
+      setDeleteModal({ isOpen: false, productId: null, productName: '' });
     }
   };
 
@@ -100,10 +117,24 @@ const Inventory = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
     if (filterPreset === 'all') return true;
 
     if (filterPreset === 'today') {
       return date.getTime() === today.getTime();
+    }
+
+    if (filterPreset === 'yesterday') {
+      return date.getTime() === yesterday.getTime();
+    }
+
+    if (filterPreset === 'dayBeforeYesterday') {
+      return date.getTime() === dayBeforeYesterday.getTime();
     }
 
     if (filterPreset === 'week') {
@@ -176,7 +207,7 @@ const Inventory = () => {
 
   const exportToCSV = () => {
     if (filteredProducts.length === 0) {
-      return alert(
+      return toast.error(
         'No inventory data to export.'
       );
     }
@@ -234,7 +265,8 @@ const Inventory = () => {
   ).length;
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -394,12 +426,20 @@ const Inventory = () => {
           <div className="flex flex-wrap gap-1.5">
             {[
               {
-                id: 'all',
-                label: 'All-Time'
-              },
-              {
                 id: 'today',
                 label: 'Added Today'
+              },
+              {
+                id: 'yesterday',
+                label: 'Added Yesterday'
+              },
+              {
+                id: 'dayBeforeYesterday',
+                label: 'Added Day Before Yesterday'
+              },
+              {
+                id: 'all',
+                label: 'All-Time'
               },
               {
                 id: 'week',
@@ -585,7 +625,7 @@ const Inventory = () => {
                           <button
                             type="button"
                             onClick={() =>
-                              handleDelete(
+                              triggerDeleteConfirmation(
                                 p._id,
                                 p.name
                               )
@@ -614,6 +654,14 @@ const Inventory = () => {
         )}
       </div>
     </div>
+    <ConfirmModal
+      isOpen={deleteModal.isOpen}
+      onClose={() => setDeleteModal({ ...deleteModal, isOpen: false })}
+      onConfirm={confirmDelete}
+      title="Delete Product"
+      message={`Are you sure you want to delete "${deleteModal.productName}"? This action cannot be undone.`}
+    />
+    </>
   );
 };
 

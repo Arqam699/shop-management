@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import { Wallet, Search, PlusCircle, Trash2, Calendar, FileSpreadsheet, X, AlertCircle } from 'lucide-react';
@@ -14,6 +16,7 @@ const Expenses = () => {
   const [filterPreset, setFilterPreset] = useState('all'); // 'today', 'week', 'month', 'custom', 'all'
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Add Expense Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -46,19 +49,23 @@ const Expenses = () => {
     fetchExpenses();
   }, []);
 
-  const handleDeleteExpense = async (id, expenseId, amount) => {
-    if (window.confirm(`Are you sure you want to permanently delete Expense Voucher "${expenseId}" worth ${settings.currency} ${amount.toLocaleString()}?`)) {
-      try {
-        const response = await api.delete(`/api/expenses/${id}`);
+  const handleDeleteExpense = (id, expenseId, amount) => {
+    setConfirmConfig({
+      title: 'Delete Expense Voucher',
+      message: `Are you sure you want to permanently delete Expense Voucher "${expenseId}" worth ${settings.currency} ${amount.toLocaleString()}?`,
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(`/api/expenses/${id}`);
 
-        if (response.data && response.data.success) {
-          setExpenses(expenses.filter(e => e._id !== id));
-          alert(`Expense Voucher ${expenseId} removed successfully!`);
+          if (response.data && response.data.success) {
+            setExpenses(expenses.filter(e => e._id !== id));
+            toast.success(`Expense Voucher ${expenseId} removed successfully!`);
+          }
+        } catch (error) {
+          toast.error(error.response?.data?.message || 'Failed to remove expense record.');
         }
-      } catch (error) {
-        alert(error.response?.data?.message || 'Failed to remove expense record.');
-      }
-    }
+      },
+    });
   };
 
   const handleInputChange = (e) => {
@@ -83,7 +90,7 @@ const Expenses = () => {
       const response = await api.post('/api/expenses', formData);
 
       if (response.data && response.data.success) {
-        alert('Expense Voucher registered successfully!');
+        toast.success('Expense Voucher registered successfully!');
         setShowAddModal(false);
         setFormData({
           title: '',
@@ -110,10 +117,24 @@ const Expenses = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
     if (filterPreset === 'all') return true;
 
     if (filterPreset === 'today') {
       return date.getTime() === today.getTime();
+    }
+
+    if (filterPreset === 'yesterday') {
+      return date.getTime() === yesterday.getTime();
+    }
+
+    if (filterPreset === 'dayBeforeYesterday') {
+      return date.getTime() === dayBeforeYesterday.getTime();
     }
 
     if (filterPreset === 'week') {
@@ -163,7 +184,7 @@ const Expenses = () => {
 
   const handleDownloadCSV = () => {
     if (filteredExpenses.length === 0) {
-      return alert('No expense logs found for this selected date range.');
+      return toast.error('No expense logs found for this selected date range.');
     }
 
     const headers = ['Voucher ID,Expense Title,Category,Amount,Date & Time,Notes'];
@@ -262,8 +283,10 @@ const Expenses = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
           <div className="flex flex-wrap gap-1.5">
             {[
-              { id: 'all', label: 'All-Time' },
               { id: 'today', label: 'Today (Daily)' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'dayBeforeYesterday', label: 'Day Before Yesterday' },
+              { id: 'all', label: 'All-Time' },
               { id: 'week', label: 'Weekly (Last 7 Days)' },
               { id: 'month', label: 'Monthly (This Month)' },
               { id: 'custom', label: 'Custom Range' }
@@ -526,6 +549,19 @@ const Expenses = () => {
           </form>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

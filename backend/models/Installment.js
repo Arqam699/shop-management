@@ -2,9 +2,6 @@ const mongoose = require('mongoose');
 
 const installmentSchema = new mongoose.Schema(
   {
-    // ============================================================
-    // SAAS SHOP LINK
-    // ============================================================
     shopId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Shop',
@@ -15,37 +12,47 @@ const installmentSchema = new mongoose.Schema(
     installmentPlan: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'InstallmentPlan',
-      required: true
+      required: true,
+      index: true,
     },
 
     installmentNumber: {
       type: Number,
-      required: true
+      required: true,
     },
 
+    // Original scheduled amount.
+    // Payment hone ke baad ye value change NAHI hogi.
     amount: {
       type: Number,
-      required: true
+      required: true,
+      min: 0,
     },
 
+    // Same as original scheduled amount.
     originalAmount: {
       type: Number,
-      default: 0
-    }, // Stores the original allocated amount before carry-forward
-
-    paidAmount: {
-      type: Number,
-      default: 0
+      default: 0,
+      min: 0,
     },
 
+    // Actual amount paid against this installment.
+    paidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // amount - paidAmount
     remainingAmount: {
       type: Number,
-      required: true
+      required: true,
+      min: 0,
     },
 
     dueDate: {
       type: Date,
-      required: true
+      required: true,
     },
 
     status: {
@@ -54,19 +61,36 @@ const installmentSchema = new mongoose.Schema(
         'Pending',
         'Partially Paid',
         'Paid',
-        'Overdue'
+        'Overdue',
+        'Settled'
       ],
-      default: 'Pending'
+      default: 'Pending',
     },
 
     paidDate: {
-      type: Date
-    }
+      type: Date,
+    },
+
+    // Used when the whole plan is settled by a payment
+    // that covers future scheduled installments.
+    settledDate: {
+      type: Date,
+    },
+
+    // Indicates that this installment was closed because
+    // another payment settled the remaining plan balance.
+    isSettledByPlanPayment: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  'Installment',
-  installmentSchema
-);
+installmentSchema.index({
+  shopId: 1,
+  installmentPlan: 1,
+  installmentNumber: 1,
+});
+
+module.exports = mongoose.model('Installment', installmentSchema);

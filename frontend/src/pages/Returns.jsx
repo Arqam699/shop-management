@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
@@ -15,6 +17,7 @@ const Returns = () => {
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Settings-based Universal Deletion Mode
   const isDeletionUnlocked =
@@ -46,49 +49,48 @@ const Returns = () => {
     fetchReturns();
   }, []);
 
-  const handleDeleteReturn = async (
+  const handleDeleteReturn = (
     id,
     returnId
   ) => {
-    // Frontend protection
     if (!isDeletionUnlocked) {
-      alert(
+      toast.error(
         'Deletion Mode is disabled. Enable it from Settings first.'
       );
       return;
     }
 
-    if (
-      window.confirm(
-        `Are you sure you want to permanently delete return record "${returnId}" from database?`
-      )
-    ) {
-      try {
-        const response = await api.delete(
-          `/api/returns/${id}`
-        );
-
-        if (
-          response.data &&
-          response.data.success
-        ) {
-          setReturns((currentReturns) =>
-            currentReturns.filter(
-              (r) => r._id !== id
-            )
+    setConfirmConfig({
+      title: 'Delete Return Record',
+      message: `Are you sure you want to permanently delete return record "${returnId}" from database?`,
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(
+            `/api/returns/${id}`
           );
 
-          alert(
-            `Return record ${returnId} removed successfully!`
+          if (
+            response.data &&
+            response.data.success
+          ) {
+            setReturns((currentReturns) =>
+              currentReturns.filter(
+                (r) => r._id !== id
+              )
+            );
+
+            toast.success(
+              `Return record ${returnId} removed successfully!`
+            );
+          }
+        } catch (error) {
+          toast.error(
+            error.response?.data?.message ||
+              'Failed to delete return record.'
           );
         }
-      } catch (error) {
-        alert(
-          error.response?.data?.message ||
-            'Failed to delete return record.'
-        );
-      }
-    }
+      },
+    });
   };
 
   const filteredReturns = returns.filter(
@@ -286,6 +288,19 @@ const Returns = () => {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!confirmConfig}
+        onClose={() => setConfirmConfig(null)}
+        onConfirm={async () => {
+          if (confirmConfig?.onConfirm) {
+            await confirmConfig.onConfirm();
+          }
+          setConfirmConfig(null);
+        }}
+        title={confirmConfig?.title || 'Confirm Action'}
+        message={confirmConfig?.message || 'Are you sure you want to proceed?'}
+      />
     </div>
   );
 };

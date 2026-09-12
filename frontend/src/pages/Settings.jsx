@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import {
@@ -152,7 +153,7 @@ const SettingsPage = () => {
           setFormData(response.data.data);
         }
 
-        alert(
+        toast.success(
           pendingAction === 'enable'
             ? 'IDENTITY VERIFIED! Deletion Mode is now ON for 30 minutes.'
             : 'IDENTITY VERIFIED! Deletion Mode has been turned OFF.'

@@ -1,4 +1,3 @@
-
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Payment = require('../models/Payment');
@@ -699,8 +698,638 @@ const getDashboardStats = async (
 
 
 // ============================================================
+// GET MONTHLY INDEX RECORD
+//
+// @desc    Get all unpaid/partially-paid installments due
+//          in a selected month for the current shop
+//
+// @route   GET /api/reports/index-record?month=2026-09
+// @access  Private
+// ============================================================
+const getIndexRecord = async (
+  req,
+  res
+) => {
+  try {
+
+    // ========================================================
+    // CURRENT SHOP
+    // ========================================================
+    const shopId =
+      req.shopId;
+
+
+    // ========================================================
+    // MONTH
+    // ========================================================
+    //
+    // Expected:
+    // ?month=2026-09
+    //
+    const month =
+      String(
+        req.query.month || ''
+      ).trim();
+
+
+    // --------------------------------------------------------
+    // Validate month format
+    // --------------------------------------------------------
+    if (
+      !/^\d{4}-\d{2}$/.test(
+        month
+      )
+    ) {
+
+      return res.status(400).json({
+        success: false,
+
+        message:
+          'Invalid month. Expected format YYYY-MM.',
+      });
+    }
+
+
+    const [
+      yearString,
+      monthString,
+    ] =
+      month.split('-');
+
+
+    const year =
+      Number(
+        yearString
+      );
+
+    const monthNumber =
+      Number(
+        monthString
+      );
+
+
+    // --------------------------------------------------------
+    // Validate actual month
+    // --------------------------------------------------------
+    if (
+      monthNumber < 1 ||
+      monthNumber > 12
+    ) {
+
+      return res.status(400).json({
+        success: false,
+
+        message:
+          'Invalid month.',
+      });
+    }
+
+
+    // ========================================================
+    // MONTH DATE RANGE
+    // ========================================================
+    //
+    // Using UTC boundaries makes the query independent from
+    // the server's timezone.
+    //
+    const startDate =
+      new Date(
+        Date.UTC(
+          year,
+          monthNumber - 1,
+          1,
+          0,
+          0,
+          0,
+          0
+        )
+      );
+
+
+    const endDate =
+      new Date(
+        Date.UTC(
+          year,
+          monthNumber,
+          1,
+          0,
+          0,
+          0,
+          0
+        )
+      );
+
+
+    // ========================================================
+    // GET INSTALLMENTS FOR SELECTED MONTH
+    // ========================================================
+    //
+    // We intentionally use the Installment collection here.
+    //
+    // InstallmentPlan does NOT contain the actual due-date
+    // records. Installment does.
+    //
+    const installments =
+      await Installment.find({
+
+        shopId,
+
+        dueDate: {
+          $gte:
+            startDate,
+
+          $lt:
+            endDate,
+        },
+
+        // ----------------------------------------------------
+        // Index Record is for installments still requiring
+        // collection.
+        //
+        // Paid / Settled installments are not shown.
+        // ----------------------------------------------------
+        status: {
+          $nin: [
+            'Paid',
+            'Settled',
+          ],
+        },
+      })
+        .populate({
+          path:
+            'installmentPlan',
+
+          populate: [
+            {
+              path:
+                'customer',
+            },
+            {
+              path:
+                'product',
+            },
+            {
+              path: 'sale',
+              populate: [
+                { path: 'customer' },
+                { path: 'product' },
+              ],
+            },
+          ],
+        })
+        .sort({
+          dueDate: 1,
+          installmentNumber: 1,
+        });
+
+
+    // ========================================================
+    // NO RECORDS
+    // ========================================================
+    if (
+      installments.length === 0
+    ) {
+
+      return res.status(200).json({
+
+        success: true,
+
+        data: {
+
+          month,
+
+          totalRecords: 0,
+
+          totalInstallmentAmount: 0,
+
+          rows: [],
+        },
+      });
+    }
+
+
+    // ========================================================
+    // GET ALL INSTALLMENTS FOR THESE PLANS
+    //
+    // Needed for calculating:
+    //
+    // Previous Paid Amount
+    //
+    // Example:
+    //
+    // Installment 1:
+    // previous paid = down payment (if applicable)
+    //
+    // Installment 2:
+    // previous paid = down payment + installment 1 paid
+    //
+    // Installment 3:
+    // previous paid = down payment + installment 1 + 2
+    // ========================================================
+
+    const planIds = [
+      ...new Set(
+        installments
+          .map(
+            installment =>
+              installment.installmentPlan?._id
+                ?.toString()
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+
+    const allPlanInstallments =
+      await Installment.find({
+
+        shopId,
+
+        installmentPlan: {
+          $in:
+            planIds,
+        },
+      })
+        .sort({
+          installmentNumber: 1,
+        });
+
+
+    // ========================================================
+    // GROUP INSTALLMENTS BY PLAN
+    // ========================================================
+
+    const installmentsByPlan =
+      new Map();
+
+
+    for (
+      const installment
+      of allPlanInstallments
+    ) {
+
+      const planId =
+        installment.installmentPlan
+          ?.toString();
+
+
+      if (
+        !planId
+      ) {
+        continue;
+      }
+
+
+      if (
+        !installmentsByPlan.has(
+          planId
+        )
+      ) {
+
+        installmentsByPlan.set(
+          planId,
+          []
+        );
+      }
+
+
+      installmentsByPlan
+        .get(planId)
+        .push(
+          installment
+        );
+    }
+
+
+    // ========================================================
+    // BUILD INDEX RECORD ROWS
+    // ========================================================
+
+    const rows =
+      installments.map(
+        installment => {
+
+          const plan =
+            installment.installmentPlan;
+
+
+          const customer =
+            plan?.customer ||
+            plan?.sale?.customer;
+
+
+          const product =
+            plan?.product ||
+            plan?.sale?.product;
+
+
+          const planId =
+            plan?._id
+              ?.toString();
+
+
+          const planInstallments =
+            installmentsByPlan.get(
+              planId
+            ) || [];
+
+
+          // ==================================================
+          // PREVIOUS PAID AMOUNT
+          // ==================================================
+          //
+          // Only payments against installments BEFORE the
+          // current installment are counted.
+          //
+          let previousPaidAmount =
+            0;
+
+
+          for (
+            const previousInstallment
+            of planInstallments
+          ) {
+
+            if (
+              previousInstallment.installmentNumber <
+              installment.installmentNumber
+            ) {
+
+              previousPaidAmount +=
+                Number(
+                  previousInstallment.paidAmount ||
+                  0
+                );
+            }
+          }
+
+
+          // ==================================================
+          // DOWN PAYMENT
+          // ==================================================
+          //
+          // If down payment is NOT treated as first
+          // installment, it is still an amount already paid
+          // before the scheduled installments.
+          //
+          // Therefore it belongs in Previous Paid Amount.
+          //
+          if (
+            plan &&
+            !plan.treatDownPaymentAsFirstInstallment
+          ) {
+
+            previousPaidAmount +=
+              Number(
+                plan.downPayment ||
+                0
+              );
+          }
+
+
+          // ==================================================
+          // TOTAL INSTALLMENTS
+          // ==================================================
+          //
+          // duration = actual scheduled installments.
+          //
+          // Fallback to invoiceSnapshot.duration for older
+          // records where needed.
+          //
+          const totalInstallments =
+            Number(
+              plan?.selectedDuration ||
+              plan?.duration ||
+              plan?.invoiceSnapshot?.selectedDuration ||
+              plan?.invoiceSnapshot?.duration ||
+              0
+            );
+
+
+          // Count only installments that have been completely paid.
+          // The selected duration never changes; this is only the progress
+          // value shown as, for example, 2 / 11.
+          const paidInstallments =
+            planInstallments.filter(
+              planInstallment => {
+                const amount =
+                  Number(
+                    planInstallment.amount ||
+                    planInstallment.originalAmount ||
+                    0
+                  );
+
+                const paidAmount =
+                  Number(
+                    planInstallment.paidAmount ||
+                    0
+                  );
+
+                return (
+                  planInstallment.status === 'Paid' ||
+                  planInstallment.status === 'Settled' ||
+                  (amount > 0 && paidAmount >= amount)
+                );
+              }
+            ).length;
+
+
+          // ==================================================
+          // CUSTOMER FIELDS
+          // ==================================================
+
+          const customerName =
+            customer?.fullName ||
+            customer?.name ||
+            'N/A';
+
+
+          const mobileNumber =
+            customer?.mobileNumber ||
+            customer?.mobile ||
+            customer?.phone ||
+            customer?.phoneNumber ||
+            customer?.contactNumber ||
+            plan?.sale?.customer?.mobileNumber ||
+            plan?.sale?.customer?.mobile ||
+            plan?.sale?.customer?.phone ||
+            'N/A';
+
+
+          const cnic =
+            customer?.cnic ||
+            customer?.CNIC ||
+            customer?.cnicNumber ||
+            customer?.nationalId ||
+            plan?.sale?.customer?.cnic ||
+            plan?.sale?.customer?.CNIC ||
+            'N/A';
+
+
+          // ==================================================
+          // PRODUCT FIELDS
+          // ==================================================
+
+          const productName =
+            product?.name ||
+            product?.productName ||
+            plan?.invoiceSnapshot?.productName ||
+            'N/A';
+
+
+          const model =
+            product?.model ||
+            product?.productModel ||
+            product?.modelNumber ||
+            plan?.invoiceSnapshot?.model ||
+            'N/A';
+
+
+          // ==================================================
+          // INSTALLMENT PRICE
+          // ==================================================
+
+          const installmentPrice =
+            Number(
+              installment.amount ||
+              installment.originalAmount ||
+              0
+            );
+
+
+          // ==================================================
+          // RETURN ROW
+          // ==================================================
+
+          return {
+
+            id:
+              installment._id?.toString(),
+
+            customerName,
+
+            mobile:
+              mobileNumber,
+
+            mobileNumber,
+
+            cnic,
+
+            productName,
+
+            model,
+
+            installmentPrice,
+
+            previousPaidAmount,
+
+            paidInstallments,
+
+            installmentNumber:
+              Number(
+                installment.installmentNumber ||
+                0
+              ),
+
+            totalInstallments,
+
+            installmentLabel:
+              `${Number(
+                installment.installmentNumber ||
+                0
+              )} / ${totalInstallments}`,
+
+            dueDate:
+              installment.dueDate,
+
+            paidAmount:
+              Number(
+                installment.paidAmount ||
+                0
+              ),
+
+            remainingAmount:
+              Number(
+                installment.remainingAmount ||
+                0
+              ),
+
+            status:
+              installment.status,
+          };
+        }
+      );
+
+
+    // ========================================================
+    // TOTAL INSTALLMENT VALUE
+    // ========================================================
+
+    const totalInstallmentAmount =
+      rows.reduce(
+        (
+          sum,
+          row
+        ) =>
+          sum +
+          (
+            Number(
+              row.installmentPrice ||
+              0
+            )
+          ),
+        0
+      );
+
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
+    return res.status(200).json({
+
+      success: true,
+
+      data: {
+
+        month,
+
+        totalRecords:
+          rows.length,
+
+        totalInstallmentAmount,
+
+        rows,
+      },
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Index Record Error:',
+      error
+    );
+
+    return res.status(500).json({
+
+      success: false,
+
+      message:
+        'Failed to load monthly index record',
+
+      error:
+        error.message,
+    });
+  }
+};
+
+
+// ============================================================
 // EXPORTS
 // ============================================================
 module.exports = {
+
   getDashboardStats,
+
+  getIndexRecord,
 };

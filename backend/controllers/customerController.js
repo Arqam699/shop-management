@@ -1,9 +1,19 @@
 
 const Customer = require('../models/Customer');
 
-// Simple Customer ID Generator ('01', '02', '03' ... '10', '11'...)
+
+// ==========================================
+// CUSTOMER ID GENERATOR
+// ==========================================
+
+// Simple Customer ID Generator
+// 01, 02, 03 ... 10, 11 ...
+//
+// Customer IDs are generated separately
+// for each shop.
 const generateCustomerID = async (shopId) => {
   try {
+
     const customers = await Customer.find(
       { shopId },
       'customerId'
@@ -12,7 +22,9 @@ const generateCustomerID = async (shopId) => {
     let maxNum = 0;
 
     customers.forEach(c => {
+
       if (c.customerId) {
+
         const num = parseInt(
           c.customerId.replace(/[^0-9]/g, ''),
           10
@@ -21,58 +33,83 @@ const generateCustomerID = async (shopId) => {
         if (!isNaN(num) && num > maxNum) {
           maxNum = num;
         }
+
       }
+
     });
 
     return String(maxNum + 1).padStart(2, '0');
+
   } catch (err) {
+
     return '01';
+
   }
 };
 
+
+// ==========================================
+// GET ALL CUSTOMERS
+// ==========================================
 
 const getCustomers = async (req, res) => {
   try {
 
     const { search } = req.query;
 
-    // Only get customers belonging to logged-in shop
+
+    // Only customers belonging to
+    // currently logged-in shop.
     let query = {
       shopId: req.shopId
     };
 
+
+    // ======================================
+    // SEARCH CUSTOMERS
+    // ======================================
+
     if (search) {
+
       query.$or = [
+
         {
           fullName: {
             $regex: search,
             $options: 'i'
           }
         },
+
         {
           customerId: {
             $regex: search,
             $options: 'i'
           }
         },
+
         {
           mobileNumber: {
             $regex: search,
             $options: 'i'
           }
         },
+
         {
           cnic: {
             $regex: search,
             $options: 'i'
           }
         }
+
       ];
+
     }
+
 
     const customers = await Customer
       .find(query)
       .sort({ createdAt: 1 });
+
 
     return res.status(200).json({
       success: true,
@@ -91,28 +128,40 @@ const getCustomers = async (req, res) => {
 };
 
 
+// ==========================================
+// GET CUSTOMER BY ID
+// ==========================================
+
 const getCustomerById = async (req, res) => {
   try {
 
-    // Customer must belong to logged-in shop
+    // Customer must belong to
+    // currently logged-in shop.
     const customer = await Customer.findOne({
       _id: req.params.id,
       shopId: req.shopId
     });
 
+
     if (!customer) {
+
       return res.status(404).json({
         success: false,
         message: 'Customer record not found'
       });
+
     }
+
 
     const Sale = require('../models/Sale');
     const InstallmentPlan = require('../models/InstallmentPlan');
     const Installment = require('../models/Installment');
 
 
-    // Only get sales belonging to current shop
+    // ======================================
+    // SALES
+    // ======================================
+
     const sales = await Sale.find({
       customer: customer._id,
       shopId: req.shopId
@@ -121,7 +170,10 @@ const getCustomerById = async (req, res) => {
       .sort({ createdAt: 1 });
 
 
-    // Only get installment plans belonging to current shop
+    // ======================================
+    // INSTALLMENT PLANS
+    // ======================================
+
     const plans = await InstallmentPlan.find({
       customer: customer._id,
       shopId: req.shopId
@@ -130,11 +182,19 @@ const getCustomerById = async (req, res) => {
       .sort({ createdAt: 1 });
 
 
+    // ======================================
+    // TOTAL PURCHASED
+    // ======================================
+
     const totalPurchased = sales.reduce(
       (sum, s) => sum + s.finalTotal,
       0
     );
 
+
+    // ======================================
+    // OUTSTANDING BALANCE
+    // ======================================
 
     const outstandingBalance = plans.reduce(
       (sum, p) => sum + p.remainingBalance,
@@ -142,17 +202,26 @@ const getCustomerById = async (req, res) => {
     );
 
 
+    // ======================================
+    // OVERDUE CHECK
+    // ======================================
+
     const hasOverdue = plans.some(
       p => p.status === 'Overdue'
     );
 
+
+    // ======================================
+    // INSTALLMENT COUNTS
+    // ======================================
 
     const plansWithCount = [];
 
 
     for (const plan of plans) {
 
-      // Only count installments belonging to current shop
+      // Count installments belonging
+      // to current shop.
       const totalInstallmentsCount =
         await Installment.countDocuments({
           installmentPlan: plan._id,
@@ -160,6 +229,7 @@ const getCustomerById = async (req, res) => {
         });
 
 
+      // Count unpaid installments.
       const unpaidCount =
         await Installment.countDocuments({
           installmentPlan: plan._id,
@@ -177,16 +247,28 @@ const getCustomerById = async (req, res) => {
     }
 
 
+    // ======================================
+    // RESPONSE
+    // ======================================
+
     return res.status(200).json({
+
       success: true,
+
       data: {
         ...customer.toObject(),
+
         sales,
+
         installmentPlans: plansWithCount,
+
         totalPurchased,
+
         outstandingBalance,
+
         hasOverdue
       }
+
     });
 
   } catch (error) {
@@ -200,13 +282,181 @@ const getCustomerById = async (req, res) => {
 };
 
 
+// ==========================================
+// GET FINGERPRINT TEMPLATES
+// ==========================================
+//
+// Returns only fingerprint templates.
+//
+// 1. Customer
+// 2. Guarantor 1
+// 3. Guarantor 2
+//
+// Used for fingerprint matching.
+//
+// ==========================================
+
+const getFingerprintTemplates = async (req, res) => {
+  try {
+
+    const customers = await Customer.find(
+      {
+        shopId: req.shopId,
+
+        $or: [
+
+          // Customer fingerprint
+          {
+            fingerprintFmd: {
+              $exists: true,
+              $nin: [null, '']
+            }
+          },
+
+          // Guarantor 1 fingerprint
+          {
+            'guarantor1.fingerprintFmd': {
+              $exists: true,
+              $nin: [null, '']
+            }
+          },
+
+          // Guarantor 2 fingerprint
+          {
+            'guarantor2.fingerprintFmd': {
+              $exists: true,
+              $nin: [null, '']
+            }
+          }
+
+        ]
+      },
+
+      // Only fetch required fields
+      {
+        _id: 1,
+
+        fingerprintFmd: 1,
+
+        'guarantor1.fingerprintFmd': 1,
+
+        'guarantor2.fingerprintFmd': 1
+      }
+    );
+
+
+    // ======================================
+    // CREATE FLAT TEMPLATE ARRAY
+    // ======================================
+
+    const templates = [];
+
+
+    customers.forEach(customer => {
+
+      // ====================================
+      // CUSTOMER FINGERPRINT
+      // ====================================
+
+      if (customer.fingerprintFmd) {
+
+        templates.push({
+          id: customer._id.toString(),
+          type: 'customer',
+          fmd: customer.fingerprintFmd
+        });
+
+      }
+
+
+      // ====================================
+      // GUARANTOR 1 FINGERPRINT
+      // ====================================
+
+      if (
+        customer.guarantor1 &&
+        customer.guarantor1.fingerprintFmd
+      ) {
+
+        templates.push({
+          id: customer._id.toString(),
+          type: 'guarantor1',
+          fmd: customer.guarantor1.fingerprintFmd
+        });
+
+      }
+
+
+      // ====================================
+      // GUARANTOR 2 FINGERPRINT
+      // ====================================
+
+      if (
+        customer.guarantor2 &&
+        customer.guarantor2.fingerprintFmd
+      ) {
+
+        templates.push({
+          id: customer._id.toString(),
+          type: 'guarantor2',
+          fmd: customer.guarantor2.fingerprintFmd
+        });
+
+      }
+
+    });
+
+
+    // ======================================
+    // RESPONSE
+    // ======================================
+
+    return res.status(200).json({
+
+      success: true,
+
+      templates
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Get fingerprint templates error:',
+      error
+    );
+
+
+    return res.status(500).json({
+
+      success: false,
+
+      message:
+        'Failed to fetch fingerprint templates',
+
+      error: error.message
+
+    });
+
+  }
+};
+
+
+// ==========================================
+// CREATE CUSTOMER
+// ==========================================
+
 const createCustomer = async (req, res) => {
   try {
 
     const { cnic } = req.body;
 
 
-    // CNIC check is limited to current shop
+    // ======================================
+    // CHECK DUPLICATE CNIC
+    // ======================================
+
+    // CNIC check is limited to current shop.
     const existingCnic = await Customer.findOne({
       cnic,
       shopId: req.shopId
@@ -214,27 +464,55 @@ const createCustomer = async (req, res) => {
 
 
     if (existingCnic) {
+
       return res.status(400).json({
         success: false,
+
         message:
           'A customer with this CNIC number is already registered'
       });
+
     }
 
 
-    // Generate customer ID separately for each shop
+    // ======================================
+    // GENERATE CUSTOMER ID
+    // ======================================
+
     const customerId =
       await generateCustomerID(req.shopId);
 
 
+    // ======================================
+    // CREATE CUSTOMER
+    // ======================================
+
     const customer = new Customer({
+
+      // All frontend fields are accepted
+      // according to Customer schema.
+      //
+      // This includes:
+      //
+      // fingerprintFmd
+      // fingerprintImage
+      // fingerprintCapturedAt
+      //
+      // liveImage
+      // liveImageCapturedAt
+      //
+      // guarantor1
+      // guarantor2
 
       ...req.body,
 
-      // Never trust shopId from frontend
-      // Always use authenticated shop
+
+      // NEVER trust shopId coming
+      // from frontend.
       shopId: req.shopId,
 
+
+      // Generated by backend.
       customerId
 
     });
@@ -243,28 +521,54 @@ const createCustomer = async (req, res) => {
     await customer.save();
 
 
+    // ======================================
+    // RESPONSE
+    // ======================================
+
     return res.status(201).json({
+
       success: true,
-      message: 'Customer registered successfully',
+
+      message:
+        'Customer registered successfully',
+
       data: customer
+
     });
 
   } catch (error) {
 
+    console.error(
+      'Create customer error:',
+      error
+    );
+
     return res.status(400).json({
+
       success: false,
+
       message:
         error.message || 'Registration failed'
+
     });
 
   }
 };
 
 
+// ==========================================
+// UPDATE CUSTOMER
+// ==========================================
+
 const updateCustomer = async (req, res) => {
   try {
 
-    // Only update customer belonging to current shop
+    // ======================================
+    // FIND CUSTOMER
+    // ======================================
+
+    // Only update customer belonging
+    // to current shop.
     const customer = await Customer.findOne({
       _id: req.params.id,
       shopId: req.shopId
@@ -272,12 +576,18 @@ const updateCustomer = async (req, res) => {
 
 
     if (!customer) {
+
       return res.status(404).json({
         success: false,
         message: 'Customer not found'
       });
+
     }
 
+
+    // ======================================
+    // DUPLICATE CNIC CHECK
+    // ======================================
 
     if (
       req.body.cnic &&
@@ -286,63 +596,130 @@ const updateCustomer = async (req, res) => {
 
       const duplicateCnic =
         await Customer.findOne({
+
           cnic: req.body.cnic,
+
           shopId: req.shopId,
-          _id: { $ne: customer._id }
+
+          _id: {
+            $ne: customer._id
+          }
+
         });
 
 
       if (duplicateCnic) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'This CNIC is already assigned to another customer'
+
         });
+
       }
 
     }
 
 
-    Object.assign(customer, req.body);
+    // ======================================
+    // UPDATE CUSTOMER
+    // ======================================
+
+    // This also updates:
+    //
+    // liveImage
+    // liveImageCapturedAt
+    //
+    // fingerprintFmd
+    // fingerprintImage
+    // fingerprintCapturedAt
+    //
+    // guarantor1
+    // guarantor2
+    //
+    // because these fields exist
+    // in the Customer schema.
+
+    Object.assign(
+      customer,
+      req.body
+    );
 
 
-    // Prevent frontend from changing shop ownership
+    // ======================================
+    // PREVENT SHOP OWNERSHIP CHANGE
+    // ======================================
+
     customer.shopId = req.shopId;
 
 
     await customer.save();
 
 
+    // ======================================
+    // RESPONSE
+    // ======================================
+
     return res.status(200).json({
+
       success: true,
-      message: 'Profile details updated',
+
+      message:
+        'Profile details updated',
+
       data: customer
+
     });
 
   } catch (error) {
 
+    console.error(
+      'Update customer error:',
+      error
+    );
+
     return res.status(500).json({
+
       success: false,
-      message: 'Failed to update profile',
+
+      message:
+        'Failed to update profile',
+
       error: error.message
+
     });
 
   }
 };
 
 
+// ==========================================
+// DELETE CUSTOMER
+// ==========================================
+
 const deleteCustomer = async (req, res) => {
   try {
 
-    const Settings = require('../models/Settings');
+    const Settings =
+      require('../models/Settings');
 
 
-    // IMPORTANT:
-    // Settings must belong to current shop
+    // ======================================
+    // GET SETTINGS
+    // ======================================
+
+    // Settings must belong to current shop.
     const settings = await Settings.findOne({
       shopId: req.shopId
     });
 
+
+    // ======================================
+    // CHECK DELETION MODE
+    // ======================================
 
     if (
       !settings ||
@@ -350,73 +727,126 @@ const deleteCustomer = async (req, res) => {
     ) {
 
       return res.status(403).json({
+
         success: false,
+
         message:
-          'Deletion Mode is disabled. Enable it from Settings first.',
+          'Deletion Mode is disabled. Enable it from Settings first.'
+
       });
 
     }
 
 
-    // Check if Deletion Mode has expired
+    // ======================================
+    // CHECK EXPIRATION
+    // ======================================
+
     if (
       settings.deletionModeExpiresAt &&
-      new Date() > settings.deletionModeExpiresAt
+      new Date() >
+      settings.deletionModeExpiresAt
     ) {
 
       settings.allowGlobalDeletion = false;
+
       settings.deletionModeExpiresAt = null;
+
 
       await settings.save();
 
 
       return res.status(403).json({
+
         success: false,
+
         message:
-          'Deletion Mode has expired. Enable it again from Settings.',
+          'Deletion Mode has expired. Enable it again from Settings.'
+
       });
 
     }
 
 
-    // Only delete customer belonging to current shop
+    // ======================================
+    // DELETE CUSTOMER
+    // ======================================
+
+    // Only delete customer belonging
+    // to current shop.
     const customer =
       await Customer.findOneAndDelete({
+
         _id: req.params.id,
+
         shopId: req.shopId
+
       });
 
 
     if (!customer) {
+
       return res.status(404).json({
+
         success: false,
-        message: 'Customer not found',
+
+        message: 'Customer not found'
+
       });
+
     }
 
 
+    // ======================================
+    // RESPONSE
+    // ======================================
+
     return res.status(200).json({
+
       success: true,
+
       message:
-        'Customer record deleted from system',
+        'Customer record deleted from system'
+
     });
 
   } catch (error) {
 
+    console.error(
+      'Delete customer error:',
+      error
+    );
+
     return res.status(500).json({
+
       success: false,
+
       message: 'Deletion failed',
-      error: error.message,
+
+      error: error.message
+
     });
 
   }
 };
 
 
+// ==========================================
+// EXPORTS
+// ==========================================
+
 module.exports = {
+
   getCustomers,
+
   getCustomerById,
+
+  getFingerprintTemplates,
+
   createCustomer,
+
   updateCustomer,
+
   deleteCustomer
+
 };

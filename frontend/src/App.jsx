@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   BrowserRouter as Router,
@@ -6,6 +5,8 @@ import {
   Route,
   Navigate
 } from 'react-router-dom';
+
+import { Toaster } from 'react-hot-toast';
 
 import { AuthProvider } from './context/AuthContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -24,6 +25,10 @@ import AddEditProduct from './pages/AddEditProduct';
 import Customers from './pages/Customers';
 import AddEditCustomer from './pages/AddEditCustomer';
 import CustomerProfile from './pages/CustomerProfile';
+
+// Customer Management
+import CustomerDetails from './pages/CustomerDetails';
+import CustomerLedger from './pages/CustomerLedger';
 
 import Sales from './pages/Sales';
 import NewSale from './pages/NewSale';
@@ -46,7 +51,6 @@ import YearlyAuditDetail from './pages/YearlyAuditDetail';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 
-
 import DueDates from './pages/DueDates';
 
 
@@ -54,12 +58,19 @@ function App() {
   return (
     <AuthProvider>
       <SettingsProvider>
+
+        <Toaster
+          position="top-right"
+          reverseOrder={false}
+        />
+
         <Router>
           <Routes>
 
             {/* =====================================================
                 NORMAL ADMIN LOGIN
                 ===================================================== */}
+
             <Route
               path="/login"
               element={<Login />}
@@ -69,24 +80,27 @@ function App() {
             {/* =====================================================
                 SUPER ADMIN LOGIN
                 ===================================================== */}
+
             <Route
               path="/super-admin/login"
               element={<SuperAdminLogin />}
             />
 
-            {/* =====================================================
-    SUPER ADMIN DASHBOARD
-    ===================================================== */}
 
-<Route
-  path="/super-admin/dashboard"
-  element={<SuperAdminDashboard />}
-/>
+            {/* =====================================================
+                SUPER ADMIN DASHBOARD
+                ===================================================== */}
+
+            <Route
+              path="/super-admin/dashboard"
+              element={<SuperAdminDashboard />}
+            />
 
 
             {/* =====================================================
                 DASHBOARD ROUTING
                 ===================================================== */}
+
             <Route
               path="/dashboard"
               element={
@@ -102,6 +116,7 @@ function App() {
             {/* =====================================================
                 DUE DATES ROUTING
                 ===================================================== */}
+
             <Route
               path="/due-dates"
               element={
@@ -117,6 +132,7 @@ function App() {
             {/* =====================================================
                 INVENTORY ROUTING
                 ===================================================== */}
+
             <Route
               path="/inventory"
               element={
@@ -154,6 +170,9 @@ function App() {
             {/* =====================================================
                 CUSTOMERS ROUTING
                 ===================================================== */}
+
+            {/* Customer List */}
+
             <Route
               path="/customers"
               element={
@@ -164,6 +183,9 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+
+            {/* Customer Register */}
 
             <Route
               path="/customers/add"
@@ -176,6 +198,9 @@ function App() {
               }
             />
 
+
+            {/* Edit Customer */}
+
             <Route
               path="/customers/edit/:id"
               element={
@@ -186,6 +211,45 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+
+            {/* =====================================================
+                CUSTOMER DETAILS
+                ===================================================== */}
+
+            <Route
+              path="/customers/details"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CustomerDetails />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+
+            {/* =====================================================
+                COMPLETE CUSTOMER LEDGER
+                ===================================================== */}
+
+            <Route
+              path="/customers/ledger"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CustomerLedger />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+
+            {/* =====================================================
+                CUSTOMER PROFILE
+                IMPORTANT:
+                Keep after static customer routes.
+                ===================================================== */}
 
             <Route
               path="/customers/:id"
@@ -202,6 +266,7 @@ function App() {
             {/* =====================================================
                 SALES ROUTING
                 ===================================================== */}
+
             <Route
               path="/sales"
               element={
@@ -239,6 +304,7 @@ function App() {
             {/* =====================================================
                 SETTINGS ROUTING
                 ===================================================== */}
+
             <Route
               path="/settings"
               element={
@@ -254,6 +320,7 @@ function App() {
             {/* =====================================================
                 INSTALLMENTS ROUTING
                 ===================================================== */}
+
             <Route
               path="/installments"
               element={
@@ -280,6 +347,7 @@ function App() {
             {/* =====================================================
                 PAYMENTS HISTORY ROUTING
                 ===================================================== */}
+
             <Route
               path="/payments"
               element={
@@ -295,6 +363,7 @@ function App() {
             {/* =====================================================
                 INVOICES ROUTING
                 ===================================================== */}
+
             <Route
               path="/invoices"
               element={
@@ -321,6 +390,7 @@ function App() {
             {/* =====================================================
                 RETURNS ROUTING
                 ===================================================== */}
+
             <Route
               path="/returns"
               element={
@@ -336,6 +406,7 @@ function App() {
             {/* =====================================================
                 EXPENSES ROUTING
                 ===================================================== */}
+
             <Route
               path="/expenses"
               element={
@@ -351,6 +422,7 @@ function App() {
             {/* =====================================================
                 REPORTS ROUTING
                 ===================================================== */}
+
             <Route
               path="/reports"
               element={
@@ -366,6 +438,7 @@ function App() {
             {/* =====================================================
                 YEARLY AUDITS
                 ===================================================== */}
+
             <Route
               path="/audits"
               element={
@@ -392,6 +465,7 @@ function App() {
             {/* =====================================================
                 DEFAULT ROUTE
                 ===================================================== */}
+
             <Route
               path="/"
               element={
@@ -406,6 +480,7 @@ function App() {
             {/* =====================================================
                 404 / UNKNOWN ROUTES
                 ===================================================== */}
+
             <Route
               path="*"
               element={
@@ -418,6 +493,7 @@ function App() {
 
           </Routes>
         </Router>
+
       </SettingsProvider>
     </AuthProvider>
   );

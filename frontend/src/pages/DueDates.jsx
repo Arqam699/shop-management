@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import api from '../utils/api';
 import {
   CalendarClock,
@@ -60,7 +61,7 @@ const DueDates = () => {
         error
       );
 
-      alert(
+      toast.error(
         error.response?.data?.message ||
         'Failed to load due installments.'
       );
@@ -133,7 +134,7 @@ const DueDates = () => {
     );
 
     if (!phone) {
-      alert(
+      toast.error(
         'Customer mobile number is missing or invalid.'
       );
       return;
