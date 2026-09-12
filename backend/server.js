@@ -24,8 +24,18 @@ dotenv.config();
 
 const app = express();
 
-// Required when the production app sits behind HTTPS reverse proxies.
-// It allows secure authentication cookies to work correctly in SaaS hosting.
+
+// =====================================================
+// TRUST PROXY
+// =====================================================
+//
+// Required when the production app sits behind HTTPS
+// reverse proxies such as Vercel.
+//
+// This allows secure authentication cookies to work
+// correctly in SaaS hosting.
+//
+
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
@@ -35,8 +45,13 @@ if (process.env.NODE_ENV === 'production') {
 // GLOBAL MIDDLEWARE
 // =====================================================
 
-// Increased limit because fingerprint images are sent as Base64
-app.use(express.json({ limit: '10mb' }));
+// Increased limit because fingerprint images are sent
+// as Base64.
+app.use(
+  express.json({
+    limit: '10mb',
+  })
+);
 
 app.use(
   express.urlencoded({
@@ -51,6 +66,24 @@ app.use(cookieParser());
 // =====================================================
 // CORS
 // =====================================================
+//
+// IMPORTANT:
+//
+// Production frontend:
+// https://shop-frontend-black-ten.vercel.app
+//
+// Production backend:
+// https://shop-backend-nu-three.vercel.app
+//
+// Cookies/JWT authentication require:
+// credentials: true
+//
+// =====================================================
+
+
+// -----------------------------------------------------
+// Environment-based origins
+// -----------------------------------------------------
 
 const configuredOrigins = String(
   process.env.CLIENT_URL ||
@@ -59,43 +92,177 @@ const configuredOrigins = String(
   ''
 )
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) =>
+    origin
+      .trim()
+      .replace(/\/$/, '')
+  )
   .filter(Boolean);
+
+
+// -----------------------------------------------------
+// Development origins
+// -----------------------------------------------------
 
 const developmentOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
 
-const allowedOrigins = new Set(
-  configuredOrigins.length > 0
-    ? configuredOrigins
-    : process.env.NODE_ENV === 'production'
-    ? []
-    : developmentOrigins
+
+// -----------------------------------------------------
+// Production frontend origins
+// -----------------------------------------------------
+//
+// Keep this explicitly listed so the API continues
+// working even if a Vercel environment variable is
+// accidentally missing.
+//
+
+const productionOrigins = [
+  'https://shop-frontend-black-ten.vercel.app',
+];
+
+
+// -----------------------------------------------------
+// Final allowed origins
+// -----------------------------------------------------
+
+const allowedOrigins = new Set([
+  ...developmentOrigins,
+  ...productionOrigins,
+  ...configuredOrigins,
+]);
+
+
+// -----------------------------------------------------
+// Debug log
+// -----------------------------------------------------
+
+console.log(
+  '[CORS] Allowed origins:',
+  Array.from(allowedOrigins)
 );
+
+
+// =====================================================
+// CORS VALIDATOR
+// =====================================================
+
+const corsOptions = {
+  origin: (origin, callback) => {
+
+    // Requests without Origin are normally
+    // server-to-server requests, health checks,
+    // Postman, etc.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+
+    const normalizedOrigin = origin
+      .trim()
+      .replace(/\/$/, '');
+
+
+    // Allow approved origins
+    if (allowedOrigins.has(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
+
+    // Block unknown browser origins
+    console.error(
+      `[CORS BLOCKED] Origin: ${origin}`
+    );
+
+    return callback(
+      new Error(
+        `CORS origin is not allowed: ${origin}`
+      )
+    );
+  },
+
+
+  // Required because authentication uses cookies
+  credentials: true,
+
+
+  methods: [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+  ],
+
+
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+  ],
+
+
+  optionsSuccessStatus: 204,
+};
+
+
+// =====================================================
+// APPLY CORS
+// =====================================================
 
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Requests without an Origin header include server-to-server health
-      // checks; browser requests must be explicitly approved.
-      if (!origin || allowedOrigins.has(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error('CORS origin is not allowed'));
-    },
-    credentials: true,
-  })
+  cors(corsOptions)
 );
 
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
-});
+
+// =====================================================
+// EXPLICIT PREFLIGHT HANDLER
+// =====================================================
+//
+// Browser sends OPTIONS before requests such as:
+//
+// GET /api/auth/me
+// POST /api/auth/login
+//
+// This makes sure preflight requests are accepted.
+//
+
+app.options(
+  '*',
+  cors(corsOptions)
+);
+
+
+// =====================================================
+// SECURITY HEADERS
+// =====================================================
+
+app.use(
+  (req, res, next) => {
+
+    res.setHeader(
+      'X-Content-Type-Options',
+      'nosniff'
+    );
+
+
+    res.setHeader(
+      'X-Frame-Options',
+      'DENY'
+    );
+
+
+    res.setHeader(
+      'Referrer-Policy',
+      'strict-origin-when-cross-origin'
+    );
+
+
+    next();
+  }
+);
 
 
 // =====================================================
@@ -105,10 +272,12 @@ app.use((req, res, next) => {
 app.get(
   '/health',
   (req, res) => {
+
     return res.status(200).json({
       status: 'ok',
       service: 'Shop Management API',
     });
+
   }
 );
 
@@ -299,6 +468,7 @@ app.use(
 // PATCH  /api/super-admin/shops/:shopId/subscription
 // PATCH  /api/super-admin/shops/:shopId/password
 // DELETE /api/super-admin/shops/:shopId
+//
 // =====================================================
 
 app.use(
@@ -345,11 +515,14 @@ const seedAdminAccount = async () => {
         password: adminPassword,
       });
 
+
       await admin.save();
+
 
       console.log(
         `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
       );
+
 
       return;
     }
@@ -370,7 +543,9 @@ const seedAdminAccount = async () => {
       admin.password =
         adminPassword;
 
+
       await admin.save();
+
 
       console.log(
         `[SEED UPDATE] Password synced from .env for: ${adminEmail}`
@@ -382,6 +557,7 @@ const seedAdminAccount = async () => {
     console.error(
       `[SEED ERROR]: ${err.message}`
     );
+
 
     throw err;
   }
@@ -405,11 +581,34 @@ app.use(
       err.stack
     );
 
+
+    // -------------------------------------------------
+    // CORS errors
+    // -------------------------------------------------
+
+    if (
+      err.message &&
+      err.message.includes('CORS origin is not allowed')
+    ) {
+
+      return res.status(403).json({
+        success: false,
+        message: 'CORS origin is not allowed.',
+      });
+
+    }
+
+
+    // -------------------------------------------------
+    // General server error
+    // -------------------------------------------------
+
     return res.status(500).json({
       success: false,
       message:
         'An unexpected application error occurred.',
     });
+
   }
 );
 
@@ -431,6 +630,7 @@ const startServer = async () => {
     // =================================================
 
     await connectDB();
+
 
     console.log(
       'MongoDB connection is ready.'
@@ -459,6 +659,7 @@ const startServer = async () => {
           } mode on port ${PORT}`
         );
 
+
         console.log(
           `API running on http://localhost:${PORT}`
         );
@@ -472,6 +673,7 @@ const startServer = async () => {
       'SERVER STARTUP ERROR:',
       error.message
     );
+
 
     process.exit(1);
   }
