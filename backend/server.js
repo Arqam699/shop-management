@@ -28,13 +28,6 @@ const app = express();
 // =====================================================
 // TRUST PROXY
 // =====================================================
-//
-// Required when the production app sits behind HTTPS
-// reverse proxies such as Vercel.
-//
-// This allows secure authentication cookies to work
-// correctly in SaaS hosting.
-//
 
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -66,32 +59,18 @@ app.use(cookieParser());
 // =====================================================
 // CORS
 // =====================================================
-//
-// IMPORTANT:
-//
-// Production frontend:
-// https://shop-frontend-black-ten.vercel.app
-//
-// Production backend:
-// https://shop-backend-nu-three.vercel.app
-//
-// Cookies/JWT authentication require:
-// credentials: true
-//
-// =====================================================
-
 
 // -----------------------------------------------------
 // Environment-based origins
 // -----------------------------------------------------
 
-const configuredOrigins = String(
-  process.env.CLIENT_URL ||
-  process.env.FRONTEND_URL ||
-  process.env.CORS_ORIGINS ||
-  ''
-)
-  .split(',')
+const configuredOrigins = [
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGINS,
+]
+  .filter(Boolean)
+  .flatMap((value) => value.split(','))
   .map((origin) =>
     origin
       .trim()
@@ -113,11 +92,6 @@ const developmentOrigins = [
 // -----------------------------------------------------
 // Production frontend origins
 // -----------------------------------------------------
-//
-// Keep this explicitly listed so the API continues
-// working even if a Vercel environment variable is
-// accidentally missing.
-//
 
 const productionOrigins = [
   'https://shop-frontend-black-ten.vercel.app',
@@ -136,7 +110,7 @@ const allowedOrigins = new Set([
 
 
 // -----------------------------------------------------
-// Debug log
+// Debug
 // -----------------------------------------------------
 
 console.log(
@@ -146,15 +120,15 @@ console.log(
 
 
 // =====================================================
-// CORS VALIDATOR
+// CORS OPTIONS
 // =====================================================
 
 const corsOptions = {
   origin: (origin, callback) => {
 
-    // Requests without Origin are normally
-    // server-to-server requests, health checks,
-    // Postman, etc.
+    // Allow requests without Origin
+    // such as server-to-server requests,
+    // health checks, Postman, etc.
     if (!origin) {
       return callback(null, true);
     }
@@ -171,10 +145,11 @@ const corsOptions = {
     }
 
 
-    // Block unknown browser origins
+    // Block unknown origins
     console.error(
       `[CORS BLOCKED] Origin: ${origin}`
     );
+
 
     return callback(
       new Error(
@@ -184,10 +159,11 @@ const corsOptions = {
   },
 
 
-  // Required because authentication uses cookies
+  // Required for JWT authentication cookies
   credentials: true,
 
 
+  // Allowed HTTP methods
   methods: [
     'GET',
     'POST',
@@ -198,9 +174,13 @@ const corsOptions = {
   ],
 
 
+  // IMPORTANT:
+  // x-device-id must be here because the frontend
+  // sends this custom header.
   allowedHeaders: [
     'Content-Type',
     'Authorization',
+    'X-Device-ID',
   ],
 
 
@@ -220,14 +200,6 @@ app.use(
 // =====================================================
 // EXPLICIT PREFLIGHT HANDLER
 // =====================================================
-//
-// Browser sends OPTIONS before requests such as:
-//
-// GET /api/auth/me
-// POST /api/auth/login
-//
-// This makes sure preflight requests are accepted.
-//
 
 app.options(
   '*',
@@ -450,26 +422,6 @@ app.use(
 // =====================================================
 // SUPER ADMIN ROUTES
 // =====================================================
-//
-// Base URL:
-//
-// /api/super-admin
-//
-// Examples:
-//
-// POST   /api/super-admin/login
-// POST   /api/super-admin/logout
-// GET    /api/super-admin/me
-// GET    /api/super-admin/shops
-// GET    /api/super-admin/dashboard
-// POST   /api/super-admin/shops
-// PATCH  /api/super-admin/shops/:shopId/suspend
-// PATCH  /api/super-admin/shops/:shopId/activate
-// PATCH  /api/super-admin/shops/:shopId/subscription
-// PATCH  /api/super-admin/shops/:shopId/password
-// DELETE /api/super-admin/shops/:shopId
-//
-// =====================================================
 
 app.use(
   '/api/super-admin',
@@ -588,12 +540,15 @@ app.use(
 
     if (
       err.message &&
-      err.message.includes('CORS origin is not allowed')
+      err.message.includes(
+        'CORS origin is not allowed'
+      )
     ) {
 
       return res.status(403).json({
         success: false,
-        message: 'CORS origin is not allowed.',
+        message:
+          'CORS origin is not allowed.',
       });
 
     }
@@ -645,7 +600,7 @@ const startServer = async () => {
 
 
     // =================================================
-    // START SERVER ONLY AFTER DB + SEED
+    // START SERVER
     // =================================================
 
     app.listen(
