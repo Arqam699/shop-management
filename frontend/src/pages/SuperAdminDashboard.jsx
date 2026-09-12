@@ -60,6 +60,7 @@ const SuperAdminDashboard = () => {
   // =====================================================
 
   const [historyModal, setHistoryModal] = useState(null);
+  const [loginIpModal, setLoginIpModal] = useState(null);
 
   // =====================================================
   // DELETE MODAL
@@ -625,6 +626,10 @@ const SuperAdminDashboard = () => {
 
   const closeHistoryModal = () => {
     setHistoryModal(null);
+  };
+
+  const openLoginIpModal = (shop) => {
+    setLoginIpModal(shop);
   };
 
   // =====================================================
@@ -1199,6 +1204,29 @@ const SuperAdminDashboard = () => {
 
                         </div>
 
+                        <div className="flex items-start justify-between gap-4">
+
+                          <span className="shrink-0 text-sm text-gray-500">
+                            Last Login IP
+                          </span>
+
+                          <span className="break-all text-right text-xs font-mono text-gray-700">
+                            {shop.lastLoginIp || '—'}
+                          </span>
+
+                        </div>
+
+                        {shop.subscriptionStatus === 'Suspended' && (
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="shrink-0 text-sm text-gray-500">
+                              Suspension reason
+                            </span>
+                            <span className="max-w-[65%] text-right text-xs font-medium leading-5 text-orange-700">
+                              {shop.suspensionReason || 'Suspension reason was not recorded.'}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between gap-4">
 
                           <span className="text-sm text-gray-500">
@@ -1255,6 +1283,15 @@ const SuperAdminDashboard = () => {
                           History
                           {historyCount > 0 &&
                             ` (${historyCount})`}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => openLoginIpModal(shop)}
+                          className="rounded-lg bg-slate-700 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Login IPs ({shop.loginIpHistory?.length || 0})
                         </button>
 
                         {shop.subscriptionStatus ===
@@ -1469,6 +1506,12 @@ const SuperAdminDashboard = () => {
                                 '—'}
                             </span>
 
+                            {shop.subscriptionStatus === 'Suspended' && (
+                              <p className="mt-1 max-w-[190px] text-xs leading-4 text-orange-700">
+                                {shop.suspensionReason || 'Reason not recorded'}
+                              </p>
+                            )}
+
                           </td>
 
                           {/* EXPIRY */}
@@ -1498,6 +1541,15 @@ const SuperAdminDashboard = () => {
                                 History
                                 {historyCount > 0 &&
                                   ` (${historyCount})`}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={() => openLoginIpModal(shop)}
+                                className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Login IPs ({shop.loginIpHistory?.length || 0})
                               </button>
 
                               {shop.subscriptionStatus ===
@@ -2316,6 +2368,44 @@ const SuperAdminDashboard = () => {
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {loginIpModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-3 sm:p-4">
+          <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-4 sm:px-6 sm:py-5">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-gray-900 sm:text-xl">Successful Login IPs</h2>
+                <p className="mt-1 break-words text-sm text-gray-500">{loginIpModal.shopName}</p>
+              </div>
+              <button type="button" onClick={() => setLoginIpModal(null)} className="shrink-0 rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 hover:text-gray-900" aria-label="Close login IP history">×</button>
+            </div>
+            <div className="overflow-y-auto p-4 sm:p-6">
+              {loginIpModal.loginIpHistory?.length ? (
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 text-left">
+                    <thead className="bg-gray-50"><tr>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">IP Address</th>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Admin</th>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Login Time</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {loginIpModal.loginIpHistory.slice().reverse().map((entry, index) => (
+                        <tr key={`${entry.loggedInAt}-${entry.ip}-${index}`}>
+                          <td className="whitespace-nowrap px-4 py-3 font-mono text-sm font-semibold text-gray-900">{entry.ip}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{entry.adminEmail || '—'}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{entry.loggedInAt ? new Date(entry.loggedInAt).toLocaleString('en-PK') : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="py-10 text-center text-sm text-gray-500">No successful login IP recorded yet.</p>
+              )}
+            </div>
           </div>
         </div>
       )}

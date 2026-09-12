@@ -74,6 +74,19 @@ const shopSchema = new mongoose.Schema(
       default: 'Active',
     },
 
+    // Filled whenever access is suspended so Super Admin can explain the
+    // precise reason to the shop owner.
+    suspensionReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+
     subscriptionExpiresAt: {
       type: Date,
       default: null,
@@ -82,6 +95,42 @@ const shopSchema = new mongoose.Schema(
     subscriptionHistory: {
       type: [subscriptionHistorySchema],
       default: [],
+    },
+
+    // At most two browser/device identities are permitted for one shop.
+    // This list is cleared only when Super Admin reactivates a suspended shop.
+    authorizedDevices: {
+      type: [
+        {
+          deviceId: { type: String, required: true },
+          firstSeenAt: { type: Date, default: Date.now },
+          lastSeenAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+
+    // Recent successful admin logins. Kept bounded so this security audit
+    // trail cannot grow without limit.
+    loginIpHistory: {
+      type: [
+        {
+          ip: { type: String, required: true },
+          adminEmail: { type: String, default: '' },
+          loggedInAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+
+    lastLoginIp: {
+      type: String,
+      default: '',
+    },
+
+    lastLoginAt: {
+      type: Date,
+      default: null,
     },
   },
   {

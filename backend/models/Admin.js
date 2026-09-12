@@ -33,6 +33,14 @@ const adminSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // Security: three incorrect passwords suspend the linked shop until the
+    // Super Admin activates it again.
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

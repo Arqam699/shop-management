@@ -504,6 +504,10 @@ const suspendShop = async (req, res) => {
         $set: {
           subscriptionStatus:
             'Suspended',
+          suspensionReason:
+            'Suspended manually by Super Admin.',
+          suspendedAt:
+            new Date(),
         },
       }
     );
@@ -593,8 +597,20 @@ const activateShop = async (req, res) => {
         $set: {
           subscriptionStatus:
             'Active',
+          suspensionReason: '',
+          suspendedAt: null,
+          // A device-limit suspension is intentionally reset here. The first
+          // two approved devices can sign in again after Super Admin approval.
+          authorizedDevices: [],
         },
       }
+    );
+
+    // Reactivating a shop also clears the security lock counter so the shop
+    // admin can sign in again without waiting for another reset.
+    await Admin.updateMany(
+      { shopId: shop._id },
+      { $set: { failedLoginAttempts: 0 } }
     );
 
 
@@ -798,6 +814,9 @@ const renewShopSubscription = async (
 
     shop.subscriptionStatus =
       'Active';
+
+    shop.suspensionReason = '';
+    shop.suspendedAt = null;
 
     shop.subscriptionExpiresAt =
       newExpiryDate;
