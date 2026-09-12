@@ -1421,7 +1421,8 @@ const getSales = async (req, res) => {
         .populate('product')
         .sort({
           createdAt: -1
-        });
+        })
+        .lean();
 
     return res.status(200).json({
       success: true,

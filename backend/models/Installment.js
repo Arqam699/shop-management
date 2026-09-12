@@ -93,4 +93,6 @@ installmentSchema.index({
   installmentNumber: 1,
 });
 
+installmentSchema.index({ shopId: 1, dueDate: 1, status: 1 });
+
 module.exports = mongoose.model('Installment', installmentSchema);

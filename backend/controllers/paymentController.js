@@ -116,79 +116,17 @@ const getPayments = async (req, res) => {
         ],
       })
       .populate('installment')
-      .populate({
-        path: 'allocations.installment',
-      })
       .sort({
         paymentDate: 1,
         createdAt: 1,
       })
       .lean();
 
-    // ----------------------------------------------------------
-    // Get all installment plans used by these payments
-    // ----------------------------------------------------------
-    const planIds = [
-      ...new Set(
-        payments
-          .map((payment) =>
-            payment.installmentPlan?._id
-              ? payment.installmentPlan._id.toString()
-              : null
-          )
-          .filter(Boolean)
-      ),
-    ];
-
-    let installments = [];
-
-    if (planIds.length > 0) {
-      installments = await Installment.find({
-        shopId: req.shopId,
-        installmentPlan: {
-          $in: planIds,
-        },
-      })
-        .sort({
-          installmentNumber: 1,
-          dueDate: 1,
-        })
-        .lean();
-    }
-
-    // ----------------------------------------------------------
-    // Group installment history plan-wise
-    // ----------------------------------------------------------
-    const historyMap = new Map();
-
-    installments.forEach((installment) => {
-      const key = installment.installmentPlan.toString();
-
-      if (!historyMap.has(key)) {
-        historyMap.set(key, []);
-      }
-
-      historyMap.get(key).push(installment);
-    });
-
-    // ----------------------------------------------------------
-    // Attach complete installment history to every payment
-    // ----------------------------------------------------------
-    const finalPayments = payments.map((payment) => {
-      const planId =
-        payment.installmentPlan?._id?.toString();
-
-      return {
-        ...payment,
-
-        installmentHistory:
-          historyMap.get(planId) || [],
-      };
-    });
-
     return res.status(200).json({
       success: true,
-      data: finalPayments,
+      // Detailed installment history is fetched only for the receipt opened
+      // by the user via GET /payments/:id.
+      data: payments,
     });
   } catch (error) {
     console.error('GET PAYMENTS ERROR:', error);

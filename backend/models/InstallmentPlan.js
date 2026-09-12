@@ -138,6 +138,8 @@ installmentPlanSchema.index({
   planId: 1,
 });
 
+installmentPlanSchema.index({ shopId: 1, status: 1, createdAt: -1 });
+
 module.exports = mongoose.model(
   'InstallmentPlan',
   installmentPlanSchema

@@ -113,7 +113,7 @@ const getExpenses = async (req, res) => {
         shopId: req.shopId,
       }).sort({
         createdAt: 1,
-      });
+      }).lean();
 
 
     return res.status(200).json({

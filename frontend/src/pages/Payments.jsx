@@ -82,6 +82,24 @@ const Payments = () => {
     fetchPayments();
   }, []);
 
+  const openReceipt = async (paymentId) => {
+    try {
+      const response = await api.get(`/payments/${paymentId}`);
+
+      if (response.data?.success) {
+        setActiveReceipt(response.data.data);
+      } else {
+        toast.error('Failed to load payment receipt.');
+      }
+    } catch (error) {
+      console.error('Error loading payment receipt:', error);
+      toast.error(
+        error.response?.data?.message ||
+          'Failed to load payment receipt.'
+      );
+    }
+  };
+
   // =====================================================
   // DELETE
   // =====================================================
@@ -1326,11 +1344,7 @@ const Payments = () => {
                               <div className="flex items-center justify-center space-x-1.5">
 
                                 <button
-                                  onClick={() =>
-                                    setActiveReceipt(
-                                      payment
-                                    )
-                                  }
+                                  onClick={() => openReceipt(payment._id)}
                                   className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
                                   title="View Receipt"
                                 >
@@ -1593,11 +1607,7 @@ const Payments = () => {
                                 <div className="flex items-center justify-center space-x-1.5">
 
                                   <button
-                                    onClick={() =>
-                                      setActiveReceipt(
-                                        payment
-                                      )
-                                    }
+                                    onClick={() => openReceipt(payment._id)}
                                     className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                                     title="View This Slip"
                                   >

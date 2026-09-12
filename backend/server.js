@@ -24,6 +24,12 @@ dotenv.config();
 
 const app = express();
 
+// Required when the production app sits behind HTTPS reverse proxies.
+// It allows secure authentication cookies to work correctly in SaaS hosting.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 
 // =====================================================
 // GLOBAL MIDDLEWARE
@@ -46,15 +52,50 @@ app.use(cookieParser());
 // CORS
 // =====================================================
 
+const configuredOrigins = String(
+  process.env.CLIENT_URL ||
+  process.env.FRONTEND_URL ||
+  process.env.CORS_ORIGINS ||
+  ''
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const developmentOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+const allowedOrigins = new Set(
+  configuredOrigins.length > 0
+    ? configuredOrigins
+    : process.env.NODE_ENV === 'production'
+    ? []
+    : developmentOrigins
+);
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      callback(null, true);
-    },
+      // Requests without an Origin header include server-to-server health
+      // checks; browser requests must be explicitly approved.
+      if (!origin || allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
 
+      return callback(new Error('CORS origin is not allowed'));
+    },
     credentials: true,
   })
 );
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 
 // =====================================================

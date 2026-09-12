@@ -60,24 +60,13 @@ const Sales = () => {
     try {
       setLoading(true);
 
-      const response = await api.get('/api/sales');
+      const response = await api.get('/api/sales?type=cash');
 
       if (
         response.data &&
         response.data.success
       ) {
-        const allSales =
-          response.data.data || [];
-
-        // IMPORTANT:
-        // Sales page will ONLY contain CASH sales.
-        // Installment sales are completely excluded.
-        const cashSales = allSales.filter(
-          (sale) =>
-            sale.paymentType === 'Cash'
-        );
-
-        setSales(cashSales);
+        setSales(response.data.data || []);
       }
     } catch (error) {
       console.error(

@@ -249,6 +249,11 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
+// Fast customer list and CNIC/mobile lookup per shop.
+customerSchema.index({ shopId: 1, createdAt: -1 });
+customerSchema.index({ shopId: 1, mobileNumber: 1 });
+customerSchema.index({ shopId: 1, cnic: 1 });
+
 // ==========================================
 // INDEXES
 // ==========================================

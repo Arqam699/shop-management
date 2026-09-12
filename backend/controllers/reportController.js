@@ -82,35 +82,21 @@ const getDashboardStats = async (
     // 1. INVENTORY KPIs
     // ========================================================
 
-    const totalProducts =
-      await Product.countDocuments({
-        shopId,
-      });
-
-
-    const lowStockCount =
-      await Product.countDocuments({
-        shopId,
-        status:
-          'Low Stock',
-      });
-
-
-    const outOfStockCount =
-      await Product.countDocuments({
-        shopId,
-        status:
-          'Out of Stock',
-      });
-
-
-    // --------------------------------------------------------
-    // Get products for stock calculations
-    // --------------------------------------------------------
-    const products =
-      await Product.find({
-        shopId,
-      });
+    // These queries do not depend on each other. Running them together
+    // removes several database round-trip waits from the dashboard load.
+    const [
+      totalProducts,
+      lowStockCount,
+      outOfStockCount,
+      products,
+      totalCustomers,
+    ] = await Promise.all([
+      Product.countDocuments({ shopId }),
+      Product.countDocuments({ shopId, status: 'Low Stock' }),
+      Product.countDocuments({ shopId, status: 'Out of Stock' }),
+      Product.find({ shopId }).select('quantity purchasePrice').lean(),
+      Customer.countDocuments({ shopId }),
+    ]);
 
 
     const totalStockQuantity =
@@ -147,12 +133,6 @@ const getDashboardStats = async (
     // 2. CUSTOMERS KPIs
     // ========================================================
 
-    const totalCustomers =
-      await Customer.countDocuments({
-        shopId,
-      });
-
-
     // ========================================================
     // 3. RAW LISTS
     // ========================================================
@@ -160,59 +140,33 @@ const getDashboardStats = async (
     // --------------------------------------------------------
     // SALES
     // --------------------------------------------------------
-    const salesList =
-      await Sale.find({
-        shopId,
-      })
+    const [
+      salesList,
+      activeFinancingList,
+      paymentsList,
+      expensesList,
+      returns,
+    ] = await Promise.all([
+      Sale.find({ shopId })
         .populate('customer')
         .populate('product')
-        .sort({
-          createdAt: 1,
-        });
-
-
-    // --------------------------------------------------------
-    // ACTIVE FINANCING / INSTALLMENT PLANS
-    // --------------------------------------------------------
-    const activeFinancingList =
-      await InstallmentPlan.find({
-        shopId,
-      })
+        .sort({ createdAt: 1 })
+        .lean(),
+      InstallmentPlan.find({ shopId })
         .populate('customer')
         .populate('product')
-        .sort({
-          createdAt: 1,
-        });
-
-
-    // --------------------------------------------------------
-    // PAYMENTS
-    // --------------------------------------------------------
-    const paymentsList =
-      await Payment.find({
-        shopId,
-        isArchived: {
-          $ne: true,
-        },
-      })
+        .sort({ createdAt: 1 })
+        .lean(),
+      Payment.find({ shopId, isArchived: { $ne: true } })
         .populate('customer')
         .populate('sale')
         .populate('installmentPlan')
         .populate('installment')
-        .sort({
-          createdAt: 1,
-        });
-
-
-    // --------------------------------------------------------
-    // EXPENSES
-    // --------------------------------------------------------
-    const expensesList =
-      await Expense.find({
-        shopId,
-      }).sort({
-        createdAt: 1,
-      });
+        .sort({ createdAt: 1 })
+        .lean(),
+      Expense.find({ shopId }).sort({ createdAt: 1 }).lean(),
+      Return.find({ shopId }).select('refundAmount').lean(),
+    ]);
 
 
     // ========================================================
@@ -272,37 +226,29 @@ const getDashboardStats = async (
     // 5. SALES PERIOD CALCULATIONS
     // ========================================================
 
-    const todaySalesList =
-      await Sale.find({
-        shopId,
-
-        saleDate: {
-          $gte:
-            today,
-        },
-      });
-
-
-    const weekSalesList =
-      await Sale.find({
-        shopId,
-
-        saleDate: {
-          $gte:
-            startOfWeek,
-        },
-      });
-
-
-    const monthSalesList =
-      await Sale.find({
-        shopId,
-
-        saleDate: {
-          $gte:
-            startOfMonth,
-        },
-      });
+    const [
+      todaySalesList,
+      weekSalesList,
+      monthSalesList,
+      activePlans,
+      overduePlans,
+      todayPayments,
+    ] = await Promise.all([
+      Sale.find({ shopId, saleDate: { $gte: today } })
+        .select('finalTotal')
+        .lean(),
+      Sale.find({ shopId, saleDate: { $gte: startOfWeek } })
+        .select('finalTotal')
+        .lean(),
+      Sale.find({ shopId, saleDate: { $gte: startOfMonth } })
+        .select('finalTotal')
+        .lean(),
+      InstallmentPlan.countDocuments({ shopId, status: 'Active' }),
+      InstallmentPlan.countDocuments({ shopId, status: 'Overdue' }),
+      Payment.find({ shopId, paymentDate: { $gte: today } })
+        .select('amount')
+        .lean(),
+    ]);
 
 
     // --------------------------------------------------------
@@ -381,24 +327,6 @@ const getDashboardStats = async (
     // INSTALLMENT PLAN COUNTS
     // ========================================================
 
-    const activePlans =
-      await InstallmentPlan.countDocuments({
-        shopId,
-
-        status:
-          'Active',
-      });
-
-
-    const overduePlans =
-      await InstallmentPlan.countDocuments({
-        shopId,
-
-        status:
-          'Overdue',
-      });
-
-
     // --------------------------------------------------------
     // TOTAL OUTSTANDING
     // --------------------------------------------------------
@@ -420,17 +348,6 @@ const getDashboardStats = async (
     // ========================================================
     // TODAY'S COLLECTED PAYMENTS
     // ========================================================
-
-    const todayPayments =
-      await Payment.find({
-        shopId,
-
-        paymentDate: {
-          $gte:
-            today,
-        },
-      });
-
 
     const todayCollectedPayments =
       todayPayments.reduce(
@@ -505,12 +422,6 @@ const getDashboardStats = async (
     // ========================================================
     // RETURNS
     // ========================================================
-
-    const returns =
-      await Return.find({
-        shopId,
-      });
-
 
     const totalRefunded =
       returns.reduce(

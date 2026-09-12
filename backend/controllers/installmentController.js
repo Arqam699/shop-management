@@ -125,12 +125,13 @@ const getInstallmentPlans = async (
           createdAt: -1
         });
 
-    for (const plan of plans) {
-      await updateOverdueStatus(
-        plan._id,
-        shopId
-      );
-    }
+    // Status checks are independent. Parallel execution prevents every plan
+    // from making the list page wait for the previous plan's database calls.
+    await Promise.all(
+      plans.map((plan) =>
+        updateOverdueStatus(plan._id, shopId)
+      )
+    );
 
     const refreshedPlans =
       await InstallmentPlan.find({
@@ -141,7 +142,8 @@ const getInstallmentPlans = async (
         .populate('sale')
         .sort({
           createdAt: -1
-        });
+        })
+        .lean();
 
     return res.status(200).json({
       success: true,

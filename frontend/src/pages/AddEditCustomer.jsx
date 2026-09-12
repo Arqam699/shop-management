@@ -1210,35 +1210,6 @@ const AddEditCustomer = () => {
     }
 
     // =======================================================
-    // CUSTOMER FINGERPRINT
-    // =======================================================
-
-    if (!formData.fingerprintFmd) {
-      setErrorMsg(
-        'Please capture the main customer fingerprint before saving.'
-      );
-      return;
-    }
-
-    if (!formData.fingerprintImage) {
-      setErrorMsg(
-        'Customer fingerprint image is missing. Please scan again.'
-      );
-      return;
-    }
-
-    // =======================================================
-    // CUSTOMER PHOTO
-    // =======================================================
-
-    if (!formData.liveImage) {
-      setErrorMsg(
-        'Please record the main customer photo before saving.'
-      );
-      return;
-    }
-
-    // =======================================================
     // GUARANTOR 1 MOBILE
     // =======================================================
 
@@ -1271,41 +1242,6 @@ const AddEditCustomer = () => {
     }
 
     // =======================================================
-    // GUARANTOR 1
-    // =======================================================
-
-    if (
-      formData.guarantor1?.name?.trim()
-    ) {
-      if (
-        !formData.guarantor1.fingerprintFmd
-      ) {
-        setErrorMsg(
-          'Zamanti 1 has been entered. Please capture Zamanti 1 fingerprint.'
-        );
-        return;
-      }
-
-      if (
-        !formData.guarantor1.fingerprintImage
-      ) {
-        setErrorMsg(
-          'Zamanti 1 fingerprint image is missing. Please scan again.'
-        );
-        return;
-      }
-
-      if (
-        !formData.guarantor1.liveImage
-      ) {
-        setErrorMsg(
-          'Please record Zamanti 1 photo before saving.'
-        );
-        return;
-      }
-    }
-
-    // =======================================================
     // GUARANTOR 2 MOBILE
     // =======================================================
 
@@ -1335,41 +1271,6 @@ const AddEditCustomer = () => {
         'Zamanti 2 CNIC is invalid.'
       );
       return;
-    }
-
-    // =======================================================
-    // GUARANTOR 2
-    // =======================================================
-
-    if (
-      formData.guarantor2?.name?.trim()
-    ) {
-      if (
-        !formData.guarantor2.fingerprintFmd
-      ) {
-        setErrorMsg(
-          'Zamanti 2 has been entered. Please capture Zamanti 2 fingerprint.'
-        );
-        return;
-      }
-
-      if (
-        !formData.guarantor2.fingerprintImage
-      ) {
-        setErrorMsg(
-          'Zamanti 2 fingerprint image is missing. Please scan again.'
-        );
-        return;
-      }
-
-      if (
-        !formData.guarantor2.liveImage
-      ) {
-        setErrorMsg(
-          'Please record Zamanti 2 photo before saving.'
-        );
-        return;
-      }
     }
 
     // =======================================================
@@ -2106,7 +2007,6 @@ const AddEditCustomer = () => {
           <FingerprintButton
             personType="customer"
             label="Customer"
-            required
           />
 
         </div>
@@ -2124,7 +2024,7 @@ const AddEditCustomer = () => {
               <ShieldCheck className="w-5 h-5 text-purple-600" />
 
               <span>
-                Zamanatdar 1 (Pehla Zamanti)
+                Zamanatdar 1 (Optional)
               </span>
 
             </h3>
@@ -2281,9 +2181,6 @@ const AddEditCustomer = () => {
           <FingerprintButton
             personType="guarantor1"
             label="Zamanti 1"
-            required={
-              !!formData.guarantor1?.name
-            }
           />
 
         </div>
@@ -2301,7 +2198,7 @@ const AddEditCustomer = () => {
               <ShieldCheck className="w-5 h-5 text-indigo-600" />
 
               <span>
-                Zamanatdar 2 (Doosra Zamanti)
+                Zamanatdar 2 (Optional)
               </span>
 
             </h3>
@@ -2458,9 +2355,6 @@ const AddEditCustomer = () => {
           <FingerprintButton
             personType="guarantor2"
             label="Zamanti 2"
-            required={
-              !!formData.guarantor2?.name
-            }
           />
 
         </div>

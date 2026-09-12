@@ -165,7 +165,8 @@ const getProducts = async (req, res) => {
       await Product.find(query)
         .sort({
           createdAt: 1,
-        });
+        })
+        .lean();
 
     return res.status(200).json({
       success: true,

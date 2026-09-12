@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -13,45 +13,35 @@ import { SettingsProvider } from './context/SettingsContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 
-import Login from './pages/Login';
-import SuperAdminLogin from './pages/SuperAdminLogin';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import Dashboard from './pages/Dashboard';
-import SettingsPage from './pages/Settings';
-
-import Inventory from './pages/Inventory';
-import AddEditProduct from './pages/AddEditProduct';
-
-import Customers from './pages/Customers';
-import AddEditCustomer from './pages/AddEditCustomer';
-import CustomerProfile from './pages/CustomerProfile';
-
-// Customer Management
-import CustomerDetails from './pages/CustomerDetails';
-import CustomerLedger from './pages/CustomerLedger';
-
-import Sales from './pages/Sales';
-import NewSale from './pages/NewSale';
-import EditSale from './pages/EditSale';
-
-import Installments from './pages/Installments';
-import InstallmentPlanDetails from './pages/InstallmentPlanDetails';
-
-import PlaceholderPage from './pages/PlaceholderPage';
-
-import Returns from './pages/Returns';
-import Payments from './pages/Payments';
-
-import Invoices from './pages/Invoices';
-import InvoiceDetails from './pages/InvoiceDetails';
-
-import YearlyAudits from './pages/YearlyAudits';
-import YearlyAuditDetail from './pages/YearlyAuditDetail';
-
-import Expenses from './pages/Expenses';
-import Reports from './pages/Reports';
-
-import DueDates from './pages/DueDates';
+// Load page code only when its route is opened. This keeps the first app
+// download small instead of making every screen wait for every other screen.
+const Login = lazy(() => import('./pages/Login'));
+const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
+const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const SettingsPage = lazy(() => import('./pages/Settings'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const AddEditProduct = lazy(() => import('./pages/AddEditProduct'));
+const Customers = lazy(() => import('./pages/Customers'));
+const AddEditCustomer = lazy(() => import('./pages/AddEditCustomer'));
+const CustomerProfile = lazy(() => import('./pages/CustomerProfile'));
+const CustomerDetails = lazy(() => import('./pages/CustomerDetails'));
+const CustomerLedger = lazy(() => import('./pages/CustomerLedger'));
+const Sales = lazy(() => import('./pages/Sales'));
+const NewSale = lazy(() => import('./pages/NewSale'));
+const EditSale = lazy(() => import('./pages/EditSale'));
+const Installments = lazy(() => import('./pages/Installments'));
+const InstallmentPlanDetails = lazy(() => import('./pages/InstallmentPlanDetails'));
+const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'));
+const Returns = lazy(() => import('./pages/Returns'));
+const Payments = lazy(() => import('./pages/Payments'));
+const Invoices = lazy(() => import('./pages/Invoices'));
+const InvoiceDetails = lazy(() => import('./pages/InvoiceDetails'));
+const YearlyAudits = lazy(() => import('./pages/YearlyAudits'));
+const YearlyAuditDetail = lazy(() => import('./pages/YearlyAuditDetail'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const Reports = lazy(() => import('./pages/Reports'));
+const DueDates = lazy(() => import('./pages/DueDates'));
 
 
 function App() {
@@ -65,6 +55,13 @@ function App() {
         />
 
         <Router>
+          <Suspense
+            fallback={
+              <div className="min-h-screen flex items-center justify-center bg-slate-50 text-sm font-semibold text-slate-500">
+                Loading page...
+              </div>
+            }
+          >
           <Routes>
 
             {/* =====================================================
@@ -492,6 +489,7 @@ function App() {
             />
 
           </Routes>
+          </Suspense>
         </Router>
 
       </SettingsProvider>

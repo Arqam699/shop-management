@@ -108,7 +108,8 @@ const getCustomers = async (req, res) => {
 
     const customers = await Customer
       .find(query)
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .lean();
 
 
     return res.status(200).json({
@@ -162,24 +163,16 @@ const getCustomerById = async (req, res) => {
     // SALES
     // ======================================
 
-    const sales = await Sale.find({
-      customer: customer._id,
-      shopId: req.shopId
-    })
-      .populate('product')
-      .sort({ createdAt: 1 });
-
-
-    // ======================================
-    // INSTALLMENT PLANS
-    // ======================================
-
-    const plans = await InstallmentPlan.find({
-      customer: customer._id,
-      shopId: req.shopId
-    })
-      .populate('product')
-      .sort({ createdAt: 1 });
+    const [sales, plans] = await Promise.all([
+      Sale.find({ customer: customer._id, shopId: req.shopId })
+        .populate('product')
+        .sort({ createdAt: 1 })
+        .lean(),
+      InstallmentPlan.find({ customer: customer._id, shopId: req.shopId })
+        .populate('product')
+        .sort({ createdAt: 1 })
+        .lean(),
+    ]);
 
 
     // ======================================
@@ -215,36 +208,49 @@ const getCustomerById = async (req, res) => {
     // INSTALLMENT COUNTS
     // ======================================
 
-    const plansWithCount = [];
+    const planIds = plans.map((plan) => plan._id);
+    const installmentCounts = planIds.length === 0
+      ? []
+      : await Installment.aggregate([
+        {
+          $match: {
+            shopId: req.shopId,
+            installmentPlan: { $in: planIds },
+          },
+        },
+        {
+          $group: {
+            _id: '$installmentPlan',
+            totalInstallmentsCount: { $sum: 1 },
+            unpaidCount: {
+              $sum: {
+                $cond: [
+                  { $in: ['$status', ['Paid', 'Settled']] },
+                  0,
+                  1,
+                ],
+              },
+            },
+          },
+        },
+      ]);
 
+    const countByPlan = new Map(
+      installmentCounts.map((item) => [
+        item._id.toString(),
+        item,
+      ])
+    );
 
-    for (const plan of plans) {
+    const plansWithCount = plans.map((plan) => {
+      const counts = countByPlan.get(plan._id.toString());
 
-      // Count installments belonging
-      // to current shop.
-      const totalInstallmentsCount =
-        await Installment.countDocuments({
-          installmentPlan: plan._id,
-          shopId: req.shopId
-        });
-
-
-      // Count unpaid installments.
-      const unpaidCount =
-        await Installment.countDocuments({
-          installmentPlan: plan._id,
-          shopId: req.shopId,
-          status: { $ne: 'Paid' }
-        });
-
-
-      plansWithCount.push({
-        ...plan.toObject(),
-        totalInstallmentsCount,
-        unpaidCount
-      });
-
-    }
+      return {
+        ...plan,
+        totalInstallmentsCount: counts?.totalInstallmentsCount || 0,
+        unpaidCount: counts?.unpaidCount || 0,
+      };
+    });
 
 
     // ======================================
