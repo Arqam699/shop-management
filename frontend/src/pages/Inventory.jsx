@@ -13,14 +13,26 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   Lock,
-  Calendar
+  Calendar,
+  Boxes,
+  Package,
+  Layers,
+  Sparkles,
+  RefreshCw,
+  CalendarRange,
+  X,
+  TrendingDown,
+  CheckCircle2,
+  AlertCircle,
+  CircleDollarSign,
+  Tag,
+  Filter,
 } from 'lucide-react';
 
 const Inventory = () => {
   const { settings } = useSettings();
 
-  const isDeletionUnlocked =
-    settings?.allowGlobalDeletion === true;
+  const isDeletionUnlocked = settings?.allowGlobalDeletion === true;
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +43,6 @@ const Inventory = () => {
   // =====================================================
   // DELETE MODAL STATE
   // =====================================================
-
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     productId: null,
@@ -52,13 +63,15 @@ const Inventory = () => {
     'Laptops',
     'Accessories',
     'Speakers',
-    'Other'
+    'Other',
   ];
 
+  // =====================================================
+  // FETCH INVENTORY PRODUCTS
+  // =====================================================
   const fetchProducts = async () => {
     try {
       setLoading(true);
-
       const response = await api.get('/api/products');
 
       if (response.data && response.data.success) {
@@ -66,6 +79,7 @@ const Inventory = () => {
       }
     } catch (error) {
       console.error('Error fetching inventory:', error);
+      toast.error('Failed to load inventory products.');
     } finally {
       setLoading(false);
     }
@@ -75,6 +89,9 @@ const Inventory = () => {
     fetchProducts();
   }, []);
 
+  // =====================================================
+  // DELETE LOGIC
+  // =====================================================
   const triggerDeleteConfirmation = (id, name) => {
     if (!isDeletionUnlocked) {
       toast.error('Deletion Mode is disabled. Enable it from Settings first.');
@@ -98,7 +115,7 @@ const Inventory = () => {
         currentProducts.filter((p) => p._id !== productId)
       );
 
-      toast.success(`Product ${deleteModal.productName} deleted successfully.`);
+      toast.success(`Product "${deleteModal.productName}" deleted successfully.`);
     } catch (error) {
       toast.error(
         error.response?.data?.message || 'Failed to delete product.'
@@ -108,6 +125,9 @@ const Inventory = () => {
     }
   };
 
+  // =====================================================
+  // DATE FILTER
+  // =====================================================
   const isDateInFilter = (dateStr) => {
     if (!dateStr) return false;
 
@@ -124,41 +144,23 @@ const Inventory = () => {
     dayBeforeYesterday.setDate(today.getDate() - 2);
 
     if (filterPreset === 'all') return true;
-
-    if (filterPreset === 'today') {
-      return date.getTime() === today.getTime();
-    }
-
-    if (filterPreset === 'yesterday') {
-      return date.getTime() === yesterday.getTime();
-    }
-
-    if (filterPreset === 'dayBeforeYesterday') {
+    if (filterPreset === 'today') return date.getTime() === today.getTime();
+    if (filterPreset === 'yesterday') return date.getTime() === yesterday.getTime();
+    if (filterPreset === 'dayBeforeYesterday')
       return date.getTime() === dayBeforeYesterday.getTime();
-    }
 
     if (filterPreset === 'week') {
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - 7);
-
       return date >= startOfWeek && date <= today;
     }
 
     if (filterPreset === 'month') {
-      const startOfMonth = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        1
-      );
-
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       return date >= startOfMonth && date <= today;
     }
 
-    if (
-      filterPreset === 'custom' &&
-      customStartDate &&
-      customEndDate
-    ) {
+    if (filterPreset === 'custom' && customStartDate && customEndDate) {
       const start = new Date(customStartDate);
       start.setHours(0, 0, 0, 0);
 
@@ -171,12 +173,15 @@ const Inventory = () => {
     return true;
   };
 
+  // =====================================================
+  // FILTERED PRODUCTS
+  // =====================================================
   const filteredProducts = products.filter((p) => {
     const name = p.name?.toLowerCase() || '';
     const brand = p.brand?.toLowerCase() || '';
     const model = p.model?.toLowerCase() || '';
     const sku = p.sku?.toLowerCase() || '';
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.toLowerCase().trim();
 
     const matchesSearch =
       name.includes(term) ||
@@ -185,35 +190,26 @@ const Inventory = () => {
       sku.includes(term);
 
     const matchesCategory =
-      !selectedCategory ||
-      p.category === selectedCategory;
+      !selectedCategory || p.category === selectedCategory;
 
     const matchesStatus =
-      !selectedStatus ||
-      p.status === selectedStatus;
+      !selectedStatus || p.status === selectedStatus;
 
-    const matchesDate =
-      isDateInFilter(
-        p.createdAt || p.purchaseDate
-      );
+    const matchesDate = isDateInFilter(p.createdAt || p.purchaseDate);
 
-    return (
-      matchesSearch &&
-      matchesCategory &&
-      matchesStatus &&
-      matchesDate
-    );
+    return matchesSearch && matchesCategory && matchesStatus && matchesDate;
   });
 
+  // =====================================================
+  // EXPORT TO CSV
+  // =====================================================
   const exportToCSV = () => {
     if (filteredProducts.length === 0) {
-      return toast.error(
-        'No inventory data to export.'
-      );
+      return toast.error('No inventory data to export.');
     }
 
     const headers = [
-      'Product ID,Product Name,Category,Brand,Model,Purchase Price,Sale Price,Qty,Status,Added Date'
+      'Product ID,Product Name,Category,Brand,Model,Purchase Price,Sale Price,Qty,Status,Added Date',
     ];
 
     const rows = filteredProducts.map((p) => {
@@ -225,34 +221,34 @@ const Inventory = () => {
     });
 
     const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers, ...rows].join('\n');
+      'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
 
     link.setAttribute('href', encodedUri);
-
     link.setAttribute(
       'download',
-      `Inventory_Report_${filterPreset}_${new Date()
-        .toISOString()
-        .split('T')[0]}.csv`
+      `Inventory_Report_${filterPreset}_${new Date().toISOString().split('T')[0]}.csv`
     );
 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    toast.success('Inventory report exported successfully.');
   };
 
+  // =====================================================
+  // TOTALS & METRICS
+  // =====================================================
   const totalStockVal = filteredProducts.reduce(
-    (acc, p) =>
-      acc + p.purchasePrice * p.quantity,
+    (acc, p) => acc + Number(p.purchasePrice || 0) * Number(p.quantity || 0),
     0
   );
 
   const totalStockQty = filteredProducts.reduce(
-    (acc, p) => acc + p.quantity,
+    (acc, p) => acc + Number(p.quantity || 0),
     0
   );
 
@@ -264,403 +260,421 @@ const Inventory = () => {
     (p) => p.status === 'Out of Stock'
   ).length;
 
+  const formatMoney = (val) =>
+    `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
+
+  // =====================================================
+  // RENDER
+  // =====================================================
   return (
     <>
-      <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 font-sans">
-            Dukan Inventory Manager
-          </h2>
+      <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+        
+        {/* =====================================================
+            HERO HEADER (Sidebar matched dark glassmorphism)
+        ====================================================== */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+          <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+          <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-          <p className="text-sm text-gray-600">
-            Track stock levels, purchase/sale pricing parameters and purchase dates.
-          </p>
-        </div>
+          <div className="relative z-10 p-5 sm:p-7 lg:p-8">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+              
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
+                    <Sparkles className="w-3 h-3 text-blue-400" />
+                    Stock Management
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {products.length} Total Inventory Items
+                  </span>
+                </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={exportToCSV}
-            className="flex items-center space-x-2 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Export CSV</span>
-          </button>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white">
+                  Dukan Inventory Manager
+                </h1>
 
-          <Link
-            to="/inventory/add"
-            className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Product</span>
-          </Link>
-        </div>
-      </div>
+                <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
+                  Track stock levels, purchase & retail prices, product SKUs, and re-order levels in real time.
+                </p>
+              </div>
 
-      {/* Stock Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Filtered Products
-          </span>
-
-          <p className="text-xl font-extrabold text-gray-900 mt-1">
-            {filteredProducts.length}
-          </p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Total Stock Qty
-          </span>
-
-          <p className="text-xl font-extrabold text-gray-900 mt-1">
-            {totalStockQty}
-          </p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Inventory Value (Cost)
-          </span>
-
-          <p className="text-xl font-extrabold text-gray-900 mt-1">
-            {settings.currency}{' '}
-            {totalStockVal.toLocaleString()}
-          </p>
-        </div>
-
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-              Low / Out of Stock
-            </span>
-
-            <p className="text-xl font-extrabold text-red-600 mt-1">
-              {lowStockCount}{' '}
-              <span className="text-xs text-gray-400 font-normal">
-                Low
-              </span>{' '}
-              / {outOfStockCount}{' '}
-              <span className="text-xs text-gray-400 font-normal">
-                Out
-              </span>
-            </p>
-          </div>
-
-          {(lowStockCount > 0 ||
-            outOfStockCount > 0) && (
-            <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0" />
-          )}
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-
-            <input
-              type="text"
-              placeholder="Search by name, brand, model, or Product ID (01, 02...)..."
-              value={searchTerm}
-              onChange={(e) =>
-                setSearchTerm(e.target.value)
-              }
-              className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={selectedCategory}
-              onChange={(e) =>
-                setSelectedCategory(e.target.value)
-              }
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            >
-              <option value="">
-                All Categories
-              </option>
-
-              {categories.map((cat) => (
-                <option
-                  key={cat}
-                  value={cat}
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={exportToCSV}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
                 >
-                  {cat}
-                </option>
-              ))}
-            </select>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Export CSV</span>
+                </button>
 
-            <select
-              value={selectedStatus}
-              onChange={(e) =>
-                setSelectedStatus(e.target.value)
-              }
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            >
-              <option value="">
-                All Statuses
-              </option>
+                <Link
+                  to="/inventory/add"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Product</span>
+                </Link>
+              </div>
 
-              <option value="Available">
-                Available
-              </option>
-
-              <option value="Low Stock">
-                Low Stock
-              </option>
-
-              <option value="Out of Stock">
-                Out of Stock
-              </option>
-            </select>
+            </div>
           </div>
+        </section>
+
+        {/* =====================================================
+            STOCK METRICS KPI CARDS
+        ====================================================== */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Card 1: Filtered Products */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Filtered Items
+                </p>
+                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                  {filteredProducts.length}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Products in view
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <Boxes className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Total Stock Qty */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Total Stock Units
+                </p>
+                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                  {totalStockQty.toLocaleString()}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Available in warehouse
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <Package className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Inventory Value (Cost) */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Inventory Value (Cost)
+                </p>
+                <p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-emerald-600 truncate">
+                  {formatMoney(totalStockVal)}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Purchase cost investment
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <CircleDollarSign className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Low / Out of Stock */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Critical Stock
+                </p>
+                <p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-rose-600">
+                  {lowStockCount}{' '}
+                  <span className="text-xs font-bold text-amber-500">Low</span>
+                  {' • '}
+                  {outOfStockCount}{' '}
+                  <span className="text-xs font-bold text-rose-500">Out</span>
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Need re-order soon
+                </p>
+              </div>
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                lowStockCount > 0 || outOfStockCount > 0
+                  ? 'bg-rose-50 border-rose-100 text-rose-600'
+                  : 'bg-slate-50 border-slate-200 text-slate-400'
+              }`}>
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        {/* Date Filter Presets */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              {
-                id: 'today',
-                label: 'Added Today'
-              },
-              {
-                id: 'yesterday',
-                label: 'Added Yesterday'
-              },
-              {
-                id: 'dayBeforeYesterday',
-                label: 'Added Day Before Yesterday'
-              },
-              {
-                id: 'all',
-                label: 'All-Time'
-              },
-              {
-                id: 'week',
-                label: 'Added This Week'
-              },
-              {
-                id: 'month',
-                label: 'Added This Month'
-              },
-              {
-                id: 'custom',
-                label: 'Custom Range'
-              }
-            ].map((preset) => (
-              <button
-                key={preset.id}
-                onClick={() =>
-                  setFilterPreset(preset.id)
-                }
-                className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
-                  filterPreset === preset.id
-                    ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
+        {/* =====================================================
+            SEARCH, CATEGORY, STATUS & DATE FILTERS BAR
+        ====================================================== */}
+        <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
+          <div className="flex flex-col lg:flex-row gap-3">
+            
+            {/* Search Input */}
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by product name, brand, model, or SKU/Product ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-11 border border-slate-200 rounded-xl pl-11 pr-4 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Category & Status Dropdowns */}
+            <div className="flex flex-wrap sm:flex-nowrap gap-2.5">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="h-11 border border-slate-200 rounded-xl px-3.5 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white cursor-pointer transition-all min-w-[150px]"
               >
-                {preset.label}
-              </button>
-            ))}
+                <option value="">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="h-11 border border-slate-200 rounded-xl px-3.5 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white cursor-pointer transition-all min-w-[140px]"
+              >
+                <option value="">All Statuses</option>
+                <option value="Available">Available</option>
+                <option value="Low Stock">Low Stock</option>
+                <option value="Out of Stock">Out of Stock</option>
+              </select>
+            </div>
+
           </div>
 
-          {filterPreset === 'custom' && (
-            <div className="flex items-center space-x-2 text-xs font-bold text-gray-500">
-              <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+          {/* Date Filter Presets */}
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-t border-slate-100 pt-3.5">
+            <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
+              {[
+                { id: 'all', label: 'All-Time' },
+                { id: 'today', label: 'Added Today' },
+                { id: 'yesterday', label: 'Added Yesterday' },
+                { id: 'dayBeforeYesterday', label: 'Day Before' },
+                { id: 'week', label: '7 Days' },
+                { id: 'month', label: 'This Month' },
+                { id: 'custom', label: 'Custom Range' },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => setFilterPreset(preset.id)}
+                  className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                    filterPreset === preset.id
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/20 scale-[1.02]'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) =>
-                  setCustomStartDate(
-                    e.target.value
-                  )
-                }
-                className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
-              />
+            {filterPreset === 'custom' && (
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 animate-[pageEnter_0.2s_ease-out]">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                  <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-transparent text-xs font-black text-slate-700 outline-none"
+                  />
+                </div>
 
-              <span>to</span>
+                <span>to</span>
 
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) =>
-                  setCustomEndDate(
-                    e.target.value
-                  )
-                }
-                className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
-              />
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                  <CalendarRange className="w-3.5 h-3.5 text-violet-600" />
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-transparent text-xs font-black text-slate-700 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* =====================================================
+            INVENTORY DATA TABLE
+        ====================================================== */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+          {loading ? (
+            <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
+              <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
+                Accessing stock database...
+              </span>
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
+              <Package className="w-12 h-12 text-slate-300" />
+              <p className="text-sm font-black text-slate-700">No products found</p>
+              <p className="text-xs text-slate-400 max-w-sm">
+                No inventory records match the current filters. Click "Add Product" to create new stock items.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600 font-medium">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="px-5 py-4">Product ID</th>
+                    <th className="px-5 py-4">Product Name</th>
+                    <th className="px-5 py-4">Brand / Model</th>
+                    <th className="px-5 py-4">Category</th>
+                    <th className="px-5 py-4 text-center">Stock Qty</th>
+                    <th className="px-5 py-4 text-right">Purchase Price</th>
+                    <th className="px-5 py-4 text-right">Sale Price</th>
+                    <th className="px-5 py-4 text-center">Status</th>
+                    <th className="px-5 py-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {filteredProducts.map((p) => (
+                    <tr
+                      key={p._id}
+                      className="hover:bg-slate-50/80 transition-colors"
+                    >
+                      <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
+                        {p.sku || '—'}
+                      </td>
+
+                      <td className="px-5 py-3.5 font-black text-slate-900">
+                        {p.name}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-slate-600 font-semibold">
+                        {[p.brand, p.model].filter(Boolean).join(' • ') || '—'}
+                      </td>
+
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex px-2 py-0.5 rounded-md bg-slate-100 font-bold text-[10px] text-slate-600">
+                          {p.category || 'General'}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-3.5 text-center">
+                        <span className={`inline-flex min-w-7 justify-center px-2.5 py-1 rounded-full text-[10px] font-black border ${
+                          p.quantity === 0
+                            ? 'bg-rose-50 border-rose-200 text-rose-700'
+                            : p.quantity <= 3
+                            ? 'bg-amber-50 border-amber-200 text-amber-700'
+                            : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        }`}>
+                          {p.quantity} Units
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-3.5 text-right font-medium text-slate-500">
+                        {formatMoney(p.purchasePrice)}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-right font-black text-slate-900">
+                        {formatMoney(p.salePrice)}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-center">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black border ${
+                            p.status === 'Available'
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : p.status === 'Low Stock'
+                              ? 'bg-amber-50 border-amber-200 text-amber-700'
+                              : 'bg-rose-50 border-rose-200 text-rose-700'
+                          }`}
+                        >
+                          {p.status || 'Available'}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Edit Product */}
+                          <Link
+                            to={`/inventory/edit/${p._id}`}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+                            title="Edit Product"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Link>
+
+                          {/* Delete Product */}
+                          {isDeletionUnlocked ? (
+                            <button
+                              type="button"
+                              onClick={() => triggerDeleteConfirmation(p._id, p.name)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+                              title="Delete Product"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <div
+                              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
+                              title="Deletion Mode is locked in Settings"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
+
       </div>
 
-      {/* Inventory Table */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-10 text-center flex flex-col items-center justify-center space-y-3">
-            <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-
-            <span className="text-gray-500 text-sm">
-              Querying database...
-            </span>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="p-10 text-center text-gray-500">
-            No products found matching the criteria. Click "Add Product" to populate your inventory sheet.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
-                <tr>
-                  <th className="px-6 py-4">
-                    Product ID
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Product Name
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Brand/Model
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Category
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Stock Qty
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Purchase Price
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Sale Price
-                  </th>
-
-                  <th className="px-6 py-4">
-                    Status
-                  </th>
-
-                  <th className="px-6 py-4 text-center">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-200 font-medium">
-                {filteredProducts.map((p) => (
-                  <tr
-                    key={p._id}
-                    className="hover:bg-gray-50/75 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-indigo-600 font-bold tracking-wider">
-                      {p.sku}
-                    </td>
-
-                    <td className="px-6 py-4 font-bold text-gray-900">
-                      {p.name}
-                    </td>
-
-                    <td className="px-6 py-4 text-gray-700">
-                      {p.brand} / {p.model}
-                    </td>
-
-                    <td className="px-6 py-4 text-gray-500">
-                      {p.category}
-                    </td>
-
-                    <td className="px-6 py-4 text-gray-900 font-semibold">
-                      {p.quantity}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      {settings.currency}{' '}
-                      {p.purchasePrice.toLocaleString()}
-                    </td>
-
-                    <td className="px-6 py-4 font-semibold text-gray-800">
-                      {settings.currency}{' '}
-                      {p.salePrice.toLocaleString()}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                          p.status === 'Available'
-                            ? 'bg-green-50 border-green-200 text-green-700'
-                            : p.status === 'Low Stock'
-                            ? 'bg-amber-50 border-amber-200 text-amber-700'
-                            : 'bg-red-50 border-red-200 text-red-700'
-                        }`}
-                      >
-                        {p.status}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                        {/* Edit */}
-                        <Link
-                          to={`/inventory/edit/${p._id}`}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit Product"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Link>
-
-                        {/* Delete / Locked */}
-                        {isDeletionUnlocked ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              triggerDeleteConfirmation(
-                                p._id,
-                                p.name
-                              )
-                            }
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete Product"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <span
-                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none"
-                            title="Locked: Enable Deletion Mode from Settings"
-                          >
-                            <Lock className="w-3 h-3" />
-                            <span>Locked</span>
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-    <ConfirmModal
-      isOpen={deleteModal.isOpen}
-      onClose={() => setDeleteModal({ ...deleteModal, isOpen: false })}
-      onConfirm={confirmDelete}
-      title="Delete Product"
-      message={`Are you sure you want to delete "${deleteModal.productName}"? This action cannot be undone.`}
-    />
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ ...deleteModal, isOpen: false })}
+        onConfirm={confirmDelete}
+        title="Delete Product"
+        message={`Are you sure you want to permanently delete "${deleteModal.productName}" from your inventory? This action cannot be undone.`}
+      />
     </>
   );
 };

@@ -38,8 +38,9 @@ if (process.env.NODE_ENV === 'production') {
 // GLOBAL MIDDLEWARE
 // =====================================================
 
-// Increased limit because fingerprint images are sent
-// as Base64.
+// Increased limit because fingerprint images
+// can be sent as Base64.
+
 app.use(
   express.json({
     limit: '10mb',
@@ -60,8 +61,22 @@ app.use(cookieParser());
 // CORS
 // =====================================================
 
+
 // -----------------------------------------------------
-// Environment-based origins
+// NORMALIZE ORIGIN FUNCTION
+// -----------------------------------------------------
+
+const normalizeOrigin = (origin) => {
+  if (!origin) return '';
+
+  return origin
+    .trim()
+    .replace(/\/+$/, '');
+};
+
+
+// -----------------------------------------------------
+// ENVIRONMENT-BASED ORIGINS
 // -----------------------------------------------------
 
 const configuredOrigins = [
@@ -71,16 +86,12 @@ const configuredOrigins = [
 ]
   .filter(Boolean)
   .flatMap((value) => value.split(','))
-  .map((origin) =>
-    origin
-      .trim()
-      .replace(/\/$/, '')
-  )
+  .map(normalizeOrigin)
   .filter(Boolean);
 
 
 // -----------------------------------------------------
-// Development origins
+// DEVELOPMENT ORIGINS
 // -----------------------------------------------------
 
 const developmentOrigins = [
@@ -90,7 +101,7 @@ const developmentOrigins = [
 
 
 // -----------------------------------------------------
-// Production frontend origins
+// PRODUCTION FRONTEND ORIGINS
 // -----------------------------------------------------
 
 const productionOrigins = [
@@ -99,18 +110,22 @@ const productionOrigins = [
 
 
 // -----------------------------------------------------
-// Final allowed origins
+// FINAL ALLOWED ORIGINS
 // -----------------------------------------------------
 
-const allowedOrigins = new Set([
-  ...developmentOrigins,
-  ...productionOrigins,
-  ...configuredOrigins,
-]);
+const allowedOrigins = new Set(
+  [
+    ...developmentOrigins,
+    ...productionOrigins,
+    ...configuredOrigins,
+  ]
+    .map(normalizeOrigin)
+    .filter(Boolean)
+);
 
 
 // -----------------------------------------------------
-// Debug
+// DEBUG
 // -----------------------------------------------------
 
 console.log(
@@ -125,31 +140,31 @@ console.log(
 
 const corsOptions = {
   origin: (origin, callback) => {
+    // Allow requests without Origin.
+    // For example:
+    // Postman
+    // server-to-server
+    // health checks
 
-    // Allow requests without Origin
-    // such as server-to-server requests,
-    // health checks, Postman, etc.
     if (!origin) {
       return callback(null, true);
     }
 
-
-    const normalizedOrigin = origin
-      .trim()
-      .replace(/\/$/, '');
+    const normalizedOrigin = normalizeOrigin(origin);
 
 
     // Allow approved origins
+
     if (allowedOrigins.has(normalizedOrigin)) {
       return callback(null, true);
     }
 
 
     // Block unknown origins
+
     console.error(
       `[CORS BLOCKED] Origin: ${origin}`
     );
-
 
     return callback(
       new Error(
@@ -159,11 +174,13 @@ const corsOptions = {
   },
 
 
-  // Required for JWT authentication cookies
+  // Required when authentication uses cookies
+
   credentials: true,
 
 
   // Allowed HTTP methods
+
   methods: [
     'GET',
     'POST',
@@ -174,9 +191,8 @@ const corsOptions = {
   ],
 
 
-  // IMPORTANT:
-  // x-device-id must be here because the frontend
-  // sends this custom header.
+  // Allowed custom headers
+
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -199,10 +215,15 @@ app.use(
 
 // =====================================================
 // EXPLICIT PREFLIGHT HANDLER
+// EXPRESS 5 COMPATIBLE
 // =====================================================
 
+// IMPORTANT:
+// Do NOT use '*'
+// Express 5 does not support unnamed wildcard '*'.
+
 app.options(
-  '*',
+  '/{*any}',
   cors(corsOptions)
 );
 
@@ -213,24 +234,20 @@ app.options(
 
 app.use(
   (req, res, next) => {
-
     res.setHeader(
       'X-Content-Type-Options',
       'nosniff'
     );
-
 
     res.setHeader(
       'X-Frame-Options',
       'DENY'
     );
 
-
     res.setHeader(
       'Referrer-Policy',
       'strict-origin-when-cross-origin'
     );
-
 
     next();
   }
@@ -244,12 +261,10 @@ app.use(
 app.get(
   '/health',
   (req, res) => {
-
     return res.status(200).json({
       status: 'ok',
       service: 'Shop Management API',
     });
-
   }
 );
 
@@ -434,9 +449,7 @@ app.use(
 // =====================================================
 
 const seedAdminAccount = async () => {
-
   try {
-
     const adminEmail = (
       process.env.ADMIN_EMAIL ||
       'admin@shop.com'
@@ -461,7 +474,6 @@ const seedAdminAccount = async () => {
     // =================================================
 
     if (!admin) {
-
       admin = new Admin({
         email: adminEmail,
         password: adminPassword,
@@ -474,7 +486,6 @@ const seedAdminAccount = async () => {
       console.log(
         `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
       );
-
 
       return;
     }
@@ -491,7 +502,6 @@ const seedAdminAccount = async () => {
 
 
     if (!isMatch) {
-
       admin.password =
         adminPassword;
 
@@ -504,16 +514,36 @@ const seedAdminAccount = async () => {
       );
     }
 
+
+    console.log(
+      `[SEED READY] Admin account already exists: ${adminEmail}`
+    );
+
   } catch (err) {
 
     console.error(
       `[SEED ERROR]: ${err.message}`
     );
 
-
     throw err;
   }
 };
+
+
+// =====================================================
+// 404 HANDLER
+// EXPRESS 5 COMPATIBLE
+// =====================================================
+
+app.all(
+  '/{*any}',
+  (req, res) => {
+    return res.status(404).json({
+      success: false,
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
+    });
+  }
+);
 
 
 // =====================================================
@@ -530,12 +560,12 @@ app.use(
 
     console.error(
       'GLOBAL SERVER ERROR:',
-      err.stack
+      err.stack || err.message
     );
 
 
     // -------------------------------------------------
-    // CORS errors
+    // CORS ERROR
     // -------------------------------------------------
 
     if (
@@ -550,20 +580,21 @@ app.use(
         message:
           'CORS origin is not allowed.',
       });
-
     }
 
 
     // -------------------------------------------------
-    // General server error
+    // GENERAL SERVER ERROR
     // -------------------------------------------------
 
-    return res.status(500).json({
+    return res.status(
+      err.status || 500
+    ).json({
       success: false,
       message:
+        err.message ||
         'An unexpected application error occurred.',
     });
-
   }
 );
 
@@ -581,7 +612,7 @@ const startServer = async () => {
   try {
 
     // =================================================
-    // DATABASE MUST BE READY FIRST
+    // DATABASE CONNECTION
     // =================================================
 
     await connectDB();
@@ -593,7 +624,7 @@ const startServer = async () => {
 
 
     // =================================================
-    // SEED ADMIN AFTER DATABASE CONNECTION
+    // SEED ADMIN
     // =================================================
 
     await seedAdminAccount();
@@ -628,7 +659,6 @@ const startServer = async () => {
       'SERVER STARTUP ERROR:',
       error.message
     );
-
 
     process.exit(1);
   }

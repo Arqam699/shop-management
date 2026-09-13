@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 
@@ -21,21 +21,19 @@ import {
   Mail,
   StickyNote,
   Camera,
+  Sparkles,
+  UserRound,
+  CheckCircle2,
+  Calendar,
+  CreditCard,
+  Building2,
+  Receipt,
+  RotateCcw,
 } from 'lucide-react';
 
 /* =========================================================
    MEDIA HELPERS
 ========================================================= */
-
-/*
-  Handles:
-  1. data:image/...;base64,...
-  2. raw base64
-  3. http / https URL
-  4. Mongo/Mongoose Buffer object:
-     { type: "Buffer", data: [...] }
-  5. object with data string
-*/
 
 const bufferToDataUrl = (value, mimeType) => {
   try {
@@ -47,20 +45,11 @@ const bufferToDataUrl = (value, mimeType) => {
       Array.isArray(value.data)
     ) {
       let binary = '';
-
       const bytes = new Uint8Array(value.data);
       const chunkSize = 0x8000;
 
-      for (
-        let i = 0;
-        i < bytes.length;
-        i += chunkSize
-      ) {
-        const chunk = bytes.subarray(
-          i,
-          Math.min(i + chunkSize, bytes.length)
-        );
-
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
         binary += String.fromCharCode(...chunk);
       }
 
@@ -73,27 +62,17 @@ const bufferToDataUrl = (value, mimeType) => {
   }
 };
 
-const normalizeImage = (
-  image,
-  defaultMimeType = 'image/jpeg'
-) => {
+const normalizeImage = (image, defaultMimeType = 'image/jpeg') => {
   if (!image) return '';
-
-  /* -------------------------------------------------------
-     STRING IMAGE
-  ------------------------------------------------------- */
 
   if (typeof image === 'string') {
     const value = image.trim();
-
     if (!value) return '';
 
-    // Already a data URL
     if (value.startsWith('data:image/')) {
       return value;
     }
 
-    // Normal URL
     if (
       value.startsWith('http://') ||
       value.startsWith('https://') ||
@@ -102,26 +81,13 @@ const normalizeImage = (
       return value;
     }
 
-    // Raw base64
     return `data:${defaultMimeType};base64,${value}`;
   }
 
-  /* -------------------------------------------------------
-     BUFFER OBJECT
-  ------------------------------------------------------- */
-
-  const bufferData = bufferToDataUrl(
-    image,
-    defaultMimeType
-  );
-
+  const bufferData = bufferToDataUrl(image, defaultMimeType);
   if (bufferData) {
     return bufferData;
   }
-
-  /* -------------------------------------------------------
-     NESTED DATA OBJECT
-  ------------------------------------------------------- */
 
   if (
     typeof image === 'object' &&
@@ -129,7 +95,6 @@ const normalizeImage = (
     typeof image.data === 'string'
   ) {
     const value = image.data.trim();
-
     if (!value) return '';
 
     if (value.startsWith('data:image/')) {
@@ -143,17 +108,11 @@ const normalizeImage = (
 };
 
 const getFingerprintImage = (image) => {
-  return normalizeImage(
-    image,
-    'image/png'
-  );
+  return normalizeImage(image, 'image/png');
 };
 
 const getPhotoImage = (image) => {
-  return normalizeImage(
-    image,
-    'image/jpeg'
-  );
+  return normalizeImage(image, 'image/jpeg');
 };
 
 /* =========================================================
@@ -162,9 +121,7 @@ const getPhotoImage = (image) => {
 
 const formatFingerprintDate = (value) => {
   if (!value) return 'Not available';
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) {
     return 'Not available';
   }
@@ -180,9 +137,7 @@ const formatFingerprintDate = (value) => {
 
 const formatPhotoDate = (value) => {
   if (!value) return 'Not available';
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) {
     return 'Not available';
   }
@@ -198,9 +153,7 @@ const formatPhotoDate = (value) => {
 
 const formatDate = (value) => {
   if (!value) return 'N/A';
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) {
     return 'N/A';
   }
@@ -212,15 +165,9 @@ const formatDate = (value) => {
   });
 };
 
-const formatCurrency = (
-  value,
-  currency = 'Rs.'
-) => {
+const formatCurrency = (value, currency = 'PKR') => {
   const amount = Number(value || 0);
-
-  return `${currency} ${amount.toLocaleString(
-    'en-PK'
-  )}`;
+  return `${currency} ${amount.toLocaleString('en-PK')}`;
 };
 
 /* =========================================================
@@ -228,21 +175,18 @@ const formatCurrency = (
 ========================================================= */
 
 const MediaPlaceholder = ({ type }) => {
-  const isFingerprint =
-    type === 'fingerprint';
+  const isFingerprint = type === 'fingerprint';
 
   return (
     <div className="text-center px-3">
       {isFingerprint ? (
-        <Fingerprint className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+        <Fingerprint className="w-9 h-9 text-slate-300 mx-auto mb-1.5" />
       ) : (
-        <Camera className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+        <Camera className="w-9 h-9 text-slate-300 mx-auto mb-1.5" />
       )}
 
-      <p className="text-[10px] text-slate-400">
-        {isFingerprint
-          ? 'No fingerprint image'
-          : 'No photo available'}
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+        {isFingerprint ? 'No Biometric Print' : 'No Photo Available'}
       </p>
     </div>
   );
@@ -252,25 +196,15 @@ const MediaPlaceholder = ({ type }) => {
    SAFE IMAGE
 ========================================================= */
 
-const SafeImage = ({
-  src,
-  alt,
-  className,
-  placeholderType,
-}) => {
-  const [failed, setFailed] =
-    useState(false);
+const SafeImage = ({ src, alt, className, placeholderType }) => {
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setFailed(false);
   }, [src]);
 
   if (!src || failed) {
-    return (
-      <MediaPlaceholder
-        type={placeholderType}
-      />
-    );
+    return <MediaPlaceholder type={placeholderType} />;
   }
 
   return (
@@ -296,151 +230,97 @@ const IdentityMediaSection = ({
   liveImage,
   liveImageCapturedAt,
 }) => {
-  const fingerprintSrc =
-    getFingerprintImage(
-      fingerprintImage
-    );
+  const fingerprintSrc = getFingerprintImage(fingerprintImage);
+  const photoSrc = getPhotoImage(liveImage);
 
-  const photoSrc =
-    getPhotoImage(liveImage);
-
-  const fingerprintCaptured =
-    Boolean(fingerprintSrc);
-
-  const photoCaptured =
-    Boolean(photoSrc);
+  const fingerprintCaptured = Boolean(fingerprintSrc);
+  const photoCaptured = Boolean(photoSrc);
 
   return (
     <div className="w-full lg:w-[280px] shrink-0">
+      <div className="rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 space-y-4">
+        
+        {/* FINGERPRINT */}
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                <Fingerprint className="w-3.5 h-3.5" />
+              </div>
+              <p className="text-xs font-black text-slate-800">Fingerprint</p>
+            </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-
-        {/* =================================================
-            FINGERPRINT
-        ================================================= */}
-
-        <div className="flex items-center gap-2 mb-2">
-
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <Fingerprint className="w-4 h-4 text-indigo-600" />
-          </div>
-
-          <div>
-            <p className="text-xs font-bold text-slate-800">
-              Fingerprint
-            </p>
-
-            <p
-              className={`text-[10px] font-semibold ${
+            <span
+              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                 fingerprintCaptured
-                  ? 'text-green-600'
-                  : 'text-slate-400'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-400'
               }`}
             >
+              {fingerprintCaptured ? 'Captured' : 'Not Captured'}
+            </span>
+          </div>
+
+          <div className="h-[140px] rounded-2xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shadow-inner p-2">
+            <SafeImage
+              src={fingerprintSrc}
+              alt="Fingerprint"
+              placeholderType="fingerprint"
+              className="max-w-[210px] max-h-[125px] w-auto h-auto object-contain"
+            />
+          </div>
+
+          <div className="mt-1.5 flex items-start gap-1.5 text-[9px] text-slate-400 font-semibold">
+            <CalendarDays className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
+            <span className="truncate">
               {fingerprintCaptured
-                ? 'Captured'
-                : 'Not Captured'}
-            </p>
+                ? formatFingerprintDate(fingerprintCapturedAt)
+                : 'Capture date not recorded'}
+            </span>
           </div>
-
         </div>
 
-        {/* Fingerprint Image */}
-
-        <div className="h-[150px] rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
-
-          <SafeImage
-            src={fingerprintSrc}
-            alt="Fingerprint"
-            placeholderType="fingerprint"
-            className="max-w-[210px] max-h-[140px] w-auto h-auto object-contain"
-          />
-
-        </div>
-
-        {/* Fingerprint Date */}
-
-        <div className="mt-2 flex items-start gap-1.5 text-[10px] text-slate-500">
-
-          <CalendarDays className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-
-          <span>
-            {fingerprintCaptured
-              ? formatFingerprintDate(
-                  fingerprintCapturedAt
-                )
-              : 'Capture time not available'}
-          </span>
-
-        </div>
-
-        {/* =================================================
-            PHOTO
-        ================================================= */}
-
-        <div className="mt-4 pt-4 border-t border-slate-200">
-
-          <div className="flex items-center gap-2 mb-2">
-
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Camera className="w-4 h-4 text-emerald-600" />
+        {/* PHOTO */}
+        <div className="pt-3.5 border-t border-slate-200">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                <Camera className="w-3.5 h-3.5" />
+              </div>
+              <p className="text-xs font-black text-slate-800">Person Photo</p>
             </div>
 
-            <div>
-
-              <p className="text-xs font-bold text-slate-800">
-                Photo
-              </p>
-
-              <p
-                className={`text-[10px] font-semibold ${
-                  photoCaptured
-                    ? 'text-green-600'
-                    : 'text-slate-400'
-                }`}
-              >
-                {photoCaptured
-                  ? 'Captured'
-                  : 'Not Captured'}
-              </p>
-
-            </div>
-
+            <span
+              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                photoCaptured
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-400'
+              }`}
+            >
+              {photoCaptured ? 'Captured' : 'Not Captured'}
+            </span>
           </div>
 
-          {/* Photo Image */}
-
-          <div className="h-[190px] rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
-
+          <div className="h-[175px] rounded-2xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shadow-inner p-2">
             <SafeImage
               src={photoSrc}
               alt="Person"
               placeholderType="photo"
-              className="w-full h-full object-contain"
+              className="w-full h-full object-contain rounded-xl"
             />
-
           </div>
 
-          {/* Photo Date */}
-
-          <div className="mt-2 flex items-start gap-1.5 text-[10px] text-slate-500">
-
-            <CalendarDays className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-
-            <span>
+          <div className="mt-1.5 flex items-start gap-1.5 text-[9px] text-slate-400 font-semibold">
+            <CalendarDays className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
+            <span className="truncate">
               {photoCaptured
-                ? formatPhotoDate(
-                    liveImageCapturedAt
-                  )
-                : 'Capture time not available'}
+                ? formatPhotoDate(liveImageCapturedAt)
+                : 'Photo date not recorded'}
             </span>
-
           </div>
-
         </div>
 
       </div>
-
     </div>
   );
 };
@@ -449,41 +329,25 @@ const IdentityMediaSection = ({
    DETAIL ITEM
 ========================================================= */
 
-const DetailItem = ({
-  icon: Icon,
-  label,
-  value,
-  fullWidth = false,
-}) => {
+const DetailItem = ({ icon: Icon, label, value, fullWidth = false }) => {
   return (
     <div
-      className={`rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 ${
-        fullWidth
-          ? 'sm:col-span-2 xl:col-span-3'
-          : ''
+      className={`rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 ${
+        fullWidth ? 'sm:col-span-2 xl:col-span-3' : ''
       }`}
     >
-
-      <div className="flex items-center gap-2 mb-1">
-
+      <div className="flex items-center gap-1.5 mb-1">
         <Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-
-        <span className="text-[10px] uppercase tracking-wide font-bold text-slate-400">
+        <span className="text-[9px] uppercase tracking-wider font-black text-slate-400">
           {label}
         </span>
-
       </div>
 
-      <p className="text-sm font-semibold text-slate-800 break-words">
-
-        {value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ''
+      <p className="text-xs sm:text-sm font-black text-slate-800 break-words">
+        {value !== undefined && value !== null && String(value).trim() !== ''
           ? value
-          : 'N/A'}
-
+          : '—'}
       </p>
-
     </div>
   );
 };
@@ -501,196 +365,64 @@ const IdentityCard = ({
   isCustomer = false,
 }) => {
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-
+    <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+      
       {/* Header */}
-
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-
-        <div
-          className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center`}
-        >
-          <User
-            className={`w-5 h-5 ${iconColor}`}
-          />
+      <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+        <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+          <User className={`w-4 h-4 ${iconColor}`} />
         </div>
 
         <div>
-
-          <h2 className="text-base font-black text-slate-900">
-            {title}
-          </h2>
-
-          <p className="text-xs text-slate-500 mt-0.5">
-            {subtitle}
-          </p>
-
+          <h2 className="text-sm sm:text-base font-black text-slate-900">{title}</h2>
+          <p className="text-[10px] sm:text-xs text-slate-400 font-semibold">{subtitle}</p>
         </div>
-
       </div>
 
       {/* Content */}
-
-      <div className="p-5">
-
-        <div className="flex flex-col lg:flex-row gap-5">
-
-          {/* Details */}
-
+      <div className="p-5 sm:p-6">
+        <div className="flex flex-col lg:flex-row gap-6">
+          
+          {/* Details Grid */}
           <div className="flex-1 min-w-0">
-
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-
               {isCustomer ? (
                 <>
-                  <DetailItem
-                    icon={FileDigit}
-                    label="Customer ID"
-                    value={
-                      person?.customerId
-                    }
-                  />
-
-                  <DetailItem
-                    icon={User}
-                    label="Full Name"
-                    value={
-                      person?.fullName
-                    }
-                  />
-
-                  <DetailItem
-                    icon={User}
-                    label="Father Name"
-                    value={
-                      person?.fatherName
-                    }
-                  />
-
-                  <DetailItem
-                    icon={Phone}
-                    label="Mobile Number"
-                    value={
-                      person?.mobileNumber
-                    }
-                  />
-
-                  <DetailItem
-                    icon={Phone}
-                    label="Alternate Mobile"
-                    value={
-                      person?.alternateMobileNumber
-                    }
-                  />
-
-                  <DetailItem
-                    icon={FileDigit}
-                    label="CNIC"
-                    value={person?.cnic}
-                  />
-
-                  <DetailItem
-                    icon={MapPin}
-                    label="City"
-                    value={person?.city}
-                  />
-
-                  <DetailItem
-                    icon={Mail}
-                    label="Email"
-                    value={person?.email}
-                  />
-
-                  <DetailItem
-                    icon={MapPin}
-                    label="Address"
-                    value={
-                      person?.address
-                    }
-                    fullWidth
-                  />
-
-                  <DetailItem
-                    icon={StickyNote}
-                    label="Notes"
-                    value={person?.notes}
-                    fullWidth
-                  />
+                  <DetailItem icon={FileDigit} label="Customer ID" value={person?.customerId} />
+                  <DetailItem icon={User} label="Full Name" value={person?.fullName} />
+                  <DetailItem icon={User} label="Father Name" value={person?.fatherName} />
+                  <DetailItem icon={Phone} label="Mobile Number" value={person?.mobileNumber} />
+                  <DetailItem icon={Phone} label="Alternate Mobile" value={person?.alternateMobileNumber} />
+                  <DetailItem icon={FileDigit} label="CNIC" value={person?.cnic} />
+                  <DetailItem icon={MapPin} label="City" value={person?.city} />
+                  <DetailItem icon={Mail} label="Email" value={person?.email} />
+                  <DetailItem icon={MapPin} label="Residential Address" value={person?.address} fullWidth />
+                  {person?.notes && (
+                    <DetailItem icon={StickyNote} label="Notes / Remarks" value={person?.notes} fullWidth />
+                  )}
                 </>
               ) : (
                 <>
-                  <DetailItem
-                    icon={User}
-                    label="Full Name"
-                    value={person?.name}
-                  />
-
-                  <DetailItem
-                    icon={User}
-                    label="Father Name"
-                    value={
-                      person?.fatherName
-                    }
-                  />
-
-                  <DetailItem
-                    icon={Phone}
-                    label="Mobile Number"
-                    value={
-                      person?.mobileNumber
-                    }
-                  />
-
-                  <DetailItem
-                    icon={FileDigit}
-                    label="CNIC"
-                    value={person?.cnic}
-                  />
-
-                  <DetailItem
-                    icon={User}
-                    label="Relation"
-                    value={
-                      person?.relation
-                    }
-                  />
-
-                  <DetailItem
-                    icon={MapPin}
-                    label="Address"
-                    value={
-                      person?.address
-                    }
-                    fullWidth
-                  />
+                  <DetailItem icon={User} label="Full Name" value={person?.name} />
+                  <DetailItem icon={User} label="Father Name" value={person?.fatherName} />
+                  <DetailItem icon={Phone} label="Mobile Number" value={person?.mobileNumber} />
+                  <DetailItem icon={FileDigit} label="CNIC" value={person?.cnic} />
+                  <DetailItem icon={User} label="Relationship" value={person?.relation} />
+                  <DetailItem icon={MapPin} label="Residential Address" value={person?.address} fullWidth />
                 </>
               )}
-
             </div>
-
           </div>
 
-          {/* =================================================
-              MEDIA
-          ================================================= */}
-
+          {/* Media */}
           <IdentityMediaSection
-            fingerprintImage={
-              person?.fingerprintImage
-            }
-            fingerprintCapturedAt={
-              person?.fingerprintCapturedAt
-            }
-            liveImage={
-              person?.liveImage
-            }
-            liveImageCapturedAt={
-              person?.liveImageCapturedAt
-            }
+            fingerprintImage={person?.fingerprintImage}
+            fingerprintCapturedAt={person?.fingerprintCapturedAt}
+            liveImage={person?.liveImage}
+            liveImageCapturedAt={person?.liveImageCapturedAt}
           />
 
         </div>
-
       </div>
 
     </section>
@@ -701,40 +433,23 @@ const IdentityCard = ({
    SUMMARY CARD
 ========================================================= */
 
-const SummaryCard = ({
-  title,
-  value,
-  icon: Icon,
-  iconClass,
-  bgClass,
-}) => {
+const SummaryCard = ({ title, value, icon: Icon, iconClass, bgClass }) => {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-
+    <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all">
       <div className="flex items-center justify-between gap-3">
-
         <div>
-
-          <p className="text-[11px] uppercase tracking-wide font-bold text-slate-400">
+          <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">
             {title}
           </p>
-
-          <p className="text-lg font-black text-slate-900 mt-1">
+          <p className="text-lg sm:text-xl font-black text-slate-900 mt-1">
             {value}
           </p>
-
         </div>
 
-        <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center ${bgClass}`}
-        >
-          <Icon
-            className={`w-5 h-5 ${iconClass}`}
-          />
+        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${bgClass}`}>
+          <Icon className={`w-5 h-5 ${iconClass}`} />
         </div>
-
       </div>
-
     </div>
   );
 };
@@ -746,15 +461,11 @@ const SummaryCard = ({
 const CustomerProfile = () => {
   const { id } = useParams();
   const { settings } = useSettings();
+  const navigate = useNavigate();
 
-  const [customer, setCustomer] =
-    useState(null);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [errorMsg, setErrorMsg] =
-    useState('');
+  const [customer, setCustomer] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   /* =========================================================
      FETCH CUSTOMER
@@ -766,29 +477,17 @@ const CustomerProfile = () => {
         setLoading(true);
         setErrorMsg('');
 
-        const response =
-          await api.get(
-            `/customers/${id}`
-          );
+        const response = await api.get(`/customers/${id}`);
 
-        if (
-          response.data &&
-          response.data.success
-        ) {
-          const data =
-            response.data.data;
-
+        if (response.data && response.data.success) {
+          const data = response.data.data;
           setCustomer(data);
         } else {
-          setErrorMsg(
-            'Customer records missing.'
-          );
+          setErrorMsg('Customer records missing.');
         }
       } catch (error) {
         setErrorMsg(
-          error?.response?.data
-            ?.message ||
-            'Failed to load profile record data.'
+          error?.response?.data?.message || 'Failed to load profile record data.'
         );
       } finally {
         setLoading(false);
@@ -806,18 +505,21 @@ const CustomerProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-
+      <div className="min-h-[75vh] flex items-center justify-center px-4">
         <div className="text-center">
-
-          <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3" />
-
-          <p className="text-sm font-semibold text-slate-500">
-            Loading customer profile...
+          <div className="relative mx-auto w-16 h-16">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 animate-pulse opacity-25" />
+            <div className="relative w-16 h-16 rounded-2xl bg-slate-950 border border-white/10 shadow-2xl flex items-center justify-center">
+              <User className="w-7 h-7 text-blue-400 animate-pulse" />
+            </div>
+          </div>
+          <h3 className="mt-5 text-sm font-black uppercase tracking-[0.16em] text-slate-800">
+            Loading Customer Profile
+          </h3>
+          <p className="mt-1 text-xs font-semibold text-slate-400">
+            Querying biometric fingerprint and personal records...
           </p>
-
         </div>
-
       </div>
     );
   }
@@ -828,32 +530,24 @@ const CustomerProfile = () => {
 
   if (errorMsg || !customer) {
     return (
-      <div className="max-w-3xl mx-auto py-16 px-4">
-
-        <div className="bg-white border border-red-200 rounded-2xl p-8 text-center shadow-sm">
-
-          <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
-
+      <div className="max-w-3xl mx-auto py-16 px-4 animate-[pageEnter_0.3s_ease-out]">
+        <div className="bg-white border border-rose-200 rounded-3xl p-8 text-center shadow-sm">
+          <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
           <h2 className="text-lg font-black text-slate-900">
-            Customer Not Found
+            Customer Profile Not Found
           </h2>
-
-          <p className="text-sm text-slate-500 mt-2">
-            {errorMsg ||
-              'Customer record could not be loaded.'}
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            {errorMsg || 'The requested customer record could not be loaded.'}
           </p>
 
           <Link
             to="/customers"
-            className="inline-flex items-center gap-2 mt-5 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700"
+            className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800 transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
-
-            Back to Customers
+            Back to Customers Directory
           </Link>
-
         </div>
-
       </div>
     );
   }
@@ -862,33 +556,21 @@ const CustomerProfile = () => {
      DATA
   ========================================================= */
 
-  const totalPurchased =
-    customer.totalPurchased || 0;
+  const totalPurchased = customer.totalPurchased || 0;
+  const outstandingBalance = customer.outstandingBalance || 0;
+  const totalSalesCount = customer.sales?.length || 0;
+  const hasOverdue = customer.hasOverdue || false;
 
-  const outstandingBalance =
-    customer.outstandingBalance || 0;
-
-  const totalSalesCount =
-    customer.sales?.length || 0;
-
-  const hasOverdue =
-    customer.hasOverdue || false;
-
-  const guarantor1 =
-    customer.guarantor1 || {};
-
-  const guarantor2 =
-    customer.guarantor2 || {};
+  const guarantor1 = customer.guarantor1 || {};
+  const guarantor2 = customer.guarantor2 || {};
 
   /* =========================================================
      CREDIT STATUS
   ========================================================= */
 
   let creditStatus = {
-    title:
-      'New Customer (No Prior History)',
-    badgeColor:
-      'bg-blue-50 border-blue-200 text-blue-700',
+    title: 'New Customer (No Prior History)',
+    badgeColor: 'bg-blue-50/80 border-blue-200 text-blue-800',
     icon: Clock,
     description:
       'Yeh customer pehli baar dukan par aaya hai. Iska koi pichla karobari record nahi hai.',
@@ -897,126 +579,70 @@ const CustomerProfile = () => {
   if (totalSalesCount > 0) {
     if (outstandingBalance === 0) {
       creditStatus = {
-        title:
-          'Record 100% Clean (All Dues Cleared)',
-        badgeColor:
-          'bg-green-50 border-green-200 text-green-700',
+        title: 'Record 100% Clean (All Dues Cleared)',
+        badgeColor: 'bg-emerald-50/80 border-emerald-200 text-emerald-800',
         icon: ShieldCheck,
         description:
           'MashaAllah! Is customer ne purani saari kistein aur cash deals mukammal ada kar di hain. Koi rupiyah baqi nahi hai.',
       };
     } else if (hasOverdue) {
       creditStatus = {
-        title:
-          'High Risk (Overdue Dues Pending)',
-        badgeColor:
-          'bg-red-50 border-red-200 text-red-700 font-black animate-pulse',
+        title: 'High Risk (Overdue Dues Pending)',
+        badgeColor: 'bg-rose-50/80 border-rose-300 text-rose-800 font-black animate-pulse',
         icon: AlertTriangle,
         description:
           'Khabardar! Is customer ki pichli kiston mein se kist overdue ho chuki hai. Naya samaan dene se pehle pichle dues clear karein.',
       };
     } else {
       creditStatus = {
-        title:
-          'Active Account (Dues on Schedule)',
-        badgeColor:
-          'bg-purple-50 border-purple-200 text-purple-700',
-        icon: CheckCircle,
+        title: 'Active Account (Dues on Schedule)',
+        badgeColor: 'bg-indigo-50/80 border-indigo-200 text-indigo-800',
+        icon: CheckCircle2,
         description:
           'Is customer ki kistein active hain aur time par jama ho rahi hain.',
       };
     }
   }
 
-  const StatusIcon =
-    creditStatus.icon;
+  const StatusIcon = creditStatus.icon;
+
+  const printedDate = new Intl.DateTimeFormat('en-PK', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Karachi',
+  }).format(new Date());
 
   /* =========================================================
-     PRINT DATE
+     PRINT MEDIA COMPONENT
   ========================================================= */
 
-  const printedDate =
-    new Intl.DateTimeFormat('en-PK', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: 'Asia/Karachi',
-    }).format(new Date());
-
-  /* =========================================================
-     PRINT MEDIA
-  ========================================================= */
-
-  const renderPrintMedia = (
-    person,
-    personLabel
-  ) => {
-    const fingerprintSrc =
-      getFingerprintImage(
-        person?.fingerprintImage
-      );
-
-    const photoSrc =
-      getPhotoImage(
-        person?.liveImage
-      );
+  const renderPrintMedia = (person, personLabel) => {
+    const fingerprintSrc = getFingerprintImage(person?.fingerprintImage);
+    const photoSrc = getPhotoImage(person?.liveImage);
 
     return (
       <div className="print-media-column">
-
         {/* Fingerprint */}
-
         <div className="print-fingerprint-box">
-
-          <div className="print-fingerprint-title">
-            FINGERPRINT
-          </div>
-
+          <div className="print-fingerprint-title">BIOMETRIC PRINT</div>
           {fingerprintSrc ? (
-            <img
-              src={fingerprintSrc}
-              alt={`${personLabel} Fingerprint`}
-            />
+            <img src={fingerprintSrc} alt={`${personLabel} Fingerprint`} />
           ) : (
-            <div className="print-no-fingerprint">
-              No fingerprint
-            </div>
+            <div className="print-no-fingerprint">No print stored</div>
           )}
-
-          <small>
-            {formatFingerprintDate(
-              person?.fingerprintCapturedAt
-            )}
-          </small>
-
+          <small>{formatFingerprintDate(person?.fingerprintCapturedAt)}</small>
         </div>
 
         {/* Photo */}
-
         <div className="print-photo-box">
-
-          <div className="print-photo-title">
-            PHOTO
-          </div>
-
+          <div className="print-photo-title">IDENTITY PHOTO</div>
           {photoSrc ? (
-            <img
-              src={photoSrc}
-              alt={`${personLabel} Photo`}
-            />
+            <img src={photoSrc} alt={`${personLabel} Photo`} />
           ) : (
-            <div className="print-no-photo">
-              No photo
-            </div>
+            <div className="print-no-photo">No photo stored</div>
           )}
-
-          <small>
-            {formatPhotoDate(
-              person?.liveImageCapturedAt
-            )}
-          </small>
-
+          <small>{formatPhotoDate(person?.liveImageCapturedAt)}</small>
         </div>
-
       </div>
     );
   };
@@ -1028,868 +654,537 @@ const CustomerProfile = () => {
   return (
     <>
       {/* =====================================================
-          NORMAL SCREEN
+          NORMAL SCREEN VIEW
       ===================================================== */}
+      <div className="space-y-6 max-w-6xl mx-auto font-sans print:hidden animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+        
+        {/* DARK HERO HEADER */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+          <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+          <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-      <div className="space-y-6 max-w-6xl mx-auto font-sans print:hidden">
+          <div className="relative z-10 p-5 sm:p-7">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              
+              <div className="flex items-center gap-3.5">
+                <Link
+                  to="/customers"
+                  className="w-11 h-11 rounded-2xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
+                  title="Back to Customers Directory"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Link>
 
-        {/* Header */}
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-400/20 text-[9px] font-black uppercase tracking-[0.16em] text-blue-300">
+                      <Sparkles className="w-2.5 h-2.5 text-blue-400" />
+                      Verification Record
+                    </span>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      ID: {customer.customerId || '—'}
+                    </span>
+                  </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white">
+                    {customer.fullName || 'Customer Profile'}
+                  </h1>
+                </div>
+              </div>
 
-          <div>
-
-            <Link
-              to="/customers"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors mb-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-
-              Back to Customers
-            </Link>
-
-            <h1 className="text-2xl font-black text-slate-900">
-              Customer Profile
-            </h1>
-
-            <p className="text-sm text-slate-500 mt-1">
-              Complete customer and guarantor
-              verification record.
-            </p>
-
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              window.print()
-            }
-            className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-colors shrink-0"
-          >
-            <Printer className="w-4 h-4" />
-
-            Print Customer Slip
-          </button>
-
-        </div>
-
-        {/* Credit Status */}
-
-        <section
-          className={`border rounded-2xl p-4 ${creditStatus.badgeColor}`}
-        >
-
-          <div className="flex items-start gap-3">
-
-            <StatusIcon className="w-5 h-5 mt-0.5 shrink-0" />
-
-            <div>
-
-              <h2 className="font-black text-sm">
-                {creditStatus.title}
-              </h2>
-
-              <p className="text-xs mt-1 leading-relaxed opacity-90">
-                {creditStatus.description}
-              </p>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all hover:scale-[1.02] active:scale-95 shrink-0 self-start sm:self-auto"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Customer Slip</span>
+              </button>
 
             </div>
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            CUSTOMER
-        ===================================================== */}
+        {/* CREDIT RISK STATUS BANNER */}
+        <section
+          className={`border rounded-3xl p-4 sm:p-5 ${creditStatus.badgeColor} shadow-sm`}
+        >
+          <div className="flex items-start gap-3.5">
+            <div className="w-9 h-9 rounded-2xl bg-white/80 flex items-center justify-center shrink-0 border border-current shadow-sm">
+              <StatusIcon className="w-5 h-5" />
+            </div>
 
+            <div>
+              <h2 className="font-black text-sm sm:text-base">
+                {creditStatus.title}
+              </h2>
+              <p className="text-xs mt-1 font-semibold opacity-95 leading-relaxed">
+                {creditStatus.description}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* CUSTOMER IDENTITY CARD */}
         <IdentityCard
-          title="Customer Details"
-          subtitle="Customer identity, fingerprint and photo record"
-          iconColor="text-indigo-600"
-          iconBg="bg-indigo-50"
+          title="Customer Identification Details"
+          subtitle="Primary customer biometrics, identity & photo verification"
+          iconColor="text-blue-600"
+          iconBg="bg-blue-50 border border-blue-100"
           person={customer}
           isCustomer
         />
 
-        {/* =====================================================
-            ZAMANTI 1
-        ===================================================== */}
-
+        {/* ZAMANTI 1 (PRIMARY GUARANTOR) */}
         <IdentityCard
-          title="Zamanti 1 Details"
-          subtitle="First guarantor identity, fingerprint and photo record"
-          iconColor="text-emerald-600"
-          iconBg="bg-emerald-50"
+          title="Zamanti 1 (Primary Guarantor)"
+          subtitle="First guarantor biometrics, identity & photo verification"
+          iconColor="text-purple-600"
+          iconBg="bg-purple-50 border border-purple-100"
           person={guarantor1}
         />
 
-        {/* =====================================================
-            ZAMANTI 2
-        ===================================================== */}
-
+        {/* ZAMANTI 2 (SECONDARY GUARANTOR) */}
         <IdentityCard
-          title="Zamanti 2 Details"
-          subtitle="Second guarantor identity, fingerprint and photo record"
+          title="Zamanti 2 (Secondary Guarantor)"
+          subtitle="Second guarantor biometrics, identity & photo verification"
           iconColor="text-amber-600"
-          iconBg="bg-amber-50"
+          iconBg="bg-amber-50 border border-amber-100"
           person={guarantor2}
         />
 
-        {/* =====================================================
-            ACCOUNT SUMMARY
-        ===================================================== */}
-
+        {/* ACCOUNT SUMMARY KPIS */}
         <section>
-
-          <div className="flex items-center gap-2 mb-3">
-
-            <Layers className="w-5 h-5 text-indigo-600" />
-
-            <h2 className="text-lg font-black text-slate-900">
-              Account Summary
+          <div className="flex items-center gap-2 mb-3.5">
+            <Layers className="w-4 h-4 text-blue-600" />
+            <h2 className="text-sm font-black text-slate-900">
+              Account & Deal Summary
             </h2>
-
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
             <SummaryCard
-              title="Total Purchased"
+              title="Total Purchases"
               value={formatCurrency(
                 totalPurchased,
-                settings?.currency ||
-                  'Rs.'
+                settings?.currency || 'PKR'
               )}
               icon={ShoppingBag}
               iconClass="text-blue-600"
-              bgClass="bg-blue-50"
+              bgClass="bg-blue-50 border border-blue-100"
             />
 
             <SummaryCard
               title="Outstanding Balance"
               value={formatCurrency(
                 outstandingBalance,
-                settings?.currency ||
-                  'Rs.'
+                settings?.currency || 'PKR'
               )}
               icon={Clock}
-              iconClass="text-red-600"
-              bgClass="bg-red-50"
+              iconClass="text-rose-600"
+              bgClass="bg-rose-50 border border-rose-100"
             />
 
             <SummaryCard
-              title="Total Purchases"
-              value={totalSalesCount}
-              icon={ShoppingBag}
+              title="Recorded Deals"
+              value={`${totalSalesCount} Deals`}
+              icon={Receipt}
               iconClass="text-purple-600"
-              bgClass="bg-purple-50"
+              bgClass="bg-purple-50 border border-purple-100"
             />
 
             <SummaryCard
-              title="Account Status"
+              title="Account Standing"
               value={
                 outstandingBalance === 0
-                  ? 'Clear'
+                  ? 'All Clear'
                   : hasOverdue
-                    ? 'Overdue'
-                    : 'Active'
+                  ? 'Overdue Dues'
+                  : 'Active Good'
               }
               icon={
                 outstandingBalance === 0
                   ? ShieldCheck
                   : hasOverdue
-                    ? AlertTriangle
-                    : CheckCircle
+                  ? AlertTriangle
+                  : CheckCircle2
               }
               iconClass={
                 outstandingBalance === 0
-                  ? 'text-green-600'
+                  ? 'text-emerald-600'
                   : hasOverdue
-                    ? 'text-red-600'
-                    : 'text-indigo-600'
+                  ? 'text-rose-600'
+                  : 'text-indigo-600'
               }
               bgClass={
                 outstandingBalance === 0
-                  ? 'bg-green-50'
+                  ? 'bg-emerald-50 border border-emerald-100'
                   : hasOverdue
-                    ? 'bg-red-50'
-                    : 'bg-indigo-50'
+                  ? 'bg-rose-50 border border-rose-100'
+                  : 'bg-indigo-50 border border-indigo-100'
               }
             />
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            INSTALLMENT PLANS
-        ===================================================== */}
-
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-
-            <Layers className="w-5 h-5 text-indigo-600" />
-
-            <div>
-
-              <h2 className="text-base font-black text-slate-900">
-                Installment Plans
-              </h2>
-
-              <p className="text-xs text-slate-500">
-                Customer installment records
-              </p>
-
+        {/* INSTALLMENT PLANS */}
+        <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <CreditCard className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-black text-slate-900">
+                  Active & Completed Installment Plans
+                </h2>
+                <p className="text-[10px] text-slate-400">Customer financing records</p>
+              </div>
             </div>
 
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-xs font-black">
+              {customer.installmentPlans?.length || 0} Plans
+            </span>
           </div>
 
-          <div className="p-5">
-
-            {!customer.installmentPlans ||
-            customer.installmentPlans.length === 0 ? (
-
-              <div className="text-center py-8">
-
-                <Layers className="w-9 h-9 text-slate-300 mx-auto mb-2" />
-
-                <p className="text-sm font-semibold text-slate-500">
-                  No installment plans found.
-                </p>
-
+          <div className="p-5 sm:p-6">
+            {!customer.installmentPlans || customer.installmentPlans.length === 0 ? (
+              <div className="text-center py-8 text-xs font-semibold text-slate-400">
+                No active or past installment plans found.
               </div>
-
             ) : (
-
               <div className="space-y-3">
-
-                {customer.installmentPlans.map(
-                  (plan, index) => (
-
-                    <div
-                      key={
-                        plan._id || index
-                      }
-                      className="border border-slate-200 rounded-xl p-4 bg-slate-50"
-                    >
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Plan
-                          </p>
-
-                          <p className="text-sm font-bold text-slate-800 mt-1">
-                            {plan.duration
-                              ? `${plan.duration} Months`
-                              : 'Installment Plan'}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Total Amount
-                          </p>
-
-                          <p className="text-sm font-bold text-slate-800 mt-1">
-                            {formatCurrency(
-                              plan.totalAmount,
-                              settings?.currency ||
-                                'Rs.'
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Paid
-                          </p>
-
-                          <p className="text-sm font-bold text-green-600 mt-1">
-                            {formatCurrency(
-                              plan.paidAmount,
-                              settings?.currency ||
-                                'Rs.'
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Remaining
-                          </p>
-
-                          <p className="text-sm font-bold text-red-600 mt-1">
-                            {formatCurrency(
-                              plan.remainingAmount,
-                              settings?.currency ||
-                                'Rs.'
-                            )}
-                          </p>
-
-                        </div>
-
+                {customer.installmentPlans.map((plan, index) => (
+                  <div
+                    key={plan._id || index}
+                    className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 hover:bg-white hover:border-amber-200 transition-all"
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Plan Duration
+                        </p>
+                        <p className="text-xs font-black text-slate-800 mt-0.5">
+                          {plan.duration ? `${plan.duration} Months Plan` : 'Installment Deal'}
+                        </p>
                       </div>
 
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Total Amount
+                        </p>
+                        <p className="text-xs font-black text-slate-800 mt-0.5">
+                          {formatCurrency(plan.totalAmount, settings?.currency || 'PKR')}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Paid Amount
+                        </p>
+                        <p className="text-xs font-black text-emerald-600 mt-0.5">
+                          {formatCurrency(plan.paidAmount, settings?.currency || 'PKR')}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Remaining Due
+                        </p>
+                        <p className="text-xs font-black text-rose-600 mt-0.5">
+                          {formatCurrency(plan.remainingAmount, settings?.currency || 'PKR')}
+                        </p>
+                      </div>
                     </div>
-                  )
-                )}
-
+                  </div>
+                ))}
               </div>
-
             )}
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            PAST PURCHASES
-        ===================================================== */}
-
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-
-            <ShoppingBag className="w-5 h-5 text-indigo-600" />
-
-            <div>
-
-              <h2 className="text-base font-black text-slate-900">
-                Past Purchases
-              </h2>
-
-              <p className="text-xs text-slate-500">
-                Complete customer purchase history
-              </p>
-
+        {/* PAST PURCHASES HISTORY */}
+        <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <ShoppingBag className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-black text-slate-900">
+                  Past Purchases & Deals
+                </h2>
+                <p className="text-[10px] text-slate-400">All products purchased</p>
+              </div>
             </div>
 
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-black">
+              {customer.sales?.length || 0} Deals
+            </span>
           </div>
 
-          <div className="p-5">
-
-            {!customer.sales ||
-            customer.sales.length === 0 ? (
-
-              <div className="text-center py-10">
-
-                <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-
-                <p className="text-sm font-semibold text-slate-500">
-                  No past purchases found.
-                </p>
-
+          <div className="p-5 sm:p-6">
+            {!customer.sales || customer.sales.length === 0 ? (
+              <div className="text-center py-8 text-xs font-semibold text-slate-400">
+                No past purchases recorded for this customer.
               </div>
-
             ) : (
-
               <div className="space-y-3">
-
-                {customer.sales.map(
-                  (sale, index) => (
-
-                    <div
-                      key={
-                        sale._id || index
-                      }
-                      className="border border-slate-200 rounded-xl p-4 hover:border-indigo-200 transition-colors"
-                    >
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Invoice
-                          </p>
-
-                          <p className="text-sm font-bold text-slate-800 mt-1">
-                            {sale.invoiceNumber ||
-                              sale.invoiceNo ||
-                              'N/A'}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Date
-                          </p>
-
-                          <p className="text-sm font-semibold text-slate-700 mt-1">
-                            {formatDate(
-                              sale.saleDate ||
-                                sale.createdAt ||
-                                sale.date
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Product
-                          </p>
-
-                          <p className="text-sm font-semibold text-slate-700 mt-1">
-                            {sale.product?.name ||
-                              sale.productName ||
-                              sale.itemName ||
-                              'N/A'}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Amount
-                          </p>
-
-                          <p className="text-sm font-bold text-slate-800 mt-1">
-                            {formatCurrency(
-                              sale.totalAmount ??
-                                sale.salePrice ??
-                                sale.amount ??
-                                0,
-                              settings?.currency ||
-                                'Rs.'
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div>
-
-                          <p className="text-[10px] uppercase font-bold text-slate-400">
-                            Status
-                          </p>
-
-                          <span
-                            className={`inline-flex mt-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                              sale.status ===
-                                'paid' ||
-                              sale.paymentStatus ===
-                                'paid'
-                                ? 'bg-green-50 text-green-700'
-                                : sale.status ===
-                                    'overdue'
-                                  ? 'bg-red-50 text-red-700'
-                                  : 'bg-amber-50 text-amber-700'
-                            }`}
-                          >
-                            {sale.status ||
-                              sale.paymentStatus ||
-                              'Recorded'}
-                          </span>
-
-                        </div>
-
+                {customer.sales.map((sale, index) => (
+                  <div
+                    key={sale._id || index}
+                    className="border border-slate-200 rounded-2xl p-4 hover:border-blue-200 transition-all"
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Invoice ID
+                        </p>
+                        <p className="text-xs font-black text-indigo-600 mt-0.5">
+                          {sale.saleId || sale.invoiceNumber || sale.invoiceNo || '—'}
+                        </p>
                       </div>
 
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Purchase Date
+                        </p>
+                        <p className="text-xs font-bold text-slate-700 mt-0.5">
+                          {formatDate(sale.saleDate || sale.createdAt || sale.date)}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Product
+                        </p>
+                        <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">
+                          {sale.product?.name || sale.productName || sale.itemName || '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Deal Amount
+                        </p>
+                        <p className="text-xs font-black text-slate-900 mt-0.5">
+                          {formatCurrency(
+                            sale.finalTotal ?? sale.totalAmount ?? sale.salePrice ?? 0,
+                            settings?.currency || 'PKR'
+                          )}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                          Status
+                        </p>
+                        <span
+                          className={`inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
+                            sale.status === 'paid' || sale.paymentStatus === 'paid'
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : sale.status === 'overdue'
+                              ? 'bg-rose-50 border-rose-200 text-rose-700'
+                              : 'bg-amber-50 border-amber-200 text-amber-700'
+                          }`}
+                        >
+                          {sale.status || sale.paymentStatus || 'Recorded'}
+                        </span>
+                      </div>
                     </div>
-
-                  )
-                )}
-
+                  </div>
+                ))}
               </div>
-
             )}
-
           </div>
-
         </section>
 
       </div>
 
       {/* =====================================================
-          PRINT SLIP
+          ENHANCED PRINT SLIP
       ===================================================== */}
-
       <div className="customer-print-slip">
-
+        
         {/* PRINT HEADER */}
-
         <div className="print-header">
-
           <div>
-
-            <h1>
-              CUSTOMER VERIFICATION RECORD
-            </h1>
-
-            <p>
-              Customer & Guarantor Identity Record
-            </p>
-
+            <h1>{settings?.shopName || 'Electronics Shop'}</h1>
+            <p>CUSTOMER & GUARANTOR VERIFICATION RECORD SLIP</p>
+            {settings?.shopAddress && (
+              <small>{settings.shopAddress} {settings.shopPhone ? `• Phone: ${settings.shopPhone}` : ''}</small>
+            )}
           </div>
 
           <div className="print-date">
-            Printed: {printedDate}
+            <span>Customer ID: <strong>{customer.customerId || '—'}</strong></span>
+            <span>Printed Date: {printedDate}</span>
           </div>
-
         </div>
 
-        {/* =================================================
-            CUSTOMER PRINT
-        ================================================= */}
-
+        {/* CUSTOMER PRINT */}
         <div className="print-person">
-
-          <div className="print-title">
-            CUSTOMER DETAILS
-          </div>
-
+          <div className="print-title">1. CUSTOMER PERSONAL IDENTIFICATION</div>
           <div className="print-content">
-
             <div className="print-details">
-
               <div>
-                <span>
-                  Customer ID
-                </span>
-
-                <strong>
-                  {customer.customerId ||
-                    'N/A'}
-                </strong>
+                <span>Customer ID</span>
+                <strong>{customer.customerId || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Full Name
-                </span>
-
-                <strong>
-                  {customer.fullName ||
-                    'N/A'}
-                </strong>
+                <span>Full Name</span>
+                <strong>{customer.fullName || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Father Name
-                </span>
-
-                <strong>
-                  {customer.fatherName ||
-                    'N/A'}
-                </strong>
+                <span>Father Name</span>
+                <strong>{customer.fatherName || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Mobile Number
-                </span>
-
-                <strong>
-                  {customer.mobileNumber ||
-                    'N/A'}
-                </strong>
+                <span>Mobile Number</span>
+                <strong>{customer.mobileNumber || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Alternate Mobile
-                </span>
-
-                <strong>
-                  {customer.alternateMobileNumber ||
-                    'N/A'}
-                </strong>
+                <span>Alternate Mobile</span>
+                <strong>{customer.alternateMobileNumber || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  CNIC
-                </span>
-
-                <strong>
-                  {customer.cnic ||
-                    'N/A'}
-                </strong>
+                <span>CNIC Number</span>
+                <strong>{customer.cnic || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  City
-                </span>
-
-                <strong>
-                  {customer.city ||
-                    'N/A'}
-                </strong>
+                <span>City / Area</span>
+                <strong>{customer.city || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Email
-                </span>
-
-                <strong>
-                  {customer.email ||
-                    'N/A'}
-                </strong>
+                <span>Email Address</span>
+                <strong>{customer.email || 'N/A'}</strong>
               </div>
-
-              <div>
-                <span>
-                  Address
-                </span>
-
-                <strong>
-                  {customer.address ||
-                    'N/A'}
-                </strong>
+              <div style={{ gridColumn: 'span 2' }}>
+                <span>Residential Address</span>
+                <strong>{customer.address || 'N/A'}</strong>
               </div>
-
-              <div>
-                <span>
-                  Notes
-                </span>
-
-                <strong>
-                  {customer.notes ||
-                    'N/A'}
-                </strong>
-              </div>
-
             </div>
-
-            {renderPrintMedia(
-              customer,
-              'Customer'
-            )}
-
+            {renderPrintMedia(customer, 'Customer')}
           </div>
-
         </div>
 
-        {/* =================================================
-            ZAMANTI 1 PRINT
-        ================================================= */}
-
+        {/* ZAMANTI 1 PRINT */}
         <div className="print-person">
-
-          <div className="print-title">
-            ZAMANTI 1
-          </div>
-
+          <div className="print-title">2. ZAMANTI 1 (PRIMARY GUARANTOR)</div>
           <div className="print-content">
-
             <div className="print-details">
-
               <div>
-                <span>
-                  Full Name
-                </span>
-
-                <strong>
-                  {guarantor1.name ||
-                    'N/A'}
-                </strong>
+                <span>Full Name</span>
+                <strong>{guarantor1.name || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Father Name
-                </span>
-
-                <strong>
-                  {guarantor1.fatherName ||
-                    'N/A'}
-                </strong>
+                <span>Father Name</span>
+                <strong>{guarantor1.fatherName || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Mobile Number
-                </span>
-
-                <strong>
-                  {guarantor1.mobileNumber ||
-                    'N/A'}
-                </strong>
+                <span>Mobile Number</span>
+                <strong>{guarantor1.mobileNumber || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  CNIC
-                </span>
-
-                <strong>
-                  {guarantor1.cnic ||
-                    'N/A'}
-                </strong>
+                <span>CNIC Number</span>
+                <strong>{guarantor1.cnic || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Relation
-                </span>
-
-                <strong>
-                  {guarantor1.relation ||
-                    'N/A'}
-                </strong>
+                <span>Relationship</span>
+                <strong>{guarantor1.relation || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Address
-                </span>
-
-                <strong>
-                  {guarantor1.address ||
-                    'N/A'}
-                </strong>
+                <span>Residential Address</span>
+                <strong>{guarantor1.address || 'N/A'}</strong>
               </div>
-
             </div>
-
-            {renderPrintMedia(
-              guarantor1,
-              'Zamanti 1'
-            )}
-
+            {renderPrintMedia(guarantor1, 'Zamanti 1')}
           </div>
-
         </div>
 
-        {/* =================================================
-            ZAMANTI 2 PRINT
-        ================================================= */}
-
+        {/* ZAMANTI 2 PRINT */}
         <div className="print-person">
-
-          <div className="print-title">
-            ZAMANTI 2
-          </div>
-
+          <div className="print-title">3. ZAMANTI 2 (SECONDARY GUARANTOR)</div>
           <div className="print-content">
-
             <div className="print-details">
-
               <div>
-                <span>
-                  Full Name
-                </span>
-
-                <strong>
-                  {guarantor2.name ||
-                    'N/A'}
-                </strong>
+                <span>Full Name</span>
+                <strong>{guarantor2.name || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Father Name
-                </span>
-
-                <strong>
-                  {guarantor2.fatherName ||
-                    'N/A'}
-                </strong>
+                <span>Father Name</span>
+                <strong>{guarantor2.fatherName || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Mobile Number
-                </span>
-
-                <strong>
-                  {guarantor2.mobileNumber ||
-                    'N/A'}
-                </strong>
+                <span>Mobile Number</span>
+                <strong>{guarantor2.mobileNumber || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  CNIC
-                </span>
-
-                <strong>
-                  {guarantor2.cnic ||
-                    'N/A'}
-                </strong>
+                <span>CNIC Number</span>
+                <strong>{guarantor2.cnic || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Relation
-                </span>
-
-                <strong>
-                  {guarantor2.relation ||
-                    'N/A'}
-                </strong>
+                <span>Relationship</span>
+                <strong>{guarantor2.relation || 'N/A'}</strong>
               </div>
-
               <div>
-                <span>
-                  Address
-                </span>
-
-                <strong>
-                  {guarantor2.address ||
-                    'N/A'}
-                </strong>
+                <span>Residential Address</span>
+                <strong>{guarantor2.address || 'N/A'}</strong>
               </div>
-
             </div>
-
-            {renderPrintMedia(
-              guarantor2,
-              'Zamanti 2'
-            )}
-
+            {renderPrintMedia(guarantor2, 'Zamanti 2')}
           </div>
-
         </div>
 
-        {/* FOOTER */}
+        {/* SIGNATURES BLOCK */}
+        <div className="print-signatures">
+          <div className="signature-box">
+            <div className="signature-line" />
+            <p>Customer Signature & Thumb</p>
+          </div>
+
+          <div className="signature-box">
+            <div className="signature-line" />
+            <p>Guarantor 1 Signature</p>
+          </div>
+
+          <div className="signature-box">
+            <div className="signature-line" />
+            <p>Guarantor 2 Signature</p>
+          </div>
+
+          <div className="signature-box">
+            <div className="signature-line" />
+            <p>Authorized Shop Stamp</p>
+          </div>
+        </div>
 
         <div className="print-footer">
-          Customer verification and identity record.
+          Verified and printed from {settings?.shopName || 'Electronics Shop'} POS System.
         </div>
-
       </div>
 
       {/* =====================================================
           PRINT CSS
       ===================================================== */}
-
       <style>{`
-
         .customer-print-slip {
           display: none;
         }
 
         @media print {
-
           @page {
-            size: A4;
-            margin: 10mm;
+            size: A4 portrait;
+            margin: 6mm 8mm;
           }
 
-          html,
-          body {
+          html, body {
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;
+            color: #000000 !important;
+            font-size: 8.5px !important;
           }
 
           body {
@@ -1904,70 +1199,77 @@ const CustomerProfile = () => {
           .customer-print-slip {
             display: block !important;
             width: 100%;
-            color: #111827;
+            color: #000000;
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 11px;
           }
 
           .print-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            border-bottom: 2px solid #111827;
-            padding-bottom: 8px;
-            margin-bottom: 12px;
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
           }
 
           .print-header h1 {
             margin: 0;
-            font-size: 18px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
+            font-size: 14px;
+            font-weight: 900;
+            text-transform: uppercase;
           }
 
           .print-header p {
-            margin: 3px 0 0;
-            font-size: 10px;
-            color: #6b7280;
+            margin: 1px 0 0;
+            font-size: 8px;
+            font-weight: 700;
+            color: #334155;
+          }
+
+          .print-header small {
+            font-size: 7px;
+            color: #64748b;
           }
 
           .print-date {
-            font-size: 9px;
-            color: #6b7280;
+            font-size: 8px;
+            color: #334155;
             text-align: right;
-            white-space: nowrap;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
           }
 
           .print-person {
-            border: 1px solid #d1d5db;
-            margin-bottom: 10px;
+            border: 1px solid #94a3b8;
+            border-radius: 4px;
+            margin-bottom: 6px;
             page-break-inside: avoid;
             break-inside: avoid;
           }
 
           .print-title {
-            background: #f3f4f6;
-            border-bottom: 1px solid #d1d5db;
-            padding: 6px 9px;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.4px;
-            color: #111827;
+            background: #f1f5f9;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 3px 6px;
+            font-size: 8.5px;
+            font-weight: 900;
+            color: #0f172a;
           }
 
           .print-content {
             display: grid;
-            grid-template-columns: 1fr 250px;
-            gap: 12px;
-            padding: 9px;
+            grid-template-columns: 1fr 190px;
+            gap: 8px;
+            padding: 5px 6px;
             align-items: start;
           }
 
           .print-details {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            column-gap: 18px;
-            row-gap: 6px;
+            column-gap: 12px;
+            row-gap: 4px;
           }
 
           .print-details > div {
@@ -1977,133 +1279,115 @@ const CustomerProfile = () => {
           }
 
           .print-details span {
-            font-size: 8px;
+            font-size: 6.5px;
             text-transform: uppercase;
-            font-weight: 700;
-            color: #6b7280;
-            margin-bottom: 1px;
+            font-weight: 900;
+            color: #64748b;
+            margin-bottom: 0.5px;
           }
 
           .print-details strong {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: 700;
-            color: #111827;
+            color: #000000;
             word-break: break-word;
           }
-
-          /* ================================================
-             PRINT MEDIA
-          ================================================= */
 
           .print-media-column {
             display: flex;
             align-items: flex-start;
             justify-content: flex-end;
-            gap: 8px;
+            gap: 6px;
           }
 
-          /* Fingerprint */
-
-          .print-fingerprint-box {
-            width: 105px;
-            min-height: 100px;
-            border: 1px solid #cbd5e1;
-            border-radius: 5px;
-            padding: 5px;
+          .print-fingerprint-box,
+          .print-photo-box {
+            width: 88px;
+            min-height: 80px;
+            border: 0.5px solid #94a3b8;
+            border-radius: 3px;
+            padding: 3px;
             text-align: center;
-            background: #fafafa;
+            background: #ffffff;
           }
 
-          .print-fingerprint-title {
-            font-size: 8px;
-            font-weight: 800;
-            color: #6b7280;
-            margin-bottom: 4px;
-            letter-spacing: 0.3px;
+          .print-fingerprint-title,
+          .print-photo-title {
+            font-size: 6.5px;
+            font-weight: 900;
+            color: #475569;
+            margin-bottom: 2px;
           }
 
           .print-fingerprint-box img {
             display: block;
-            width: 78px;
-            height: 62px;
+            width: 65px;
+            height: 52px;
             object-fit: contain;
-            margin: 0 auto 4px;
-          }
-
-          .print-fingerprint-box small {
-            display: block;
-            font-size: 6.5px;
-            line-height: 1.2;
-            color: #6b7280;
-          }
-
-          .print-no-fingerprint {
-            height: 62px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 7px;
-            color: #9ca3af;
-            text-align: center;
-          }
-
-          /* Photo */
-
-          .print-photo-box {
-            width: 105px;
-            min-height: 100px;
-            border: 1px solid #cbd5e1;
-            border-radius: 5px;
-            padding: 5px;
-            text-align: center;
-            background: #fafafa;
-          }
-
-          .print-photo-title {
-            font-size: 8px;
-            font-weight: 800;
-            color: #6b7280;
-            margin-bottom: 4px;
-            letter-spacing: 0.3px;
+            margin: 0 auto 2px;
           }
 
           .print-photo-box img {
             display: block;
-            width: 78px;
-            height: 62px;
+            width: 65px;
+            height: 52px;
             object-fit: cover;
-            border-radius: 3px;
-            margin: 0 auto 4px;
+            border-radius: 2px;
+            margin: 0 auto 2px;
           }
 
+          .print-fingerprint-box small,
           .print-photo-box small {
             display: block;
-            font-size: 6.5px;
-            line-height: 1.2;
-            color: #6b7280;
+            font-size: 5.5px;
+            line-height: 1.1;
+            color: #64748b;
           }
 
+          .print-no-fingerprint,
           .print-no-photo {
-            height: 62px;
+            height: 52px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 7px;
-            color: #9ca3af;
+            font-size: 6.5px;
+            color: #94a3b8;
+          }
+
+          .print-signatures {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 14px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .signature-box {
             text-align: center;
+          }
+
+          .signature-line {
+            border-top: 1px solid #0f172a;
+            margin-bottom: 3px;
+          }
+
+          .signature-box p {
+            font-size: 7px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
           }
 
           .print-footer {
             margin-top: 8px;
-            padding-top: 6px;
-            border-top: 1px solid #d1d5db;
-            font-size: 8px;
-            color: #6b7280;
+            padding-top: 4px;
+            border-top: 0.5px solid #cbd5e1;
+            font-size: 6.5px;
+            color: #64748b;
             text-align: center;
           }
-
         }
-
       `}</style>
     </>
   );

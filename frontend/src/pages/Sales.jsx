@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
-import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
+import {
+  formatCnicSearchInput,
+  matchesCnicSearch,
+  matchesMobileSearch,
+} from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
@@ -15,7 +19,15 @@ import {
   Search,
   Calendar,
   ChevronDown,
-  Banknote
+  Banknote,
+  Sparkles,
+  RefreshCw,
+  CalendarRange,
+  X,
+  Receipt,
+  CircleDollarSign,
+  User,
+  Package,
 } from 'lucide-react';
 
 const Sales = () => {
@@ -28,14 +40,11 @@ const Sales = () => {
   // =====================================================
   // CASH SALE MENU
   // =====================================================
-
-  const [saleTypeMenuOpen, setSaleTypeMenuOpen] =
-    useState(false);
+  const [saleTypeMenuOpen, setSaleTypeMenuOpen] = useState(false);
 
   // =====================================================
   // DELETE MODAL STATE
   // =====================================================
-
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     saleId: null,
@@ -43,36 +52,27 @@ const Sales = () => {
   });
 
   // Universal Date Filter states
-  // Today, Week, Month, Custom, All-Time
   const [filterPreset, setFilterPreset] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
   // Settings-based Universal Deletion Mode
-  const isDeletionUnlocked =
-    settings?.allowGlobalDeletion === true;
+  const isDeletionUnlocked = settings?.allowGlobalDeletion === true;
 
   // =====================================================
   // FETCH CASH SALES ONLY
   // =====================================================
-
   const fetchSales = async () => {
     try {
       setLoading(true);
-
       const response = await api.get('/api/sales?type=cash');
 
-      if (
-        response.data &&
-        response.data.success
-      ) {
+      if (response.data && response.data.success) {
         setSales(response.data.data || []);
       }
     } catch (error) {
-      console.error(
-        'Failed to load cash sales history:',
-        error
-      );
+      console.error('Failed to load cash sales history:', error);
+      toast.error('Failed to load cash sales history.');
     } finally {
       setLoading(false);
     }
@@ -85,15 +85,9 @@ const Sales = () => {
   // =====================================================
   // DELETE CONFIRMATION
   // =====================================================
-
-  const triggerDeleteConfirmation = (
-    id,
-    saleId
-  ) => {
+  const triggerDeleteConfirmation = (id, saleId) => {
     if (!isDeletionUnlocked) {
-      toast.error(
-        'Deletion Mode is disabled. Enable it from Settings first.'
-      );
+      toast.error('Deletion Mode is disabled. Enable it from Settings first.');
       return;
     }
 
@@ -108,23 +102,18 @@ const Sales = () => {
     const { saleId } = deleteModal;
 
     try {
-      await api.delete(
-        `/api/sales/${saleId}`
-      );
+      await api.delete(`/api/sales/${saleId}`);
 
       setSales((currentSales) =>
-        currentSales.filter(
-          (s) => s._id !== saleId
-        )
+        currentSales.filter((s) => s._id !== saleId)
       );
 
       toast.success(
-        `Cash sale invoice ${deleteModal.invoiceNum} removed successfully!`
+        `Cash sale invoice "${deleteModal.invoiceNum}" removed successfully and stock restored!`
       );
     } catch (error) {
       toast.error(
-        error.response?.data?.message ||
-          'Failed to delete sale invoice.'
+        error.response?.data?.message || 'Failed to delete sale invoice.'
       );
     } finally {
       setDeleteModal({
@@ -138,7 +127,6 @@ const Sales = () => {
   // =====================================================
   // HELPER TO FILTER DATES
   // =====================================================
-
   const isDateInFilter = (dateStr) => {
     if (!dateStr) return false;
 
@@ -149,97 +137,36 @@ const Sales = () => {
     today.setHours(0, 0, 0, 0);
 
     const yesterday = new Date(today);
-    yesterday.setDate(
-      today.getDate() - 1
-    );
+    yesterday.setDate(today.getDate() - 1);
 
     const dayBeforeYesterday = new Date(today);
-    dayBeforeYesterday.setDate(
-      today.getDate() - 2
-    );
+    dayBeforeYesterday.setDate(today.getDate() - 2);
 
-    if (filterPreset === 'all') {
-      return true;
-    }
-
-    if (filterPreset === 'today') {
-      return (
-        date.getTime() ===
-        today.getTime()
-      );
-    }
-
-    if (filterPreset === 'yesterday') {
-      return (
-        date.getTime() ===
-        yesterday.getTime()
-      );
-    }
-
-    if (
-      filterPreset ===
-      'dayBeforeYesterday'
-    ) {
-      return (
-        date.getTime() ===
-        dayBeforeYesterday.getTime()
-      );
-    }
+    if (filterPreset === 'all') return true;
+    if (filterPreset === 'today') return date.getTime() === today.getTime();
+    if (filterPreset === 'yesterday') return date.getTime() === yesterday.getTime();
+    if (filterPreset === 'dayBeforeYesterday')
+      return date.getTime() === dayBeforeYesterday.getTime();
 
     if (filterPreset === 'week') {
-      const startOfWeek = new Date(
-        today
-      );
-
-      startOfWeek.setDate(
-        today.getDate() - 7
-      );
-
-      return (
-        date >= startOfWeek &&
-        date <= today
-      );
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - 7);
+      return date >= startOfWeek && date <= today;
     }
 
     if (filterPreset === 'month') {
-      const startOfMonth = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        1
-      );
-
-      return (
-        date >= startOfMonth &&
-        date <= today
-      );
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      return date >= startOfMonth && date <= today;
     }
 
-    if (
-      filterPreset === 'custom' &&
-      customStartDate &&
-      customEndDate
-    ) {
-      const start = new Date(
-        customStartDate
-      );
-
+    if (filterPreset === 'custom' && customStartDate && customEndDate) {
+      const start = new Date(customStartDate);
       start.setHours(0, 0, 0, 0);
 
-      const end = new Date(
-        customEndDate
-      );
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
 
-      end.setHours(
-        23,
-        59,
-        59,
-        999
-      );
-
-      return (
-        date >= start &&
-        date <= end
-      );
+      return date >= start && date <= end;
     }
 
     return true;
@@ -247,585 +174,400 @@ const Sales = () => {
 
   // =====================================================
   // SEARCH + DATE FILTER
-  // CASH SALES ARE ALREADY FILTERED IN fetchSales()
   // =====================================================
+  const filteredSales = sales.filter((sale) => {
+    const custName = sale.customer?.fullName?.toLowerCase() || '';
+    const custPhone = sale.customer?.mobileNumber || '';
+    const custCnic = sale.customer?.cnic || sale.customer?.CNIC || '';
+    const sId = sale.saleId?.toLowerCase() || '';
+    const prodName = sale.product?.name?.toLowerCase() || '';
+    const term = searchTerm.toLowerCase().trim();
 
-  const filteredSales = sales.filter(
-    (sale) => {
-      const custName =
-        sale.customer?.fullName?.toLowerCase() ||
-        '';
+    const matchesSearch =
+      custName.includes(term) ||
+      custPhone.includes(term) ||
+      matchesMobileSearch(custPhone, term) ||
+      matchesCnicSearch(custCnic, term) ||
+      sId.includes(term) ||
+      prodName.includes(term);
 
-      const custPhone =
-        sale.customer?.mobileNumber ||
-        '';
+    const matchesDate = isDateInFilter(sale.saleDate || sale.createdAt);
 
-      const custCnic = sale.customer?.cnic || sale.customer?.CNIC || '';
+    return matchesSearch && matchesDate;
+  });
 
-      const sId =
-        sale.saleId?.toLowerCase() ||
-        '';
-
-      const prodName =
-        sale.product?.name?.toLowerCase() ||
-        '';
-
-      const term =
-        searchTerm.toLowerCase();
-
-      const matchesSearch =
-        custName.includes(term) ||
-        custPhone.includes(term) ||
-        matchesMobileSearch(custPhone, term) ||
-        matchesCnicSearch(custCnic, term) ||
-        sId.includes(term) ||
-        prodName.includes(term);
-
-      const matchesDate =
-        isDateInFilter(
-          sale.saleDate
-        );
-
-      return (
-        matchesSearch &&
-        matchesDate
-      );
-    }
+  const totalCashSalesVal = filteredSales.reduce(
+    (sum, s) => sum + Number(s.finalTotal || 0),
+    0
   );
 
+  const formatMoney = (val) =>
+    `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
+
+  // =====================================================
+  // RENDER
+  // =====================================================
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
-        {/* =================================================
-            HEADER
-        ================================================== */}
+        {/* =====================================================
+            DARK HERO HEADER
+        ====================================================== */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+          <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+          <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative z-10 p-5 sm:p-7 lg:p-8">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+              
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
+                    <Sparkles className="w-3 h-3 text-blue-400" />
+                    Cash Checkout
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {sales.length} Total Cash Sales
+                  </span>
+                </div>
 
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Cash Sales History
-            </h2>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white">
+                  Cash Sales History
+                </h1>
 
-            <p className="text-sm text-gray-600 font-medium">
-              Track all cash sales, cash invoices, and sales dates.
-            </p>
-          </div>
-
-          {/* =================================================
-              NEW CASH SALE MENU
-          ================================================== */}
-
-          <div className="relative">
-
-            <button
-              type="button"
-              onClick={() =>
-                setSaleTypeMenuOpen(
-                  (prev) => !prev
-                )
-              }
-              className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-
-              <span>
-                New Cash Sale
-              </span>
-
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${
-                  saleTypeMenuOpen
-                    ? 'rotate-180'
-                    : ''
-                }`}
-              />
-            </button>
-
-            {saleTypeMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
-
-                {/* CASH SALE ONLY */}
-
-                <Link
-                  to="/sales/new?type=cash"
-                  onClick={() =>
-                    setSaleTypeMenuOpen(false)
-                  }
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors"
-                >
-
-                  <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
-
-                    <Banknote className="w-5 h-5 text-green-700" />
-
-                  </div>
-
-                  <div>
-
-                    <p className="text-sm font-bold text-gray-900">
-                      Cash Sale
-                    </p>
-
-                    <p className="text-xs text-gray-500">
-                      New cash checkout
-                    </p>
-
-                  </div>
-
-                </Link>
-
+                <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
+                  Track all cash sales, instantaneous cash invoices, and register new direct cash checkouts.
+                </p>
               </div>
-            )}
 
-          </div>
+              {/* ACTION BUTTONS & MENU */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={fetchSales}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-400' : ''}`} />
+                  <span>Refresh</span>
+                </button>
 
-        </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSaleTypeMenuOpen((prev) => !prev)}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>New Cash Sale</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                        saleTypeMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-        {/* =================================================
-            CASH SALES LABEL
-        ================================================== */}
-
-        <div className="bg-white border border-gray-200 p-3 rounded-xl shadow-sm">
-
-          <div className="flex flex-wrap items-center gap-2">
-
-            <span className="text-xs font-bold text-gray-500 mr-1">
-              Sales Type:
-            </span>
-
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-green-600 border-green-600 text-white">
-
-              <Banknote className="w-3.5 h-3.5" />
-
-              Cash Sales Only
+                  {saleTypeMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onMouseDown={() => setSaleTypeMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[pageEnter_0.2s_ease-out] p-1.5">
+                        <Link
+                          to="/sales/new?type=cash"
+                          onClick={() => setSaleTypeMenuOpen(false)}
+                          className="flex items-center gap-3 px-3.5 py-3 rounded-xl hover:bg-emerald-50 transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black">
+                            <Banknote className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-slate-900 group-hover:text-emerald-700">Cash Sale</p>
+                            <p className="text-[10px] text-slate-400 font-semibold">Immediate full checkout</p>
+                          </div>
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
 
             </div>
+          </div>
+        </section>
 
-            <span className="ml-auto text-xs font-bold text-gray-400">
-              Showing: Cash Sales
-            </span>
+        {/* =====================================================
+            KPI METRICS SUMMARY CARDS
+        ====================================================== */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          {/* Filtered Sales Count */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Filtered Cash Sales
+                </p>
+                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                  {filteredSales.length} Orders
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Cash transactions in view
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <Receipt className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
 
+          {/* Total Cash Revenue */}
+          <div className="group relative overflow-hidden bg-white rounded-3xl border border-emerald-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Total Cash Revenue
+                </p>
+                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-emerald-600 truncate">
+                  {formatMoney(totalCashSalesVal)}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Instant cash received
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <CircleDollarSign className="w-6 h-6" />
+              </div>
+            </div>
           </div>
 
         </div>
 
-        {/* =================================================
-            SEARCH & UNIVERSAL DATE FILTERS BAR
-        ================================================== */}
-
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm space-y-4">
-
+        {/* =====================================================
+            SEARCH & DATE FILTERS TOOLBAR
+        ====================================================== */}
+        <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
           <div className="relative">
-
-            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-
+            <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search cash sale by invoice/bill number, customer name, mobile number, CNIC, or product..."
               value={searchTerm}
-              onChange={(e) =>
-                setSearchTerm(formatCnicSearchInput(e.target.value))
-              }
-              className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              onChange={(e) => setSearchTerm(formatCnicSearchInput(e.target.value))}
+              className="w-full h-11 border border-slate-200 rounded-xl pl-11 pr-4 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
             />
-
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Date Filter Presets */}
-
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
-
-            <div className="flex flex-wrap gap-1.5">
-
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-t border-slate-100 pt-3.5">
+            <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
               {[
-                {
-                  id: 'today',
-                  label: 'Sold Today'
-                },
-                {
-                  id: 'yesterday',
-                  label: 'Sold Yesterday'
-                },
-                {
-                  id: 'dayBeforeYesterday',
-                  label: 'Sold Day Before Yesterday'
-                },
-                {
-                  id: 'all',
-                  label: 'All-Time'
-                },
-                {
-                  id: 'week',
-                  label: 'Sold This Week'
-                },
-                {
-                  id: 'month',
-                  label: 'Sold This Month'
-                },
-                {
-                  id: 'custom',
-                  label: 'Custom Range'
-                }
-              ].map(
-                (preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
-                      setFilterPreset(
-                        preset.id
-                      )
-                    }
-                    className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
-                      filterPreset ===
-                      preset.id
-                        ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                )
-              )}
-
+                { id: 'all', label: 'All-Time' },
+                { id: 'today', label: 'Sold Today' },
+                { id: 'yesterday', label: 'Sold Yesterday' },
+                { id: 'dayBeforeYesterday', label: 'Day Before' },
+                { id: 'week', label: 'This Week' },
+                { id: 'month', label: 'This Month' },
+                { id: 'custom', label: 'Custom Range' },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => setFilterPreset(preset.id)}
+                  className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${
+                    filterPreset === preset.id
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/20 scale-[1.02]'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
             </div>
 
-            {filterPreset ===
-              'custom' && (
-              <div className="flex items-center space-x-2 text-xs font-bold text-gray-500">
+            {filterPreset === 'custom' && (
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 animate-[pageEnter_0.2s_ease-out]">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                  <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-transparent text-xs font-black text-slate-700 outline-none"
+                  />
+                </div>
 
-                <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>to</span>
 
-                <input
-                  type="date"
-                  value={
-                    customStartDate
-                  }
-                  onChange={(e) =>
-                    setCustomStartDate(
-                      e.target.value
-                    )
-                  }
-                  className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
-                />
-
-                <span>
-                  to
-                </span>
-
-                <input
-                  type="date"
-                  value={
-                    customEndDate
-                  }
-                  onChange={(e) =>
-                    setCustomEndDate(
-                      e.target.value
-                    )
-                  }
-                  className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
-                />
-
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                  <CalendarRange className="w-3.5 h-3.5 text-violet-600" />
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-transparent text-xs font-black text-slate-700 outline-none"
+                  />
+                </div>
               </div>
             )}
-
           </div>
+        </section>
 
-        </div>
-
-        {/* =================================================
-            MAIN LIST
-        ================================================== */}
-
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-
+        {/* =====================================================
+            CASH SALES TABLE
+        ====================================================== */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
           {loading ? (
-
-            <div className="p-10 text-center flex flex-col items-center justify-center space-y-3">
-
-              <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-
-              <span className="text-gray-500 text-sm">
-                Loading cash sales history...
+            <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
+              <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
+                Accessing cash sales history...
               </span>
-
             </div>
-
-          ) : filteredSales.length ===
-            0 ? (
-
-            <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-2">
-
-              <ShoppingCart className="w-12 h-12 text-gray-300" />
-
-              <p className="text-sm font-semibold">
-                No cash sales logged for this selection
+          ) : filteredSales.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
+              <ShoppingCart className="w-12 h-12 text-slate-300" />
+              <p className="text-sm font-black text-slate-700">No cash sales logged</p>
+              <p className="text-xs text-slate-400 max-w-sm">
+                Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.
               </p>
-
-              <p className="text-xs">
-                Try switching date filters to "All-Time" or click "New Cash Sale".
-              </p>
-
             </div>
-
           ) : (
-
             <div className="overflow-x-auto">
-
-              <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
-
-                <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
-
+              <table className="w-full text-left text-xs text-slate-600 font-medium">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
                   <tr>
-
-                    <th className="px-6 py-4">
-                      Invoice / Bill #
-                    </th>
-
-                    <th className="px-6 py-4">
-                      Customer Details
-                    </th>
-
-                    <th className="px-6 py-4">
-                      Product Details
-                    </th>
-
-                    <th className="px-6 py-4">
-                      Qty
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Subtotal
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Discount
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Final Price
-                    </th>
-
-                    <th className="px-6 py-4">
-                      Method
-                    </th>
-
-                    <th className="px-6 py-4">
-                      Date
-                    </th>
-
-                    <th className="px-6 py-4 text-center">
-                      Actions
-                    </th>
-
+                    <th className="px-5 py-4">Invoice / Bill #</th>
+                    <th className="px-5 py-4">Customer Details</th>
+                    <th className="px-5 py-4">Product Details</th>
+                    <th className="px-5 py-4 text-center">Qty</th>
+                    <th className="px-5 py-4 text-right">Subtotal</th>
+                    <th className="px-5 py-4 text-right text-rose-600">Discount</th>
+                    <th className="px-5 py-4 text-right">Final Total</th>
+                    <th className="px-5 py-4 text-center">Term</th>
+                    <th className="px-5 py-4">Date</th>
+                    <th className="px-5 py-4 text-center">Actions</th>
                   </tr>
-
                 </thead>
 
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSales.map((sale) => (
+                    <tr key={sale._id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
+                        {sale.saleId}
+                      </td>
 
-                  {filteredSales.map(
-                    (sale) => (
+                      <td className="px-5 py-3.5">
+                        <div>
+                          <p className="font-black text-slate-900">{sale.customer?.fullName || 'Walk-in'}</p>
+                          <p className="text-[10px] text-slate-400 font-semibold">{sale.customer?.mobileNumber || ''}</p>
+                        </div>
+                      </td>
 
-                      <tr
-                        key={sale._id}
-                        className="hover:bg-gray-50/75 transition-colors"
-                      >
+                      <td className="px-5 py-3.5">
+                        <p className="font-bold text-slate-800 truncate max-w-[150px]">{sale.product?.name || 'Deleted Product'}</p>
+                        <p className="text-[10px] text-slate-400 font-semibold">{[sale.product?.brand, sale.product?.model].filter(Boolean).join(' • ')}</p>
+                      </td>
 
-                        <td className="px-6 py-4 text-indigo-600 font-extrabold tracking-wider">
-                          {sale.saleId}
-                        </td>
-
-                        <td className="px-6 py-4">
-
-                          <div>
-
-                            <p className="font-bold text-gray-900">
-                              {sale.customer
-                                ?.fullName ||
-                                'N/A'}
-                            </p>
-
-                            <p className="text-xs text-gray-500">
-                              {sale.customer
-                                ?.mobileNumber ||
-                                ''}
-                            </p>
-
-                          </div>
-
-                        </td>
-
-                        <td className="px-6 py-4">
-
-                          <div>
-
-                            <p className="font-semibold text-gray-800">
-                              {sale.product
-                                ?.name ||
-                                'Deleted Product'}
-                            </p>
-
-                            <p className="text-xs text-gray-500">
-
-                              {sale.product
-                                ?.brand}{' '}
-
-                              /{' '}
-
-                              {sale.product
-                                ?.model}
-
-                            </p>
-
-                          </div>
-
-                        </td>
-
-                        <td className="px-6 py-4 text-gray-800">
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex min-w-7 justify-center px-2 py-0.5 rounded-md bg-slate-100 font-black text-[10px] text-slate-700">
                           {sale.quantity}
-                        </td>
+                        </span>
+                      </td>
 
-                        <td className="px-6 py-4 text-right">
+                      <td className="px-5 py-3.5 text-right font-semibold text-slate-600">
+                        {formatMoney(sale.subtotal)}
+                      </td>
 
-                          {settings.currency}{' '}
+                      <td className="px-5 py-3.5 text-right font-black text-rose-600">
+                        -{formatMoney(sale.discount)}
+                      </td>
 
-                          {(
-                            sale.subtotal ||
-                            0
-                          ).toLocaleString()}
+                      <td className="px-5 py-3.5 text-right font-black text-slate-900 text-sm">
+                        {formatMoney(sale.finalTotal)}
+                      </td>
 
-                        </td>
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black border bg-emerald-50 border-emerald-200 text-emerald-700">
+                          Cash
+                        </span>
+                      </td>
 
-                        <td className="px-6 py-4 text-right text-red-600">
+                      <td className="px-5 py-3.5 text-slate-500 font-semibold whitespace-nowrap">
+                        {new Date(sale.saleDate || sale.createdAt).toLocaleDateString('en-PK', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
 
-                          -{settings.currency}{' '}
+                      <td className="px-5 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Edit Sale */}
+                          <Link
+                            to={`/sales/edit/${sale._id}`}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+                            title="Edit Cash Sale"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Link>
 
-                          {(
-                            sale.discount ||
-                            0
-                          ).toLocaleString()}
-
-                        </td>
-
-                        <td className="px-6 py-4 text-right font-bold text-gray-900">
-
-                          {settings.currency}{' '}
-
-                          {(
-                            sale.finalTotal ||
-                            0
-                          ).toLocaleString()}
-
-                        </td>
-
-                        <td className="px-6 py-4">
-
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-green-50 border-green-200 text-green-700">
-
-                            Cash
-
-                          </span>
-
-                        </td>
-
-                        <td className="px-6 py-4 text-gray-500 text-xs">
-
-                          {new Date(
-                            sale.saleDate
-                          ).toLocaleDateString()}
-
-                        </td>
-
-                        <td className="px-6 py-4 text-center">
-
-                          <div className="flex items-center justify-center space-x-2">
-
-                            {/* Edit Sale */}
-
-                            <Link
-                              to={`/sales/edit/${sale._id}`}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                              title="Edit Cash Sale"
+                          {/* Delete Sale */}
+                          {isDeletionUnlocked ? (
+                            <button
+                              type="button"
+                              onClick={() => triggerDeleteConfirmation(sale._id, sale.saleId)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+                              title="Delete Cash Sale & Restore Stock"
                             >
-                              <Edit2 className="w-4 h-4" />
-                            </Link>
-
-                            {/* Delete Sale */}
-
-                            {isDeletionUnlocked ? (
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  triggerDeleteConfirmation(
-                                    sale._id,
-                                    sale.saleId
-                                  )
-                                }
-                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex"
-                                title="Delete Cash Sale & Restore Stock"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-
-                            ) : (
-
-                              <span
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-none"
-                                title="Locked: Enable Deletion Mode from Settings"
-                              >
-
-                                <Lock className="w-3 h-3 text-slate-400" />
-
-                                <span>
-                                  Locked
-                                </span>
-
-                              </span>
-
-                            )}
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-
-                    )
-                  )}
-
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <div
+                              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
+                              title="Deletion Mode is locked in Settings"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
-
             </div>
-
           )}
-
         </div>
 
       </div>
 
       <ConfirmModal
-        isOpen={
-          deleteModal.isOpen
-        }
+        isOpen={deleteModal.isOpen}
         onClose={() =>
           setDeleteModal({
             ...deleteModal,
-            isOpen: false
+            isOpen: false,
           })
         }
-        onConfirm={
-          confirmDelete
-        }
+        onConfirm={confirmDelete}
         title="Delete Cash Sale Invoice"
         message={`WARNING: Are you sure you want to delete Cash Sale Invoice "${deleteModal.invoiceNum}"? This will return the sold quantity back to your inventory stock.`}
+        confirmText="Delete Sale"
+        cancelText="Cancel"
+        danger
       />
-
     </>
   );
 };

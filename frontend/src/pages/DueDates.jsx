@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { useSettings } from '../context/SettingsContext';
 import {
   CalendarClock,
   AlertCircle,
@@ -17,16 +18,25 @@ import {
   FileText,
   RefreshCw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles,
+  ArrowRight,
+  CheckCircle2,
+  AlertTriangle,
+  CalendarRange,
+  X,
+  Building2,
 } from 'lucide-react';
 
 const DueDates = () => {
+  const { settings } = useSettings();
+
   const [dueData, setDueData] = useState({
     overdue: [],
     dueToday: [],
     totalOverdue: 0,
     totalDueToday: 0,
-    totalDue: 0
+    totalDue: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -34,6 +44,9 @@ const DueDates = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState(null);
 
+  // ======================================================
+  // FETCH DUE INSTALLMENTS
+  // ======================================================
   const fetchDueInstallments = async (showRefresh = false) => {
     try {
       if (showRefresh) {
@@ -51,19 +64,14 @@ const DueDates = () => {
             dueToday: [],
             totalOverdue: 0,
             totalDueToday: 0,
-            totalDue: 0
+            totalDue: 0,
           }
         );
       }
     } catch (error) {
-      console.error(
-        'Failed to fetch due installments:',
-        error
-      );
-
+      console.error('Failed to fetch due installments:', error);
       toast.error(
-        error.response?.data?.message ||
-        'Failed to load due installments.'
+        error.response?.data?.message || 'Failed to load due installments.'
       );
     } finally {
       setLoading(false);
@@ -76,47 +84,33 @@ const DueDates = () => {
   }, []);
 
   // ======================================================
-  // FORMAT CURRENCY
+  // FORMAT CURRENCY & DATE
   // ======================================================
   const formatCurrency = (amount) => {
-    return `Rs. ${Number(amount || 0).toLocaleString('en-PK')}`;
+    return `${settings?.currency || 'PKR'} ${Number(amount || 0).toLocaleString('en-PK')}`;
   };
 
-  // ======================================================
-  // FORMAT DATE
-  // ======================================================
   const formatDate = (date) => {
     if (!date) return 'N/A';
-
-    return new Date(date).toLocaleDateString(
-      'en-PK',
-      {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      }
-    );
+    return new Date(date).toLocaleDateString('en-PK', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
   // ======================================================
-  // WHATSAPP NUMBER
+  // WHATSAPP NUMBER FORMATTER
   // ======================================================
   const formatWhatsAppNumber = (phone) => {
     if (!phone) return '';
-
-    let number = String(phone).replace(
-      /[^0-9]/g,
-      ''
-    );
+    let number = String(phone).replace(/[^0-9]/g, '');
 
     if (number.startsWith('0')) {
       number = `92${number.substring(1)}`;
     }
 
-    if (
-      number.startsWith('92') &&
-      number.length >= 12
-    ) {
+    if (number.startsWith('92') && number.length >= 12) {
       return number;
     }
 
@@ -128,36 +122,18 @@ const DueDates = () => {
   // ======================================================
   const handleWhatsAppReminder = (item) => {
     const customer = item.installmentPlan?.customer;
-
-    const phone = formatWhatsAppNumber(
-      customer?.mobileNumber
-    );
+    const phone = formatWhatsAppNumber(customer?.mobileNumber);
 
     if (!phone) {
-      toast.error(
-        'Customer mobile number is missing or invalid.'
-      );
+      toast.error('Customer mobile number is missing or invalid.');
       return;
     }
 
-    const name =
-      customer?.fullName ||
-      'Dear Customer';
-
-    const product =
-      item.installmentPlan?.product?.name ||
-      'your product';
-
-    const installmentNumber =
-      item.installmentNumber || '-';
-
-    const amount = Number(
-      item.remainingAmount || item.amount || 0
-    );
-
-    const dueDate = formatDate(
-      item.dueDate
-    );
+    const name = customer?.fullName || 'Dear Customer';
+    const product = item.installmentPlan?.product?.name || 'your product';
+    const installmentNumber = item.installmentNumber || '-';
+    const amount = Number(item.remainingAmount || item.amount || 0);
+    const dueDate = formatDate(item.dueDate);
 
     let message = '';
 
@@ -169,7 +145,7 @@ const DueDates = () => {
         `Due Date: ${dueDate}\n` +
         `Remaining Amount: ${formatCurrency(amount)}\n\n` +
         `Your payment due date has passed. Please contact us or visit the shop to settle your payment.\n\n` +
-        `Thank you.`;
+        `Thank you - ${settings?.shopName || 'Electronics Shop'}`;
     } else {
       message =
         `Assalam-o-Alaikum ${name},\n\n` +
@@ -178,52 +154,36 @@ const DueDates = () => {
         `Due Date: ${dueDate}\n` +
         `Remaining Amount: ${formatCurrency(amount)}\n\n` +
         `Please contact us or visit the shop to settle your payment.\n\n` +
-        `Thank you.`;
+        `Thank you - ${settings?.shopName || 'Electronics Shop'}`;
     }
 
-    const whatsappUrl =
-      `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-
-    window.open(
-      whatsappUrl,
-      '_blank',
-      'noopener,noreferrer'
-    );
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
   // ======================================================
   // SEARCH FILTER
   // ======================================================
   const searchFilter = (item) => {
-    const search =
-      searchTerm.trim().toLowerCase();
-
+    const search = searchTerm.trim().toLowerCase();
     if (!search) return true;
 
-    const customer =
-      item.installmentPlan?.customer;
-
-    const product =
-      item.installmentPlan?.product;
-
-    const sale =
-      item.installmentPlan?.sale;
+    const customer = item.installmentPlan?.customer;
+    const product = item.installmentPlan?.product;
+    const sale = item.installmentPlan?.sale;
 
     const searchableText = [
       customer?.fullName,
       customer?.mobileNumber,
       customer?.customerId,
-
       product?.name,
       product?.brand,
       product?.model,
       product?.sku,
-
       sale?.saleId,
-
       item.installmentNumber,
       item.status,
-      item.category
+      item.category,
     ]
       .filter(Boolean)
       .join(' ')
@@ -233,839 +193,522 @@ const DueDates = () => {
   };
 
   const filteredOverdue = useMemo(() => {
-    return (dueData.overdue || []).filter(
-      searchFilter
-    );
+    return (dueData.overdue || []).filter(searchFilter);
   }, [dueData.overdue, searchTerm]);
 
   const filteredDueToday = useMemo(() => {
-    return (dueData.dueToday || []).filter(
-      searchFilter
-    );
+    return (dueData.dueToday || []).filter(searchFilter);
   }, [dueData.dueToday, searchTerm]);
 
-  // ======================================================
-  // TOGGLE DETAILS
-  // ======================================================
   const toggleDetails = (id) => {
-    setExpandedId(
-      expandedId === id ? null : id
-    );
+    setExpandedId(expandedId === id ? null : id);
   };
 
   // ======================================================
-  // INSTALLMENT CARD
+  // INSTALLMENT CARD COMPONENT
   // ======================================================
-  const InstallmentCard = ({
-    item,
-    type
-  }) => {
-    const plan =
-      item.installmentPlan || {};
+  const InstallmentCard = ({ item, type }) => {
+    const plan = item.installmentPlan || {};
+    const customer = plan.customer || {};
+    const product = plan.product || {};
+    const sale = plan.sale || {};
 
-    const customer =
-      plan.customer || {};
+    const remainingAmount = Number(item.remainingAmount || 0);
+    const paidAmount = Number(item.paidAmount || 0);
+    const installmentAmount = Number(item.amount || 0);
 
-    const product =
-      plan.product || {};
-
-    const sale =
-      plan.sale || {};
-
-    const remainingAmount =
-      Number(
-        item.remainingAmount || 0
-      );
-
-    const paidAmount =
-      Number(
-        item.paidAmount || 0
-      );
-
-    const installmentAmount =
-      Number(
-        item.amount || 0
-      );
-
-    const cardId =
-      `${item._id}-${type}`;
-
-    const isExpanded =
-      expandedId === cardId;
+    const cardId = `${item._id}-${type}`;
+    const isExpanded = expandedId === cardId;
+    const isOverdue = type === 'overdue';
 
     return (
       <div
-        className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-          type === 'overdue'
-            ? 'border-red-200'
-            : 'border-orange-200'
+        className={`group relative bg-white rounded-3xl border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden ${
+          isOverdue
+            ? 'border-rose-200/80 hover:border-rose-300'
+            : 'border-amber-200/80 hover:border-amber-300'
         }`}
       >
+        {/* Top Glow Accent */}
+        <div
+          className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${
+            isOverdue
+              ? 'from-rose-500 via-red-500 to-rose-400'
+              : 'from-amber-500 via-orange-500 to-amber-400'
+          }`}
+        />
 
-        {/* ==================================================
-            MAIN CARD
-        ================================================== */}
-        <div className="p-5">
-
+        {/* MAIN CARD BODY */}
+        <div className="p-5 sm:p-6">
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
-
-            {/* CUSTOMER */}
-            <div className="flex items-start gap-4 min-w-0">
-
+            
+            {/* CUSTOMER INFO */}
+            <div className="flex items-start gap-3.5 min-w-0 flex-1">
               <div
-                className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                  type === 'overdue'
-                    ? 'bg-red-100 text-red-600'
-                    : 'bg-orange-100 text-orange-600'
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm ${
+                  isOverdue
+                    ? 'bg-rose-50 border-rose-100 text-rose-600'
+                    : 'bg-amber-50 border-amber-100 text-amber-600'
                 }`}
               >
                 <User className="w-6 h-6" />
               </div>
 
               <div className="min-w-0">
-
-                <h3 className="font-bold text-gray-900 text-base truncate">
-                  {customer.fullName ||
-                    'Unknown Customer'}
-                </h3>
-
-                <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                  <Phone className="w-3.5 h-3.5 shrink-0" />
-
-                  <span>
-                    {customer.mobileNumber ||
-                      'No mobile number'}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-slate-900 text-base truncate">
+                    {customer.fullName || 'Unknown Customer'}
+                  </h3>
+                  {customer.customerId && (
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-black text-slate-600">
+                      ID: {customer.customerId}
+                    </span>
+                  )}
                 </div>
 
-                {customer.customerId && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    ID: {customer.customerId}
-                  </p>
-                )}
-
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mt-1">
+                  <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{customer.mobileNumber || 'No mobile recorded'}</span>
+                </div>
               </div>
             </div>
-
 
             {/* PRODUCT */}
-            <div className="flex items-start gap-3 min-w-0 xl:max-w-[220px]">
-
-              <Package className="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 min-w-0 xl:max-w-[240px] flex-1">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+                <Package className="w-4 h-4" />
+              </div>
 
               <div className="min-w-0">
-
-                <p className="text-xs text-gray-400 font-semibold uppercase">
-                  Product
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                  Purchased Item
                 </p>
-
-                <p className="font-semibold text-gray-800 truncate">
-                  {product.name ||
-                    'Unknown Product'}
+                <p className="font-bold text-xs text-slate-800 truncate mt-0.5">
+                  {product.name || 'Unknown Product'}
                 </p>
-
-                {(product.brand ||
-                  product.model) && (
-                  <p className="text-xs text-gray-500 truncate">
-                    {[
-                      product.brand,
-                      product.model
-                    ]
-                      .filter(Boolean)
-                      .join(' - ')}
+                {(product.brand || product.model) && (
+                  <p className="text-[10px] text-slate-400 font-semibold truncate">
+                    {[product.brand, product.model].filter(Boolean).join(' • ')}
                   </p>
                 )}
-
               </div>
             </div>
 
-
-            {/* INSTALLMENT */}
-            <div className="flex items-start gap-3">
-
-              <CreditCard className="w-5 h-5 text-purple-500 mt-0.5 shrink-0" />
+            {/* INSTALLMENT DURATION */}
+            <div className="flex items-start gap-3 flex-1">
+              <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0 border border-violet-100">
+                <CreditCard className="w-4 h-4" />
+              </div>
 
               <div>
-
-                <p className="text-xs text-gray-400 font-semibold uppercase">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
                   Installment
                 </p>
-
-                <p className="font-bold text-gray-800">
-                  #{item.installmentNumber}
+                <p className="font-black text-xs text-slate-900 mt-0.5">
+                  Month #{item.installmentNumber}
                 </p>
-
-                <p className="text-xs text-gray-500">
-                  of {plan.duration || '-'} months
+                <p className="text-[10px] font-semibold text-slate-400">
+                  of {plan.duration || '-'} Months Plan
                 </p>
-
               </div>
             </div>
-
 
             {/* DUE DATE */}
-            <div className="flex items-start gap-3">
-
-              <CalendarDays
-                className={`w-5 h-5 mt-0.5 shrink-0 ${
-                  type === 'overdue'
-                    ? 'text-red-500'
-                    : 'text-orange-500'
+            <div className="flex items-start gap-3 flex-1">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                  isOverdue
+                    ? 'bg-rose-50 text-rose-600 border-rose-100'
+                    : 'bg-amber-50 text-amber-600 border-amber-100'
                 }`}
-              />
+              >
+                <CalendarDays className="w-4 h-4" />
+              </div>
 
               <div>
-
-                <p className="text-xs text-gray-400 font-semibold uppercase">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
                   Due Date
                 </p>
-
                 <p
-                  className={`font-bold ${
-                    type === 'overdue'
-                      ? 'text-red-600'
-                      : 'text-orange-600'
+                  className={`font-black text-xs mt-0.5 ${
+                    isOverdue ? 'text-rose-600' : 'text-amber-600'
                   }`}
                 >
-                  {formatDate(
-                    item.dueDate
-                  )}
+                  {formatDate(item.dueDate)}
                 </p>
 
-                {type === 'overdue' &&
-                  item.daysOverdue && (
-                    <p className="text-xs text-red-500 font-semibold">
-                      {item.daysOverdue}{' '}
-                      {item.daysOverdue === 1
-                        ? 'day'
-                        : 'days'} overdue
-                    </p>
-                  )}
-
-                {type === 'dueToday' && (
-                  <p className="text-xs text-orange-500 font-semibold">
-                    Due Today
+                {isOverdue && item.daysOverdue ? (
+                  <p className="text-[10px] font-black text-rose-500">
+                    {item.daysOverdue} {item.daysOverdue === 1 ? 'day' : 'days'} overdue
+                  </p>
+                ) : (
+                  <p className="text-[10px] font-black text-amber-600">
+                    Payable Today
                   </p>
                 )}
-
               </div>
             </div>
 
-
-            {/* REMAINING */}
-            <div className="text-left xl:text-right">
-
-              <p className="text-xs text-gray-400 font-semibold uppercase">
-                Remaining
+            {/* REMAINING AMOUNT */}
+            <div className="text-left xl:text-right min-w-[140px]">
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                Remaining Due
               </p>
-
               <p
-                className={`text-xl font-black ${
-                  type === 'overdue'
-                    ? 'text-red-600'
-                    : 'text-orange-600'
+                className={`text-xl lg:text-2xl font-black tracking-tight mt-0.5 ${
+                  isOverdue ? 'text-rose-600' : 'text-amber-600'
                 }`}
               >
-                {formatCurrency(
-                  remainingAmount
-                )}
+                {formatCurrency(remainingAmount)}
               </p>
-
-              <p className="text-xs text-gray-400">
-                Installment amount:{' '}
-                {formatCurrency(
-                  installmentAmount
-                )}
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                Total: {formatCurrency(installmentAmount)}
               </p>
-
             </div>
 
           </div>
 
-
-          {/* ACTIONS */}
-          <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-
+          {/* CARD ACTION BUTTONS */}
+          <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <button
-              onClick={() =>
-                toggleDetails(cardId)
-              }
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
+              type="button"
+              onClick={() => toggleDetails(cardId)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black transition-all hover:scale-[1.02] active:scale-95"
             >
-              <Eye className="w-4 h-4" />
-
-              {isExpanded
-                ? 'Hide Details'
-                : 'View Details'}
-
+              <Eye className="w-3.5 h-3.5" />
+              <span>{isExpanded ? 'Hide Details' : 'View Details'}</span>
               {isExpanded ? (
-                <ChevronUp className="w-4 h-4" />
+                <ChevronUp className="w-3.5 h-3.5" />
               ) : (
-                <ChevronDown className="w-4 h-4" />
+                <ChevronDown className="w-3.5 h-3.5" />
               )}
             </button>
 
-
-            <Link
-              to={`/installments/${plan._id}`}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
-            >
-              <CreditCard className="w-4 h-4" />
-
-              Settle Payment
-            </Link>
-
-
-            <button
-              onClick={() =>
-                handleWhatsAppReminder(item)
-              }
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" />
-
-              WhatsApp Reminder
-            </button>
-
-          </div>
-
-        </div>
-
-
-        {/* ==================================================
-            EXPANDED DETAILS
-        ================================================== */}
-        {isExpanded && (
-          <div className="border-t border-gray-200 bg-gray-50 p-5">
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-
-              {/* Customer Details */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-
-                <div className="flex items-center gap-2 mb-3">
-                  <User className="w-4 h-4 text-indigo-500" />
-
-                  <h4 className="font-bold text-gray-800">
-                    Customer
-                  </h4>
-                </div>
-
-                <div className="space-y-2 text-sm">
-
-                  <div>
-                    <span className="text-gray-400">
-                      Name
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {customer.fullName ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span className="text-gray-400">
-                      Mobile
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {customer.mobileNumber ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span className="text-gray-400">
-                      Customer ID
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {customer.customerId ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              {/* Product Details */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-
-                <div className="flex items-center gap-2 mb-3">
-                  <Package className="w-4 h-4 text-purple-500" />
-
-                  <h4 className="font-bold text-gray-800">
-                    Product
-                  </h4>
-                </div>
-
-                <div className="space-y-2 text-sm">
-
-                  <div>
-                    <span className="text-gray-400">
-                      Name
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {product.name ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span className="text-gray-400">
-                      Brand / Model
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {[
-                        product.brand,
-                        product.model
-                      ]
-                        .filter(Boolean)
-                        .join(' / ') ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span className="text-gray-400">
-                      SKU
-                    </span>
-
-                    <p className="font-semibold text-gray-800">
-                      {product.sku ||
-                        'N/A'}
-                    </p>
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              {/* Installment Details */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-
-                <div className="flex items-center gap-2 mb-3">
-                  <CreditCard className="w-4 h-4 text-blue-500" />
-
-                  <h4 className="font-bold text-gray-800">
-                    Installment
-                  </h4>
-                </div>
-
-                <div className="space-y-2 text-sm">
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Installment No.
-                    </span>
-
-                    <span className="font-bold">
-                      #{item.installmentNumber}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Amount
-                    </span>
-
-                    <span className="font-bold">
-                      {formatCurrency(
-                        installmentAmount
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Paid
-                    </span>
-
-                    <span className="font-bold text-green-600">
-                      {formatCurrency(
-                        paidAmount
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Remaining
-                    </span>
-
-                    <span className="font-black text-red-600">
-                      {formatCurrency(
-                        remainingAmount
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Status
-                    </span>
-
-                    <span
-                      className={`font-bold ${
-                        item.status === 'Overdue'
-                          ? 'text-red-600'
-                          : 'text-orange-600'
-                      }`}
-                    >
-                      {item.status}
-                    </span>
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              {/* Plan Details */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText className="w-4 h-4 text-green-500" />
-
-                  <h4 className="font-bold text-gray-800">
-                    Plan Details
-                  </h4>
-                </div>
-
-                <div className="space-y-2 text-sm">
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Plan ID
-                    </span>
-
-                    <span className="font-semibold text-gray-800 truncate">
-                      {plan.planId ||
-                        'N/A'}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Duration
-                    </span>
-
-                    <span className="font-semibold">
-                      {plan.duration || '-'} months
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Plan Remaining
-                    </span>
-
-                    <span className="font-black text-red-600">
-                      {formatCurrency(
-                        plan.remainingBalance
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-400">
-                      Invoice / Sale
-                    </span>
-
-                    <span className="font-semibold">
-                      {sale.saleId ||
-                        'N/A'}
-                    </span>
-                  </div>
-
-                </div>
-
-              </div>
-
-            </div>
-
-
-            {/* Full Plan Button */}
-            <div className="mt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleWhatsAppReminder(item)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-black transition-all hover:scale-[1.02] active:scale-95 shadow-sm"
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>WhatsApp Reminder</span>
+              </button>
 
               <Link
                 to={`/installments/${plan._id}`}
-                className="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-md shadow-blue-950/20 transition-all hover:scale-[1.02] active:scale-95"
               >
-                <Eye className="w-4 h-4" />
-
-                Open Complete Installment Plan
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Settle Payment</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* EXPANDED DETAILS DRAWER */}
+        {isExpanded && (
+          <div className="border-t border-slate-200 bg-slate-50/70 p-5 sm:p-6 animate-[pageEnter_0.25s_ease-out]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              
+              {/* Customer Box */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-2 text-xs font-black text-slate-800">
+                  <User className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Customer Info</span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-slate-800">{customer.fullName || 'N/A'}</p>
+                  <p className="text-slate-500">{customer.mobileNumber || 'No Phone'}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">City: {customer.city || '—'}</p>
+                </div>
+              </div>
+
+              {/* Product Box */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-2 text-xs font-black text-slate-800">
+                  <Package className="w-3.5 h-3.5 text-violet-600" />
+                  <span>Product Details</span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-slate-800 truncate">{product.name || 'N/A'}</p>
+                  <p className="text-slate-500 truncate">{[product.brand, product.model].filter(Boolean).join(' / ') || 'N/A'}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">SKU: {product.sku || '—'}</p>
+                </div>
+              </div>
+
+              {/* Installment Box */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-2 text-xs font-black text-slate-800">
+                  <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Installment Status</span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total:</span>
+                    <span className="font-bold text-slate-800">{formatCurrency(installmentAmount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Paid:</span>
+                    <span className="font-bold text-emerald-600">{formatCurrency(paidAmount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Status:</span>
+                    <span className={`font-black ${isOverdue ? 'text-rose-600' : 'text-amber-600'}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financing Plan Box */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-2 text-xs font-black text-slate-800">
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Financing Plan</span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Plan ID:</span>
+                    <span className="font-bold text-slate-800">{plan.planId || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Invoice:</span>
+                    <span className="font-bold text-slate-800">{sale.saleId || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Remaining:</span>
+                    <span className="font-black text-rose-600">{formatCurrency(plan.remainingBalance)}</span>
+                  </div>
+                </div>
+              </div>
 
             </div>
 
+            <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between">
+              <Link
+                to={`/installments/${plan._id}`}
+                className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Open Full Financing Schedule</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </div>
         )}
-
       </div>
     );
   };
 
-
   // ======================================================
-  // LOADING
+  // LOADING STATE
   // ======================================================
   if (loading) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center">
-
+      <div className="min-h-[75vh] flex items-center justify-center px-4">
         <div className="text-center">
-
-          <RefreshCw className="w-10 h-10 text-indigo-600 animate-spin mx-auto mb-4" />
-
-          <p className="text-gray-500 font-semibold">
-            Loading due dates...
+          <div className="relative mx-auto w-16 h-16">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 animate-pulse opacity-25" />
+            <div className="relative w-16 h-16 rounded-2xl bg-slate-950 border border-white/10 shadow-2xl flex items-center justify-center">
+              <RefreshCw className="w-7 h-7 text-blue-400 animate-spin" />
+            </div>
+          </div>
+          <h3 className="mt-5 text-sm font-black uppercase tracking-[0.16em] text-slate-800">
+            Checking Due Dates
+          </h3>
+          <p className="mt-1 text-xs font-semibold text-slate-400">
+            Calculating overdue & today's customer installments...
           </p>
-
         </div>
-
       </div>
     );
   }
 
-
   // ======================================================
-  // PAGE
+  // PAGE RENDER
   // ======================================================
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
-      {/* ==================================================
-          HEADER
-      ================================================== */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      {/* =====================================================
+          DARK HERO HEADER
+      ====================================================== */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+        <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+        <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-        <div>
+        <div className="relative z-10 p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
+                  <Sparkles className="w-3 h-3 text-blue-400" />
+                  Installment Alerts
+                </span>
+                <span className="text-slate-600">•</span>
+                <span className="text-[10px] font-bold text-slate-400">
+                  Real-time Dues Monitor
+                </span>
+              </div>
 
-          <div className="flex items-center gap-3">
-
-            <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
-              <CalendarClock className="w-7 h-7" />
-            </div>
-
-            <div>
-
-              <h1 className="text-2xl md:text-3xl font-black text-gray-900">
-                Due Dates
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white">
+                Due Dates & Overdue Dues
               </h1>
 
-              <p className="text-sm text-gray-500 mt-1">
-                Manage overdue and today's installment payments.
+              <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
+                Track pending customer payments, send automated WhatsApp reminders, and settle installments.
               </p>
-
             </div>
 
+            <button
+              onClick={() => fetchDueInstallments(true)}
+              disabled={refreshing}
+              className="group relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60 self-start xl:self-auto"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 transition-transform duration-500 ${
+                  refreshing ? 'animate-spin text-blue-400' : 'group-hover:rotate-180'
+                }`}
+              />
+              <span>Refresh Dues</span>
+            </button>
           </div>
-
         </div>
+      </section>
 
-
-        <button
-          onClick={() =>
-            fetchDueInstallments(true)
-          }
-          disabled={refreshing}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold disabled:opacity-60"
-        >
-          <RefreshCw
-            className={`w-4 h-4 ${
-              refreshing
-                ? 'animate-spin'
-                : ''
-            }`}
-          />
-
-          Refresh
-        </button>
-
-      </div>
-
-
-      {/* ==================================================
-          SUMMARY CARDS
-      ================================================== */}
+      {/* =====================================================
+          SUMMARY KPI METRICS
+      ====================================================== */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-        <div className="bg-white border border-red-200 rounded-2xl p-5 shadow-sm">
-
-          <div className="flex items-center justify-between">
-
+        
+        {/* Overdue */}
+        <div className="group relative overflow-hidden bg-white rounded-3xl border border-rose-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
+          <div className="flex items-start justify-between gap-4">
             <div>
-
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                Overdue
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                Overdue Installments
               </p>
-
-              <p className="text-3xl font-black text-red-600 mt-1">
+              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-rose-600">
                 {dueData.totalOverdue}
               </p>
-
-              <p className="text-xs text-gray-500 mt-1">
-                Installments
+              <p className="mt-1 text-xs font-semibold text-slate-400">
+                Date has passed
               </p>
-
             </div>
-
-            <div className="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
               <AlertCircle className="w-6 h-6" />
             </div>
-
           </div>
-
         </div>
 
-
-        <div className="bg-white border border-orange-200 rounded-2xl p-5 shadow-sm">
-
-          <div className="flex items-center justify-between">
-
+        {/* Due Today */}
+        <div className="group relative overflow-hidden bg-white rounded-3xl border border-amber-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
+          <div className="flex items-start justify-between gap-4">
             <div>
-
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
                 Due Today
               </p>
-
-              <p className="text-3xl font-black text-orange-600 mt-1">
+              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-amber-600">
                 {dueData.totalDueToday}
               </p>
-
-              <p className="text-xs text-gray-500 mt-1">
-                Installments
+              <p className="mt-1 text-xs font-semibold text-slate-400">
+                Payable on today's date
               </p>
-
             </div>
-
-            <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
               <Clock className="w-6 h-6" />
             </div>
-
           </div>
-
         </div>
 
-
-        <div className="bg-white border border-indigo-200 rounded-2xl p-5 shadow-sm">
-
-          <div className="flex items-center justify-between">
-
+        {/* Total Active Due */}
+        <div className="group relative overflow-hidden bg-white rounded-3xl border border-blue-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-violet-600" />
+          <div className="flex items-start justify-between gap-4">
             <div>
-
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                Total Due
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                Total Pending Dues
               </p>
-
-              <p className="text-3xl font-black text-indigo-600 mt-1">
+              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
                 {dueData.totalDue}
               </p>
-
-              <p className="text-xs text-gray-500 mt-1">
-                Overdue + Today
+              <p className="mt-1 text-xs font-semibold text-slate-400">
+                Overdue + Today's count
               </p>
-
             </div>
-
-            <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
               <CalendarDays className="w-6 h-6" />
             </div>
-
           </div>
-
         </div>
 
       </div>
 
-
-      {/* ==================================================
-          SEARCH
-      ================================================== */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-
+      {/* =====================================================
+          SEARCH TOOLBAR
+      ====================================================== */}
+      <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-3.5 sm:p-4">
         <div className="relative">
-
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) =>
-              setSearchTerm(e.target.value)
-            }
-            placeholder="Search customer, mobile, product, customer ID, invoice..."
-            className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search customer name, mobile, product, customer ID, or invoice ID..."
+            className="w-full h-11 border border-slate-200 rounded-xl pl-11 pr-4 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
           />
-
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+      </section>
 
-      </div>
-
-
-      {/* ==================================================
-          OVERDUE SECTION
-      ================================================== */}
-      <section>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-
+      {/* =====================================================
+          OVERDUE INSTALLMENTS SECTION
+      ====================================================== */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
-
-            <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
+              <AlertCircle className="w-4.5 h-4.5" />
             </div>
-
             <div>
-
-              <h2 className="text-xl font-black text-gray-900">
-                Overdue
+              <h2 className="text-base sm:text-lg font-black text-slate-900">
+                Overdue Installments
               </h2>
-
-              <p className="text-sm text-gray-500">
-                Installments whose due date has passed.
+              <p className="text-xs text-slate-400">
+                Customer payments whose due date has passed.
               </p>
-
             </div>
-
           </div>
 
-          <span className="px-3 py-1.5 rounded-full bg-red-100 text-red-700 text-sm font-black">
-            {filteredOverdue.length} found
+          <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-black self-start sm:self-auto border border-rose-200">
+            {filteredOverdue.length} Records Found
           </span>
-
         </div>
-
 
         {filteredOverdue.length === 0 ? (
-
-          <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
-
-            <div className="w-14 h-14 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
-              <CalendarDays className="w-7 h-7" />
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-10 text-center shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-7 h-7" />
             </div>
-
-            <h3 className="font-bold text-gray-800 text-lg">
+            <h3 className="font-black text-slate-800 text-base">
               No Overdue Installments
             </h3>
-
-            <p className="text-sm text-gray-500 mt-1">
-              Great! There are no overdue unpaid installments.
+            <p className="text-xs text-slate-400 mt-1">
+              Great! There are no unpaid overdue installments at this moment.
             </p>
-
           </div>
-
         ) : (
-
           <div className="space-y-4">
-
             {filteredOverdue.map((item) => (
               <InstallmentCard
                 key={`${item._id}-overdue`}
@@ -1073,70 +716,48 @@ const DueDates = () => {
                 type="overdue"
               />
             ))}
-
           </div>
-
         )}
-
       </section>
 
-
-      {/* ==================================================
-          DUE TODAY SECTION
-      ================================================== */}
-      <section>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-
+      {/* =====================================================
+          DUE TODAY INSTALLMENTS SECTION
+      ====================================================== */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
-
-            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+              <Clock className="w-4.5 h-4.5" />
             </div>
-
             <div>
-
-              <h2 className="text-xl font-black text-gray-900">
-                Due Today
+              <h2 className="text-base sm:text-lg font-black text-slate-900">
+                Installments Due Today
               </h2>
-
-              <p className="text-sm text-gray-500">
-                Installments due today.
+              <p className="text-xs text-slate-400">
+                Payments scheduled for collection today.
               </p>
-
             </div>
-
           </div>
 
-          <span className="px-3 py-1.5 rounded-full bg-orange-100 text-orange-700 text-sm font-black">
-            {filteredDueToday.length} found
+          <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-black self-start sm:self-auto border border-amber-200">
+            {filteredDueToday.length} Records Found
           </span>
-
         </div>
 
-
         {filteredDueToday.length === 0 ? (
-
-          <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
-
-            <div className="w-14 h-14 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-10 text-center shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto mb-3">
               <CalendarDays className="w-7 h-7" />
             </div>
-
-            <h3 className="font-bold text-gray-800 text-lg">
+            <h3 className="font-black text-slate-800 text-base">
               No Installments Due Today
             </h3>
-
-            <p className="text-sm text-gray-500 mt-1">
-              There are no unpaid installments due today.
+            <p className="text-xs text-slate-400 mt-1">
+              There are no unpaid customer installments scheduled for today.
             </p>
-
           </div>
-
         ) : (
-
           <div className="space-y-4">
-
             {filteredDueToday.map((item) => (
               <InstallmentCard
                 key={`${item._id}-today`}
@@ -1144,11 +765,8 @@ const DueDates = () => {
                 type="dueToday"
               />
             ))}
-
           </div>
-
         )}
-
       </section>
 
     </div>

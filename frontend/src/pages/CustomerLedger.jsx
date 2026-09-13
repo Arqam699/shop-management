@@ -1,9 +1,12 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
-import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
+import {
+  formatCnicSearchInput,
+  matchesCnicSearch,
+  matchesMobileSearch,
+} from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
 
 import {
@@ -33,6 +36,11 @@ import {
   ShieldCheck,
   Users,
   FileDigit,
+  Sparkles,
+  ArrowRight,
+  Building2,
+  Calendar,
+  Check,
 } from 'lucide-react';
 
 // =============================================================
@@ -166,7 +174,6 @@ const normalizeImage = (value, depth = 0) => {
 
     const backendOrigin = getBackendBaseUrl();
 
-    // If URL contains localhost saved in DB but app is on live URL
     if (clean.includes('localhost:') || clean.includes('127.0.0.1:')) {
       if (
         backendOrigin &&
@@ -180,7 +187,6 @@ const normalizeImage = (value, depth = 0) => {
       }
     }
 
-    // Upgrade HTTP to HTTPS for remote live images
     if (
       window.location.protocol === 'https:' &&
       clean.startsWith('http://') &&
@@ -312,7 +318,7 @@ const CustomerLedger = () => {
   const [expandedSales, setExpandedSales] = useState({});
   const [expandedPlans, setExpandedPlans] = useState({});
 
-  const currency = settings?.currency || 'Rs.';
+  const currency = settings?.currency || 'PKR';
 
   const firstValue = (...values) => {
     for (const value of values) {
@@ -426,10 +432,6 @@ const CustomerLedger = () => {
     return firstValue(person.city, person.town, person.area);
   };
 
-  // ---------------------------------------------------------
-  // CUSTOMER PHOTO & FINGERPRINT
-  // ---------------------------------------------------------
-
   const getPhoto = (person) => {
     if (!person || typeof person !== 'object') return '';
     return resolveFirstImage(
@@ -519,7 +521,7 @@ const CustomerLedger = () => {
   };
 
   // =========================================================
-  // GUARANTOR EXTRACTION (Strictly Isolated Per Guarantor)
+  // GUARANTOR EXTRACTION
   // =========================================================
 
   const getGuarantor = (customer, number) => {
@@ -528,13 +530,11 @@ const CustomerLedger = () => {
     const gNum = Number(number) === 2 ? 2 : 1;
     const word = gNum === 1 ? 'One' : 'Two';
 
-    // 1. Array format: customer.guarantors[0] / customer.guarantors[1]
     const fromArray =
       Array.isArray(customer.guarantors) && customer.guarantors.length >= gNum
         ? customer.guarantors[gNum - 1]
         : null;
 
-    // 2. Object format: customer.guarantor1 / customer.guarantorOne / customer.guarantor_1
     const fromKey =
       customer[`guarantor${gNum}`] ||
       customer[`guarantor${word}`] ||
@@ -551,7 +551,6 @@ const CustomerLedger = () => {
         ? fromKey
         : {};
 
-    // Flat field prefixes strictly for this guarantor number
     const prefixes =
       gNum === 1
         ? [
@@ -626,7 +625,6 @@ const CustomerLedger = () => {
       getFlat('fatherName', 'father', 'father_name', 'guardianName')
     );
 
-    // ONLY guarantor mobile, NEVER fallback to customer mobile
     const mobile = firstNonEmpty(
       nested.mobile,
       nested.phone,
@@ -645,7 +643,6 @@ const CustomerLedger = () => {
       )
     );
 
-    // ONLY guarantor CNIC, NEVER fallback to customer CNIC
     const cnic = firstNonEmpty(
       nested.cnic,
       nested.CNIC,
@@ -757,8 +754,72 @@ const CustomerLedger = () => {
   };
 
   // ---------------------------------------------------------
-  // SALES & INSTALLMENTS HELPERS
+  // ROBUST INVOICE & SALES ID RESOLVERS (FIXED)
   // ---------------------------------------------------------
+
+  const getInvoiceNumber = (sale) => {
+    if (!sale) return '-';
+    if (typeof sale === 'string') return sale;
+
+    return firstValue(
+      sale.saleId,
+      sale.invoiceId,
+      sale.invoiceNumber,
+      sale.invoiceNo,
+      sale.invoice,
+      sale.orderNumber,
+      sale.saleNo,
+      sale.billNumber,
+      sale.receiptNo,
+      sale._id ? `INV-${String(sale._id).slice(-5).toUpperCase()}` : '',
+      '-'
+    );
+  };
+
+  const getPaymentInvoiceNumber = (payment) => {
+    if (!payment) return '-';
+    
+    // Check linked sale object or ID
+    const saleObj = payment.sale;
+    let linkedSaleId = '';
+    if (saleObj && typeof saleObj === 'object') {
+      linkedSaleId = getInvoiceNumber(saleObj);
+    } else if (typeof saleObj === 'string') {
+      linkedSaleId = saleObj;
+    }
+
+    return firstValue(
+      payment.saleId,
+      linkedSaleId,
+      payment.paymentId,
+      payment.receiptNo,
+      payment.invoiceNumber,
+      payment.invoiceNo,
+      payment.reference,
+      '-'
+    );
+  };
+
+  const getReturnInvoiceNumber = (returnItem) => {
+    if (!returnItem) return '-';
+
+    const saleObj = returnItem.sale;
+    let linkedSaleId = '';
+    if (saleObj && typeof saleObj === 'object') {
+      linkedSaleId = getInvoiceNumber(saleObj);
+    } else if (typeof saleObj === 'string') {
+      linkedSaleId = saleObj;
+    }
+
+    return firstValue(
+      returnItem.saleId,
+      linkedSaleId,
+      returnItem.returnId,
+      returnItem.invoiceNumber,
+      returnItem.invoiceNo,
+      '-'
+    );
+  };
 
   const getProductName = (sale) => {
     if (!sale) return 'Unknown Product';
@@ -789,6 +850,7 @@ const CustomerLedger = () => {
 
   const getSaleTotal = (sale) => {
     return Number(
+      sale?.finalTotal ??
       sale?.totalAmount ??
       sale?.grandTotal ??
       sale?.total ??
@@ -814,17 +876,6 @@ const CustomerLedger = () => {
       returnItem?.totalRefund ??
       returnItem?.returnAmount ??
       0
-    );
-  };
-
-  const getInvoiceNumber = (sale) => {
-    return firstValue(
-      sale?.invoiceNumber,
-      sale?.invoiceNo,
-      sale?.invoiceId,
-      sale?.saleNumber,
-      sale?.orderNumber,
-      '-'
     );
   };
 
@@ -948,13 +999,15 @@ const CustomerLedger = () => {
         customer?.address,
       ];
 
-      return values.some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(query)
-      ) ||
+      return (
+        values.some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(query)
+        ) ||
         matchesMobileSearch(getMobile(customer), query) ||
-        matchesCnicSearch(getCNIC(customer), query);
+        matchesCnicSearch(getCNIC(customer), query)
+      );
     });
   }, [customers, search]);
 
@@ -1275,7 +1328,7 @@ const CustomerLedger = () => {
   };
 
   // =========================================================
-  // PERSON DETAILS CARD (Fixed Responsive Layout - No PC Overlap)
+  // PERSON DETAILS CARD
   // =========================================================
 
   const PersonDetailsCard = ({
@@ -1316,16 +1369,15 @@ const CustomerLedger = () => {
     );
 
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
-        {/* HEADER */}
+      <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between person-card-print">
         <div>
-          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-3 person-header-print">
             <div className="flex items-center gap-3 min-w-0">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border no-print ${
                   isGuarantor
-                    ? 'bg-purple-50 text-purple-600'
-                    : 'bg-indigo-50 text-indigo-600'
+                    ? 'bg-purple-50 text-purple-600 border-purple-100'
+                    : 'bg-blue-50 text-blue-600 border-blue-100'
                 }`}
               >
                 {isGuarantor ? (
@@ -1336,9 +1388,9 @@ const CustomerLedger = () => {
               </div>
 
               <div className="min-w-0">
-                <h3 className="font-black text-slate-800 truncate">{title}</h3>
+                <h3 className="font-black text-slate-900 text-sm sm:text-base truncate print:text-[11px]">{title}</h3>
                 {subtitle && (
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">
+                  <p className="text-xs text-slate-400 font-semibold truncate print:hidden">
                     {subtitle}
                   </p>
                 )}
@@ -1346,143 +1398,138 @@ const CustomerLedger = () => {
             </div>
 
             {isGuarantor && (
-              <span className="px-2.5 py-1 rounded-lg bg-purple-50 text-purple-600 text-[10px] font-black shrink-0">
+              <span className="px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-black shrink-0 print:text-[8px] print:px-1.5 print:py-0.5">
                 GUARANTOR
               </span>
             )}
           </div>
 
-          {/* CONTENT */}
           {isGuarantor && !hasPerson ? (
-            <div className="p-8 text-center">
-              <Users className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="font-bold text-slate-500 mt-2">
-                No guarantor information found
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                No registered details, photo or fingerprint.
+            <div className="p-6 text-center">
+              <Users className="w-6 h-6 mx-auto text-slate-300 no-print" />
+              <p className="font-bold text-xs text-slate-500 mt-1 print:text-[9px]">
+                No guarantor information recorded
               </p>
             </div>
           ) : (
-            <div className="p-5">
-              <div className="flex flex-col sm:flex-row gap-5">
+            <div className="p-4 sm:p-5 person-body-print">
+              <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
+                
                 {/* PHOTO */}
                 <div className="shrink-0 flex flex-col items-center">
                   <SafeImage
                     src={photo}
                     alt={name || 'Person Photo'}
-                    className="w-24 h-24 rounded-2xl object-cover border border-slate-200 shadow-sm bg-slate-50"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border border-slate-200 shadow-sm bg-slate-50 print:w-16 print:h-16 print:rounded-lg"
                     fallback={
-                      <div className="w-24 h-24 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-300">
-                        <User className="w-9 h-9" />
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-300 print:w-16 print:h-16 print:rounded-lg">
+                        <User className="w-8 h-8 print:w-6 print:h-6" />
                       </div>
                     }
                   />
-                  <div className="mt-2 text-center text-[10px] font-bold text-slate-400">
+                  <span className={`mt-1.5 inline-flex px-2 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black border ${
+                    photo ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-slate-100 text-slate-400 border-slate-200'
+                  } print:text-[7px] print:py-0`}>
                     {photo ? 'PHOTO SAVED' : 'NO PHOTO'}
-                  </div>
+                  </span>
                 </div>
 
-                {/* DETAILS - 2 COLUMNS IN GUARANTOR TO PREVENT OVERRIDE/OVERLAP ON PC */}
+                {/* DETAILS */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xl font-black text-slate-800 truncate">
+                  <h4 className="text-base sm:text-lg font-black text-slate-900 truncate text-center sm:text-left print:text-xs">
                     {name || 'N/A'}
-                  </div>
+                  </h4>
 
                   <div
-                    className={`grid gap-3.5 mt-3.5 ${
+                    className={`grid gap-2.5 sm:gap-3 mt-2.5 text-xs print:text-[8px] print:gap-1.5 print:mt-1 ${
                       isGuarantor
                         ? 'grid-cols-1 sm:grid-cols-2'
                         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
                     }`}
                   >
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                         Father Name
-                      </div>
-                      <div className="font-semibold text-sm text-slate-700 mt-0.5 truncate">
-                        {fatherName || 'N/A'}
-                      </div>
+                      </span>
+                      <p className="font-bold text-slate-700 mt-0.5 truncate">
+                        {fatherName || '—'}
+                      </p>
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                         Mobile
-                      </div>
-                      <div className="font-semibold text-sm text-slate-700 mt-0.5 flex items-center gap-1.5 min-w-0">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{mobile || 'N/A'}</span>
-                      </div>
+                      </span>
+                      <p className="font-bold text-slate-800 mt-0.5 flex items-center gap-1 truncate">
+                        <Phone className="w-3.5 h-3.5 text-blue-500 shrink-0 print:hidden" />
+                        <span>{mobile || '—'}</span>
+                      </p>
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                         CNIC
-                      </div>
-                      <div className="font-semibold text-sm text-slate-700 mt-0.5 flex items-center gap-1.5 min-w-0">
-                        <FileDigit className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{cnic || 'N/A'}</span>
-                      </div>
+                      </span>
+                      <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1 truncate">
+                        <FileDigit className="w-3.5 h-3.5 text-emerald-500 shrink-0 print:hidden" />
+                        <span>{cnic || '—'}</span>
+                      </p>
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                         City
-                      </div>
-                      <div className="font-semibold text-sm text-slate-700 mt-0.5 flex items-center gap-1.5 min-w-0">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{city || 'N/A'}</span>
-                      </div>
+                      </span>
+                      <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0 print:hidden" />
+                        <span>{city || '—'}</span>
+                      </p>
                     </div>
 
                     {relationship && (
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                           Relationship
-                        </div>
-                        <div className="font-semibold text-sm text-slate-700 mt-0.5 truncate">
+                        </span>
+                        <p className="font-bold text-slate-700 mt-0.5 truncate">
                           {relationship}
-                        </div>
+                        </p>
                       </div>
                     )}
 
-                    <div
-                      className={`min-w-0 ${
-                        isGuarantor ? 'sm:col-span-2' : 'sm:col-span-2'
-                      }`}
-                    >
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                        Address
-                      </div>
-                      <div className="font-semibold text-sm text-slate-700 mt-0.5 line-clamp-2">
-                        {address || 'N/A'}
-                      </div>
+                    <div className={isGuarantor ? 'sm:col-span-2' : 'sm:col-span-2'}>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                        Residential Address
+                      </span>
+                      <p className="font-medium text-slate-700 mt-0.5 line-clamp-2">
+                        {address || 'No residential address recorded.'}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* FINGERPRINT */}
+                {/* FINGERPRINT BOX */}
                 <div className="shrink-0 flex flex-col items-center">
-                  <div className="w-28 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-[10px] uppercase tracking-wider text-slate-400 text-center mb-2">
-                      Fingerprint
-                    </div>
+                  <div className="w-20 sm:w-24 rounded-2xl border border-slate-200 bg-slate-50 p-2 text-center print:w-16 print:p-1 print:rounded-lg">
+                    <span className="text-[8px] uppercase tracking-wider text-slate-400 font-black block mb-1 print:text-[6.5px]">
+                      Biometric
+                    </span>
 
                     {fingerprintImage ? (
                       <SafeImage
                         src={fingerprintImage}
                         alt="Fingerprint"
-                        className="w-full h-20 object-contain rounded-xl bg-white border border-slate-200"
+                        className="w-full h-14 sm:h-16 object-contain rounded-xl bg-white border border-slate-200 print:h-10 print:rounded-md"
                         fallback={
-                          <div className="w-full h-20 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
-                            <Fingerprint className="w-9 h-9 text-emerald-500" />
+                          <div className="w-full h-14 sm:h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center print:h-10">
+                            <Fingerprint className="w-6 h-6 text-emerald-500" />
                           </div>
                         }
                       />
                     ) : (
-                      <div className="w-full h-20 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
+                      <div className="w-full h-14 sm:h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center print:h-10">
                         <Fingerprint
-                          className={`w-9 h-9 ${
+                          className={`w-6 h-6 ${
                             hasFingerprint(safePerson)
                               ? 'text-emerald-500'
                               : 'text-slate-300'
@@ -1491,25 +1538,18 @@ const CustomerLedger = () => {
                       </div>
                     )}
 
-                    <div
-                      className={`mt-2 text-center text-[9px] font-black ${
+                    <span
+                      className={`mt-1 inline-block text-[8px] font-black ${
                         hasFingerprint(safePerson)
                           ? 'text-emerald-600'
                           : 'text-slate-400'
-                      }`}
+                      } print:text-[6.5px]`}
                     >
-                      {hasFingerprint(safePerson)
-                        ? 'FINGERPRINT SAVED'
-                        : 'NO FINGERPRINT'}
-                    </div>
-
-                    {fingerprintCapturedAt && (
-                      <div className="text-[8px] text-center text-slate-400 mt-1 leading-tight">
-                        {formatDate(fingerprintCapturedAt)}
-                      </div>
-                    )}
+                      {hasFingerprint(safePerson) ? 'SAVED' : 'NO PRINT'}
+                    </span>
                   </div>
                 </div>
+
               </div>
             </div>
           )}
@@ -1519,59 +1559,78 @@ const CustomerLedger = () => {
   };
 
   // =========================================================
-  // RENDER
+  // MAIN RENDER
   // =========================================================
 
   return (
-    <div className="space-y-5">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 no-print">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/customers')}
-            className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition shadow-sm"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+      
+      {/* =====================================================
+          DARK HERO HEADER
+      ====================================================== */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white no-print">
+        <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+        <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
-            <BookOpen className="w-5 h-5" />
-          </div>
+        <div className="relative z-10 p-5 sm:p-7">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            
+            <div className="flex items-center gap-3.5">
+              <button
+                type="button"
+                onClick={() => navigate('/customers')}
+                className="w-11 h-11 rounded-2xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
+                title="Back to Customers Directory"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-800">
-              Complete Customer Ledger
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Complete customer profile, guarantors, sales, payments and installments
-            </p>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-400/20 text-[9px] font-black uppercase tracking-[0.16em] text-blue-300">
+                    <Sparkles className="w-2.5 h-2.5 text-blue-400" />
+                    Ledger Statement
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-[9px] font-bold text-slate-400">
+                    Financial Accounts & Print Slip
+                  </span>
+                </div>
+
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white">
+                  Complete Customer Ledger
+                </h1>
+              </div>
+            </div>
+
+            {ledger && (
+              <button
+                type="button"
+                onClick={printLedger}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all hover:scale-[1.02] active:scale-95 self-start sm:self-auto"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Complete Ledger Slip</span>
+              </button>
+            )}
+
           </div>
         </div>
+      </section>
 
-        {ledger && (
-          <button
-            type="button"
-            onClick={printLedger}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-sm transition shadow-sm"
-          >
-            <Printer className="w-4 h-4" />
-            Print Complete Ledger
-          </button>
-        )}
-      </div>
-
-      {/* CUSTOMER SELECTOR */}
+      {/* =====================================================
+          CUSTOMER SELECTOR
+      ====================================================== */}
       {!selectedCustomer && (
-        <div className="no-print bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-200">
+        <section className="no-print bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden animate-[pageEnter_0.3s_ease-out]">
+          <div className="p-5 sm:p-6 border-b border-slate-100">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="font-black text-slate-800 text-lg">
-                  Select Customer
+                <h2 className="font-black text-slate-900 text-base sm:text-lg">
+                  Select Customer for Ledger
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Search and select a customer to open their complete ledger.
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                  Search by customer name, ID, phone number or CNIC to load complete financial statement.
                 </p>
               </div>
 
@@ -1579,39 +1638,38 @@ const CustomerLedger = () => {
                 type="button"
                 onClick={loadCustomers}
                 disabled={loadingCustomers}
-                className="w-10 h-10 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"
+                className="w-10 h-10 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition-all disabled:opacity-50"
+                title="Refresh Customer List"
               >
                 <RefreshCw
-                  className={`w-4 h-4 ${
-                    loadingCustomers ? 'animate-spin' : ''
-                  }`}
+                  className={`w-4 h-4 ${loadingCustomers ? 'animate-spin' : ''}`}
                 />
               </button>
             </div>
 
-            <div className="relative mt-5">
+            <div className="relative mt-4">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(formatCnicSearchInput(e.target.value))}
-                placeholder="Search by customer ID, name, father name, mobile number, or CNIC..."
-                className="w-full h-11 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"
+                placeholder="Search by customer ID, name, mobile number, or CNIC..."
+                className="w-full h-11 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
               />
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto custom-scrollbar">
             {loadingCustomers ? (
-              <div className="p-12 text-center">
-                <RefreshCw className="w-7 h-7 mx-auto text-indigo-500 animate-spin" />
-                <p className="text-sm text-slate-500 mt-3">Loading customers...</p>
+              <div className="p-16 text-center">
+                <div className="w-8 h-8 mx-auto border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs font-bold text-slate-500 mt-3">Loading registered customers...</p>
               </div>
             ) : filteredCustomers.length === 0 ? (
-              <div className="p-12 text-center">
-                <UserRound className="w-10 h-10 mx-auto text-slate-300" />
-                <p className="font-bold text-slate-600 mt-3">No customers found</p>
-                <p className="text-xs text-slate-400 mt-1">Try another search.</p>
+              <div className="p-16 text-center">
+                <UserRound className="w-12 h-12 mx-auto text-slate-300" />
+                <p className="font-black text-slate-700 text-sm mt-3">No matching customer found</p>
+                <p className="text-xs text-slate-400 mt-0.5">Try searching with another name, phone number or CNIC.</p>
               </div>
             ) : (
               filteredCustomers.map((customer) => {
@@ -1622,780 +1680,322 @@ const CustomerLedger = () => {
                     key={customer._id || customer.id}
                     type="button"
                     onClick={() => loadLedger(customer)}
-                    className="w-full text-left p-4 sm:p-5 hover:bg-slate-50 transition"
+                    className="w-full text-left p-4 sm:p-5 hover:bg-slate-50/80 transition-all flex items-center justify-between gap-4 group"
                   >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 overflow-hidden">
-                          {customerPhoto ? (
-                            <SafeImage
-                              src={customerPhoto}
-                              alt=""
-                              className="w-full h-full object-cover"
-                              fallback={<User className="w-5 h-5" />}
-                            />
-                          ) : (
-                            <User className="w-5 h-5" />
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/10 to-violet-500/10 border border-blue-500/20 text-blue-600 flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
+                        {customerPhoto ? (
+                          <SafeImage
+                            src={customerPhoto}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            fallback={<User className="w-5 h-5" />}
+                          />
+                        ) : (
+                          <User className="w-5 h-5" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-black text-sm text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {getCustomerName(customer) || 'Unnamed Customer'}
+                          </span>
+
+                          {customer.customerId && (
+                            <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-black">
+                              ID: {customer.customerId}
+                            </span>
                           )}
                         </div>
 
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-black text-slate-800">
-                              {getCustomerName(customer) || 'N/A'}
-                            </span>
-
-                            {customer.customerId && (
-                              <span className="px-2 py-1 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-black">
-                                {customer.customerId}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-400">
-                            <span>
-                              Mobile:{' '}
-                              <b className="text-slate-600">
-                                {getMobile(customer) || '-'}
-                              </b>
-                            </span>
-                            <span>
-                              Father:{' '}
-                              <b className="text-slate-600">
-                                {getFatherName(customer) || '-'}
-                              </b>
-                            </span>
-                            <span>
-                              CNIC:{' '}
-                              <b className="text-slate-600">
-                                {getCNIC(customer) || '-'}
-                              </b>
-                            </span>
-                          </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-slate-400 font-medium">
+                          <span>Mobile: <strong className="text-slate-700 font-bold">{getMobile(customer) || '—'}</strong></span>
+                          <span>Father: <strong className="text-slate-700 font-bold">{getFatherName(customer) || '—'}</strong></span>
+                          <span>CNIC: <strong className="text-slate-700 font-bold">{getCNIC(customer) || '—'}</strong></span>
                         </div>
                       </div>
+                    </div>
 
-                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                        <ChevronDown className="w-4 h-4 text-slate-400 -rotate-90" />
-                      </div>
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center shrink-0 transition-all">
+                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-white" />
                     </div>
                   </button>
                 );
               })
             )}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* LOADING */}
+      {/* =====================================================
+          LOADING STATE
+      ====================================================== */}
       {selectedCustomer && ledgerLoading && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm no-print">
-          <RefreshCw className="w-8 h-8 mx-auto text-indigo-600 animate-spin" />
-          <p className="font-bold text-slate-700 mt-4">
-            Loading complete customer ledger...
-          </p>
-          <p className="text-sm text-slate-400 mt-1">
-            Fetching customer profile, guarantors, sales, payments and installments.
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-16 text-center shadow-sm no-print">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 p-0.5 animate-spin flex items-center justify-center mx-auto">
+            <div className="w-full h-full bg-white rounded-2xl flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
+            </div>
+          </div>
+          <h3 className="font-black text-slate-800 text-base mt-4">
+            Loading Customer Ledger Statement
+          </h3>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+            Compiling sales, payments, installment schedules and outstanding balances...
           </p>
         </div>
       )}
 
-      {/* COMPLETE LEDGER */}
+      {/* =====================================================
+          COMPLETE LEDGER & PRINT SLIP VIEW
+      ====================================================== */}
       {selectedCustomer && ledger && !ledgerLoading && (
-        <div id="customer-ledger-print">
-          {/* PRINT HEADER */}
+        <div id="customer-ledger-print" className="space-y-6">
+          
+          {/* PRINT-ONLY OFFICIAL HEADER */}
           <div className="print-only ledger-print-header">
-            <div>
-              <div className="ledger-print-title">CUSTOMER COMPLETE LEDGER</div>
-              <div className="ledger-print-subtitle">
-                {getCustomerName(ledger.customer)} •{' '}
-                {ledger.customer?.customerId || '-'}
+            <div className="flex items-center justify-between pb-2 border-b-2 border-slate-900">
+              <div>
+                <h1 className="text-base font-black tracking-tight text-slate-900 uppercase">
+                  {settings?.shopName || 'Electronics Shop'}
+                </h1>
+                <p className="text-[9px] font-bold text-slate-700">
+                  COMPLETE CUSTOMER FINANCIAL LEDGER & RECOVERY STATEMENT
+                </p>
+                {settings?.shopAddress && (
+                  <p className="text-[7.5px] text-slate-500 font-semibold">{settings.shopAddress} {settings.shopPhone ? `• Phone: ${settings.shopPhone}` : ''}</p>
+                )}
               </div>
-            </div>
 
-            <div className="ledger-print-date">
-              Printed: {formatDateTime(new Date())}
+              <div className="text-right text-[8.5px] font-bold text-slate-800">
+                <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
+                <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
+                <p>Statement Date: {formatDateTime(new Date())}</p>
+              </div>
             </div>
           </div>
 
-          {/* CUSTOMER */}
+          {/* 1. CUSTOMER DETAILS */}
           <PersonDetailsCard
             person={ledger.customer}
-            title="Customer Information"
-            subtitle="Complete registered customer details"
+            title="Customer Profile Details"
+            subtitle="Registered personal profile and contact verification"
           />
 
-          {/* GUARANTORS */}
-          <div className="mt-5 guarantor-section">
-            <div className="flex items-center gap-2 mb-3 no-print">
-              <ShieldCheck className="w-5 h-5 text-purple-600" />
-              <div>
-                <h2 className="font-black text-slate-800">
-                  Guarantor Information
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Complete guarantor records including photos and fingerprints
-                </p>
-              </div>
-            </div>
-
-            <div className="print-only print-section-title">
-              GUARANTOR / VERIFICATION DETAILS
+          {/* 2. GUARANTORS SECTION */}
+          <div className="guarantor-section space-y-3">
+            <div className="flex items-center gap-2 no-print">
+              <ShieldCheck className="w-4 h-4 text-purple-600" />
+              <h3 className="font-black text-sm text-slate-900">Guarantor Verification (Zamanatdar)</h3>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 print-guarantor-grid">
               <PersonDetailsCard
                 person={getGuarantor(ledger.customer, 1)}
-                title="Guarantor 1"
-                subtitle="Primary guarantor"
+                title="Guarantor 1 (Zamanatdar 1)"
+                subtitle="Primary verification"
                 isGuarantor
               />
 
               <PersonDetailsCard
                 person={getGuarantor(ledger.customer, 2)}
-                title="Guarantor 2"
-                subtitle="Secondary guarantor"
+                title="Guarantor 2 (Zamanatdar 2)"
+                subtitle="Secondary verification"
                 isGuarantor
               />
             </div>
           </div>
 
-          {/* SUMMARY */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 print-summary-grid">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm print-summary-card">
+          {/* 3. FINANCIAL SUMMARY METRICS */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print-summary-grid">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm print-summary-card">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Total Sales
-                </div>
-                <Receipt className="w-5 h-5 text-indigo-500 no-print" />
+                <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 print:text-[7px]">Total Invoiced Deals</span>
+                <Receipt className="w-4 h-4 text-blue-500 no-print" />
               </div>
-
-              <div className="text-xl font-black text-slate-800 mt-2">
-                {formatMoney(ledger.totalSales)}
-              </div>
-
-              <div className="text-xs text-slate-400 mt-1">
-                {ledger.sales.length} sale{ledger.sales.length !== 1 ? 's' : ''}
-              </div>
+              <p className="text-lg font-black text-slate-900 mt-1 print:text-[11px]">{formatMoney(ledger.totalSales)}</p>
+              <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">{ledger.sales.length} Purchase Deals</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm print-summary-card">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm print-summary-card">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Total Paid
-                </div>
-                <ArrowDownCircle className="w-5 h-5 text-emerald-500 no-print" />
+                <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 print:text-[7px]">Total Payments Received</span>
+                <ArrowDownCircle className="w-4 h-4 text-emerald-500 no-print" />
               </div>
-
-              <div className="text-xl font-black text-emerald-600 mt-2">
-                {formatMoney(ledger.totalPayments)}
-              </div>
-
-              <div className="text-xs text-slate-400 mt-1">
-                {ledger.payments.length} payment
-                {ledger.payments.length !== 1 ? 's' : ''}
-              </div>
+              <p className="text-lg font-black text-emerald-600 mt-1 print:text-[11px]">{formatMoney(ledger.totalPayments)}</p>
+              <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">{ledger.payments.length} Payments Recorded</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm print-summary-card">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm print-summary-card">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Outstanding
-                </div>
-                <Wallet className="w-5 h-5 text-amber-500 no-print" />
+                <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 print:text-[7px]">Net Outstanding Due</span>
+                <Wallet className="w-4 h-4 text-rose-500 no-print" />
               </div>
-
-              <div className="text-xl font-black text-amber-600 mt-2">
-                {formatMoney(ledger.outstanding)}
-              </div>
-
-              <div className="text-xs text-slate-400 mt-1">Current balance</div>
+              <p className="text-lg font-black text-rose-600 mt-1 print:text-[11px]">{formatMoney(ledger.outstanding)}</p>
+              <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">Payable Balance</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm print-summary-card">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm print-summary-card">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Returns
-                </div>
-                <ArrowUpCircle className="w-5 h-5 text-red-500 no-print" />
+                <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 print:text-[7px]">Total Returns / Refunds</span>
+                <ArrowUpCircle className="w-4 h-4 text-amber-500 no-print" />
               </div>
-
-              <div className="text-xl font-black text-red-600 mt-2">
-                {formatMoney(ledger.totalReturns)}
-              </div>
-
-              <div className="text-xs text-slate-400 mt-1">
-                {ledger.returns.length} return
-                {ledger.returns.length !== 1 ? 's' : ''}
-              </div>
+              <p className="text-lg font-black text-amber-600 mt-1 print:text-[11px]">{formatMoney(ledger.totalReturns)}</p>
+              <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">{ledger.returns.length} Returned Items</p>
             </div>
           </div>
 
-          {/* STATUS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 print-status-grid">
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm print-status-card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center no-print">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
+          {/* 4. COMPLETE SALES HISTORY */}
+          <section className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm ledger-section">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between print:p-2 print:border-b-2 print:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center no-print">
+                  <Package className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">Overdue Plans</div>
-                  <div className="font-black text-lg text-slate-800">
-                    {ledger.overduePlans.length}
-                  </div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base print:text-[10px]">1. Complete Purchase & Sales History</h3>
+                  <p className="text-[10px] text-slate-400 print:hidden">All products bought by customer</p>
                 </div>
               </div>
-            </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm print-status-card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center no-print">
-                  <Clock className="w-5 h-5 text-amber-500" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-400">Active Plans</div>
-                  <div className="font-black text-lg text-slate-800">
-                    {ledger.activePlans.length}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm print-status-card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center no-print">
-                  <CalendarDays className="w-5 h-5 text-indigo-500" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-400">Due Today</div>
-                  <div className="font-black text-lg text-slate-800">
-                    {ledger.dueTodayPlans.length}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SALES */}
-          <section className="mt-5 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ledger-section">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-indigo-500 no-print" />
-                  <h2 className="font-black text-slate-800 text-lg">
-                    Complete Sales History
-                  </h2>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Every product purchased by this customer
-                </p>
-              </div>
-
-              <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-black">
-                {ledger.sales.length}
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-black print:text-[8px] print:bg-transparent print:border-none">
+                {ledger.sales.length} Deals
               </span>
             </div>
 
             {ledger.sales.length === 0 ? (
-              <div className="p-10 text-center text-slate-400">
-                No sales history found.
+              <div className="p-6 text-center text-xs font-semibold text-slate-400 print:text-[8px] print:p-2">
+                No sales records found.
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
-                {ledger.sales.map((sale, index) => {
-                  const saleId = sale?._id || sale?.id || `sale-${index}`;
-                  const expanded = expandedSales[saleId];
-
-                  return (
-                    <div key={saleId}>
-                      <button
-                        type="button"
-                        onClick={() => toggleSale(saleId)}
-                        className="w-full text-left p-4 sm:p-5 hover:bg-slate-50 transition no-print"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                              <Receipt className="w-4 h-4" />
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="font-bold text-slate-800 truncate">
-                                {getProductName(sale)}
-                              </div>
-
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-slate-400">
-                                <span>
-                                  Invoice:{' '}
-                                  <b className="text-slate-600">
-                                    {getInvoiceNumber(sale)}
-                                  </b>
-                                </span>
-                                <span>{formatDate(getSaleDate(sale))}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            <div className="font-black text-slate-800">
-                              {formatMoney(getSaleTotal(sale))}
-                            </div>
-                            {expanded ? (
-                              <ChevronUp className="w-4 h-4 text-slate-400 ml-auto mt-1" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-400 ml-auto mt-1" />
-                            )}
-                          </div>
-                        </div>
-                      </button>
-
-                      {expanded && (
-                        <div className="px-4 pb-5 no-print">
-                          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <div>
-                                <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                  Invoice
-                                </div>
-                                <div className="font-bold text-slate-700 mt-1">
-                                  {getInvoiceNumber(sale)}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                  Sale Date
-                                </div>
-                                <div className="font-semibold text-slate-700 mt-1">
-                                  {formatDateTime(getSaleDate(sale))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                  Payment Type
-                                </div>
-                                <div className="font-semibold text-slate-700 mt-1 capitalize">
-                                  {firstValue(
-                                    sale?.paymentType,
-                                    sale?.paymentMethod,
-                                    sale?.saleType,
-                                    '-'
-                                  )}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                  Total
-                                </div>
-                                <div className="font-black text-indigo-600 mt-1">
-                                  {formatMoney(getSaleTotal(sale))}
-                                </div>
-                              </div>
-                            </div>
-
-                            {sale?.downPayment !== undefined && (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-200">
-                                <div>
-                                  <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                    Down Payment
-                                  </div>
-                                  <div className="font-bold text-slate-700 mt-1">
-                                    {formatMoney(sale.downPayment)}
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                    Remaining
-                                  </div>
-                                  <div className="font-bold text-amber-600 mt-1">
-                                    {formatMoney(
-                                      sale.remainingAmount ??
-                                        sale.remaining ??
-                                        0
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <div className="text-[10px] uppercase text-slate-400 font-bold">
-                                    Installments
-                                  </div>
-                                  <div className="font-bold text-slate-700 mt-1">
-                                    {sale.numberOfInstallments ??
-                                      sale.totalInstallments ??
-                                      '-'}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* PRINT SALE ROW */}
-                      <div className="print-only print-sale-row">
-                        <span>
-                          <b>{getProductName(sale)}</b>
-                        </span>
-                        <span>{getInvoiceNumber(sale)}</span>
-                        <span>{formatDate(getSaleDate(sale))}</span>
-                        <span>
-                          {firstValue(
-                            sale?.paymentType,
-                            sale?.paymentMethod,
-                            sale?.saleType,
-                            '-'
-                          )}
-                        </span>
-                        <span className="text-right">
-                          {formatMoney(getSaleTotal(sale))}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs print-table">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[9px] font-black uppercase text-slate-400 print:bg-slate-100 print:text-[7px]">
+                    <tr>
+                      <th className="px-4 py-2.5">Invoice #</th>
+                      <th className="px-4 py-2.5">Sale Date</th>
+                      <th className="px-4 py-2.5">Product Name</th>
+                      <th className="px-4 py-2.5 text-center">Type</th>
+                      <th className="px-4 py-2.5 text-right">Deal Total</th>
+                      <th className="px-4 py-2.5 text-right">Down Payment</th>
+                      <th className="px-4 py-2.5 text-right">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {ledger.sales.map((sale, idx) => (
+                      <tr key={sale._id || idx} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-2 font-black text-indigo-600 print:text-black">
+                          {getInvoiceNumber(sale)}
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{formatDate(getSaleDate(sale))}</td>
+                        <td className="px-4 py-2 font-bold text-slate-800">{getProductName(sale)}</td>
+                        <td className="px-4 py-2 text-center capitalize">{firstValue(sale?.paymentType, sale?.saleType, 'Cash')}</td>
+                        <td className="px-4 py-2 text-right font-black text-slate-900">{formatMoney(getSaleTotal(sale))}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-600">{formatMoney(sale?.downPayment || 0)}</td>
+                        <td className="px-4 py-2 text-right font-black text-rose-600">{formatMoney(sale?.remainingBalance ?? sale?.remainingAmount ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
 
-          {/* INSTALLMENTS */}
-          <section className="mt-5 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ledger-section">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-amber-500 no-print" />
-                  <h2 className="font-black text-slate-800 text-lg">
-                    Installment Plans
-                  </h2>
+          {/* 5. INSTALLMENT PLANS & COMPLETE SCHEDULES */}
+          <section className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm ledger-section">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between print:p-2 print:border-b-2 print:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center no-print">
+                  <CreditCard className="w-4 h-4" />
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Complete plan and installment schedule
-                </p>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base print:text-[10px]">2. Installment Plans & Complete Payment Schedules</h3>
+                  <p className="text-[10px] text-slate-400 print:hidden">Installments schedule breakdown</p>
+                </div>
               </div>
 
-              <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-xs font-black">
-                {ledger.plans.length}
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-xs font-black print:text-[8px] print:bg-transparent print:border-none">
+                {ledger.plans.length} Plans
               </span>
             </div>
 
             {ledger.plans.length === 0 ? (
-              <div className="p-10 text-center text-slate-400">
-                No installment plans found.
+              <div className="p-6 text-center text-xs font-semibold text-slate-400 print:text-[8px] print:p-2">
+                No installment financing plans recorded.
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
-                {ledger.plans.map((plan, index) => {
-                  const planId = getId(plan) || `plan-${index}`;
-                  const expanded = expandedPlans[planId];
+              <div className="divide-y divide-slate-200">
+                {ledger.plans.map((plan, planIdx) => {
+                  const planId = getId(plan) || `plan-${planIdx}`;
                   const total = getPlanTotal(plan);
                   const paid = getPlanPaid(plan);
                   const remaining = getPlanRemaining(plan);
                   const status = getPlanStatus(plan);
-                  const schedule =
-                    plan?.schedule ||
-                    plan?.installments ||
-                    plan?.paymentSchedule ||
-                    [];
+                  const schedule = plan?.schedule || plan?.installments || plan?.paymentSchedule || [];
+
+                  // Get linked invoice
+                  const planInvoice = firstValue(
+                    plan?.planId,
+                    plan?.sale?.saleId,
+                    plan?.sale?.invoiceNumber,
+                    plan?.saleId,
+                    `PLAN-#${planIdx + 1}`
+                  );
 
                   return (
-                    <div key={planId}>
-                      {/* SCREEN PLAN */}
-                      <button
-                        type="button"
-                        onClick={() => togglePlan(planId)}
-                        className="w-full text-left p-5 hover:bg-slate-50 transition no-print"
-                      >
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                              <CreditCard className="w-5 h-5" />
-                            </div>
-
-                            <div>
-                              <div className="font-black text-slate-800">
-                                {plan?.planName ||
-                                  plan?.durationName ||
-                                  `${getInstallmentCount(
-                                    plan
-                                  )} Month Plan`}
-                              </div>
-
-                              <div className="text-xs text-slate-400 mt-1">
-                                {getInstallmentCount(plan)} installments
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-5 text-right">
-                            <div>
-                              <div className="text-[10px] uppercase font-bold text-slate-400">
-                                Total
-                              </div>
-                              <div className="font-black text-slate-800 mt-1">
-                                {formatMoney(total)}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div className="text-[10px] uppercase font-bold text-slate-400">
-                                Paid
-                              </div>
-                              <div className="font-black text-emerald-600 mt-1">
-                                {formatMoney(paid)}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div className="text-[10px] uppercase font-bold text-slate-400">
-                                Remaining
-                              </div>
-                              <div className="font-black text-amber-600 mt-1">
-                                {formatMoney(remaining)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between mt-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                              status === 'Paid'
-                                ? 'bg-emerald-50 text-emerald-600'
-                                : status === 'Overdue'
-                                ? 'bg-red-50 text-red-600'
-                                : 'bg-amber-50 text-amber-600'
-                            }`}
-                          >
-                            {status === 'Paid' ? (
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                            ) : status === 'Overdue' ? (
-                              <AlertCircle className="w-3.5 h-3.5" />
-                            ) : (
-                              <Clock className="w-3.5 h-3.5" />
-                            )}
-                            {status}
+                    <div key={planId} className="p-4 sm:p-5 print:p-2 print-plan-box">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 print:mb-1.5">
+                        <div>
+                          <span className="font-black text-xs sm:text-sm text-slate-900 print:text-[9px]">
+                            Plan #{planIdx + 1}: {plan?.planName || `${getInstallmentCount(plan)} Months Financing Plan`} [Ref: <strong>{planInvoice}</strong>]
                           </span>
-
-                          {expanded ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </div>
-                      </button>
-
-                      {/* SCREEN SCHEDULE */}
-                      {expanded && (
-                        <div className="px-5 pb-5 no-print">
-                          <div className="rounded-xl border border-slate-200 overflow-hidden">
-                            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                              <div className="font-bold text-sm text-slate-700">
-                                Installment Schedule
-                              </div>
-                            </div>
-
-                            {Array.isArray(schedule) && schedule.length > 0 ? (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-slate-50 text-slate-400">
-                                    <tr>
-                                      <th className="px-4 py-3 text-left">#</th>
-                                      <th className="px-4 py-3 text-left">
-                                        Due Date
-                                      </th>
-                                      <th className="px-4 py-3 text-right">
-                                        Amount
-                                      </th>
-                                      <th className="px-4 py-3 text-right">
-                                        Paid
-                                      </th>
-                                      <th className="px-4 py-3 text-right">
-                                        Remaining
-                                      </th>
-                                      <th className="px-4 py-3 text-center">
-                                        Status
-                                      </th>
-                                    </tr>
-                                  </thead>
-
-                                  <tbody className="divide-y divide-slate-100">
-                                    {schedule.map((item, itemIndex) => {
-                                      const amount = Number(
-                                        item?.amount ??
-                                          item?.dueAmount ??
-                                          item?.installmentAmount ??
-                                          0
-                                      );
-                                      const itemPaid = Number(
-                                        item?.paidAmount ?? item?.paid ?? 0
-                                      );
-                                      const itemRemaining = Number(
-                                        item?.remaining ??
-                                          item?.remainingAmount ??
-                                          Math.max(0, amount - itemPaid)
-                                      );
-
-                                      let itemStatus = item?.status;
-                                      if (!itemStatus) {
-                                        if (itemRemaining <= 0) {
-                                          itemStatus = 'Paid';
-                                        } else if (
-                                          item?.isOverdue ||
-                                          (item?.dueDate &&
-                                            new Date(item.dueDate) < new Date())
-                                        ) {
-                                          itemStatus = 'Overdue';
-                                        } else {
-                                          itemStatus = 'Pending';
-                                        }
-                                      }
-
-                                      return (
-                                        <tr
-                                          key={item?._id || itemIndex}
-                                          className="hover:bg-slate-50"
-                                        >
-                                          <td className="px-4 py-3 text-slate-700 font-semibold">
-                                            {item?.installmentNumber ??
-                                              item?.number ??
-                                              itemIndex + 1}
-                                          </td>
-                                          <td className="px-4 py-3 text-slate-600">
-                                            {formatDate(
-                                              item?.dueDate ||
-                                                item?.date ||
-                                                item?.installmentDate
-                                            )}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-semibold text-slate-700">
-                                            {formatMoney(amount)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                                            {formatMoney(itemPaid)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-semibold text-amber-600">
-                                            {formatMoney(itemRemaining)}
-                                          </td>
-                                          <td className="px-4 py-3 text-center">
-                                            <span
-                                              className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                                itemStatus === 'Paid'
-                                                  ? 'bg-emerald-50 text-emerald-600'
-                                                  : itemStatus === 'Overdue'
-                                                  ? 'bg-red-50 text-red-600'
-                                                  : 'bg-amber-50 text-amber-600'
-                                              }`}
-                                            >
-                                              {itemStatus}
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <div className="p-8 text-center text-sm text-slate-400">
-                                No installment schedule available.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* PRINT PLAN */}
-                      <div className="print-only print-plan-block">
-                        <div className="print-plan-header">
-                          <div>
-                            <b>
-                              {plan?.planName ||
-                                plan?.durationName ||
-                                `${getInstallmentCount(plan)} Month Plan`}
-                            </b>
-                            <span>
-                              {' '}
-                              • {getInstallmentCount(plan)} installments
-                            </span>
-                          </div>
-                          <div>
-                            Total: {formatMoney(total)} | Paid:{' '}
-                            {formatMoney(paid)} | Remaining:{' '}
-                            {formatMoney(remaining)}
-                          </div>
+                          <span className="text-[10px] text-slate-500 font-bold ml-2 print:text-[7.5px]">
+                            (Status: <strong className={status === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}>{status}</strong>)
+                          </span>
                         </div>
 
-                        {Array.isArray(schedule) && schedule.length > 0 && (
-                          <table className="print-table">
-                            <thead>
+                        <div className="text-xs font-bold text-slate-700 print:text-[7.5px]">
+                          Total: <strong>{formatMoney(total)}</strong> • Paid: <strong className="text-emerald-600">{formatMoney(paid)}</strong> • Remaining: <strong className="text-rose-600">{formatMoney(remaining)}</strong>
+                        </div>
+                      </div>
+
+                      {Array.isArray(schedule) && schedule.length > 0 ? (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl print:rounded-none">
+                          <table className="w-full text-left text-xs print-table">
+                            <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200 print:bg-slate-100 print:text-[7px]">
                               <tr>
-                                <th>#</th>
-                                <th>Due Date</th>
-                                <th>Amount</th>
-                                <th>Paid</th>
-                                <th>Remaining</th>
-                                <th>Status</th>
+                                <th className="px-3 py-1.5 text-center">#</th>
+                                <th className="px-3 py-1.5">Due Date</th>
+                                <th className="px-3 py-1.5 text-right">Installment Amount</th>
+                                <th className="px-3 py-1.5 text-right">Paid Amount</th>
+                                <th className="px-3 py-1.5 text-right">Remaining Due</th>
+                                <th className="px-3 py-1.5 text-center">Status</th>
                               </tr>
                             </thead>
-                            <tbody>
-                              {schedule.map((item, itemIndex) => {
-                                const amount = Number(
-                                  item?.amount ??
-                                    item?.dueAmount ??
-                                    item?.installmentAmount ??
-                                    0
-                                );
-                                const itemPaid = Number(
-                                  item?.paidAmount ?? item?.paid ?? 0
-                                );
-                                const itemRemaining = Number(
-                                  item?.remaining ??
-                                    item?.remainingAmount ??
-                                    Math.max(0, amount - itemPaid)
-                                );
-
-                                let itemStatus = item?.status;
-                                if (!itemStatus) {
-                                  if (itemRemaining <= 0) itemStatus = 'Paid';
-                                  else if (
-                                    item?.isOverdue ||
-                                    (item?.dueDate &&
-                                      new Date(item.dueDate) < new Date())
-                                  ) {
-                                    itemStatus = 'Overdue';
-                                  } else {
-                                    itemStatus = 'Pending';
-                                  }
-                                }
-
-                                return (
-                                  <tr key={item?._id || itemIndex}>
-                                    <td>
-                                      {item?.installmentNumber ??
-                                        item?.number ??
-                                        itemIndex + 1}
-                                    </td>
-                                    <td>
-                                      {formatDate(
-                                        item?.dueDate ||
-                                          item?.date ||
-                                          item?.installmentDate
-                                      )}
-                                    </td>
-                                    <td>{formatMoney(amount)}</td>
-                                    <td>{formatMoney(itemPaid)}</td>
-                                    <td>{formatMoney(itemRemaining)}</td>
-                                    <td>{itemStatus}</td>
-                                  </tr>
-                                );
-                              })}
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                              {schedule.map((item, itemIdx) => (
+                                <tr key={item?._id || itemIdx} className="hover:bg-slate-50/60">
+                                  <td className="px-3 py-1 text-center font-black text-slate-700">#{itemIdx + 1}</td>
+                                  <td className="px-3 py-1 font-bold text-blue-600">{formatDate(item?.dueDate || item?.date)}</td>
+                                  <td className="px-3 py-1 text-right font-bold text-slate-800">{formatMoney(item?.amount || 0)}</td>
+                                  <td className="px-3 py-1 text-right font-black text-emerald-600">{formatMoney(item?.paidAmount || item?.paid || 0)}</td>
+                                  <td className="px-3 py-1 text-right font-black text-rose-600">{formatMoney(item?.remainingAmount || item?.remaining || 0)}</td>
+                                  <td className="px-3 py-1 text-center font-black text-[9px] print:text-[6.5px]">
+                                    <span className={`px-2 py-0.5 rounded-full ${
+                                      item?.status === 'Paid' ? 'bg-emerald-50 text-emerald-700' : item?.status === 'Overdue' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                                    }`}>
+                                      {item?.status || 'Pending'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 py-2">No schedule breakdown available.</p>
+                      )}
                     </div>
                   );
                 })}
@@ -2403,346 +2003,165 @@ const CustomerLedger = () => {
             )}
           </section>
 
-          {/* PAYMENTS */}
-          <section className="mt-5 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ledger-section">
-            <div className="p-5 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <Banknote className="w-5 h-5 text-emerald-500 no-print" />
-                <h2 className="font-black text-slate-800 text-lg">
-                  Complete Payment History
-                </h2>
+          {/* 6. COMPLETE PAYMENTS RECEIPTS */}
+          <section className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm ledger-section">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between print:p-2 print:border-b-2 print:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center no-print">
+                  <Banknote className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base print:text-[10px]">3. Complete Payments & Recovery Receipts</h3>
+                  <p className="text-[10px] text-slate-400 print:hidden">All received transactions</p>
+                </div>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Every payment recorded against this customer
-              </p>
+
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-black print:text-[8px] print:bg-transparent print:border-none">
+                {ledger.payments.length} Receipts
+              </span>
             </div>
 
             {ledger.payments.length === 0 ? (
-              <div className="p-10 text-center text-slate-400">
-                No payment history found.
+              <div className="p-6 text-center text-xs font-semibold text-slate-400 print:text-[8px] print:p-2">
+                No payment receipts recorded yet.
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm screen-payment-table">
-                  <thead className="bg-slate-50 text-slate-400">
+                <table className="w-full text-left text-xs print-table">
+                  <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-200 print:bg-slate-100 print:text-[7px]">
                     <tr>
-                      <th className="px-5 py-3 text-left">Date</th>
-                      <th className="px-5 py-3 text-left">Invoice / Reference</th>
-                      <th className="px-5 py-3 text-left">Method</th>
-                      <th className="px-5 py-3 text-left">Note</th>
-                      <th className="px-5 py-3 text-right">Amount</th>
+                      <th className="px-4 py-2">Receipt Date</th>
+                      <th className="px-4 py-2">Reference / Invoice #</th>
+                      <th className="px-4 py-2">Payment Method</th>
+                      <th className="px-4 py-2">Notes</th>
+                      <th className="px-4 py-2 text-right">Amount Received</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {ledger.payments.map((payment, index) => (
-                      <tr
-                        key={payment?._id || payment?.id || `payment-${index}`}
-                        className="hover:bg-slate-50"
-                      >
-                        <td className="px-5 py-4 whitespace-nowrap text-slate-600">
-                          {formatDateTime(
-                            payment?.paymentDate ||
-                              payment?.date ||
-                              payment?.createdAt
-                          )}
-                        </td>
-                        <td className="px-5 py-4 font-semibold text-slate-700">
-                          {firstValue(
-                            payment?.invoiceNumber,
-                            payment?.invoiceNo,
-                            payment?.reference,
-                            payment?.sale?.invoiceNumber,
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-5 py-4 capitalize text-slate-600">
-                          {firstValue(
-                            payment?.paymentMethod,
-                            payment?.method,
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-slate-400">
-                          {firstValue(
-                            payment?.note,
-                            payment?.notes,
-                            payment?.description,
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-right font-black text-emerald-600">
-                          {formatMoney(getPaymentAmount(payment))}
-                        </td>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {ledger.payments.map((p, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-1.5 text-slate-600">{formatDateTime(p?.paymentDate || p?.date || p?.createdAt)}</td>
+                        <td className="px-4 py-1.5 font-bold text-slate-800">{getPaymentInvoiceNumber(p)}</td>
+                        <td className="px-4 py-1.5 text-slate-600 capitalize">{p?.paymentMethod || 'Cash'}</td>
+                        <td className="px-4 py-1.5 text-slate-400">{p?.note || p?.notes || '—'}</td>
+                        <td className="px-4 py-1.5 text-right font-black text-emerald-600">+{formatMoney(getPaymentAmount(p))}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-
-            {/* PRINT PAYMENTS */}
-            {ledger.payments.length > 0 && (
-              <table className="print-only print-table print-payment-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Invoice / Reference</th>
-                    <th>Method</th>
-                    <th>Note</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledger.payments.map((payment, index) => (
-                    <tr
-                      key={
-                        payment?._id ||
-                        payment?.id ||
-                        `print-payment-${index}`
-                      }
-                    >
-                      <td>
-                        {formatDate(
-                          payment?.paymentDate ||
-                            payment?.date ||
-                            payment?.createdAt
-                        )}
-                      </td>
-                      <td>
-                        {firstValue(
-                          payment?.invoiceNumber,
-                          payment?.invoiceNo,
-                          payment?.reference,
-                          payment?.sale?.invoiceNumber,
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {firstValue(
-                          payment?.paymentMethod,
-                          payment?.method,
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {firstValue(
-                          payment?.note,
-                          payment?.notes,
-                          payment?.description,
-                          '-'
-                        )}
-                      </td>
-                      <td className="text-right">
-                        {formatMoney(getPaymentAmount(payment))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </section>
 
-          {/* RETURNS */}
-          <section className="mt-5 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ledger-section">
-            <div className="p-5 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-5 h-5 text-red-500 no-print" />
-                <h2 className="font-black text-slate-800 text-lg">
-                  Return / Refund History
-                </h2>
+          {/* 7. RETURNS HISTORY */}
+          {ledger.returns.length > 0 && (
+            <section className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm ledger-section">
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between print:p-2 print:border-b-2 print:border-slate-800">
+                <h3 className="font-black text-slate-900 text-sm sm:text-base print:text-[10px]">4. Product Return / Refund Records</h3>
+                <span className="text-xs font-black text-rose-600 print:text-[8px]">{ledger.returns.length} Returns</span>
               </div>
-            </div>
 
-            {ledger.returns.length === 0 ? (
-              <div className="p-10 text-center text-slate-400">
-                No returns or refunds found.
-              </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm screen-return-table">
-                    <thead className="bg-slate-50 text-slate-400">
-                      <tr>
-                        <th className="px-5 py-3 text-left">Date</th>
-                        <th className="px-5 py-3 text-left">Invoice</th>
-                        <th className="px-5 py-3 text-left">Product</th>
-                        <th className="px-5 py-3 text-left">Reason</th>
-                        <th className="px-5 py-3 text-right">Refund</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {ledger.returns.map((returnItem, index) => (
-                        <tr
-                          key={
-                            returnItem?._id ||
-                            returnItem?.id ||
-                            `return-${index}`
-                          }
-                          className="hover:bg-slate-50"
-                        >
-                          <td className="px-5 py-4 text-slate-600">
-                            {formatDateTime(
-                              returnItem?.returnDate ||
-                                returnItem?.date ||
-                                returnItem?.createdAt
-                            )}
-                          </td>
-                          <td className="px-5 py-4 font-semibold text-slate-700">
-                            {firstValue(
-                              returnItem?.invoiceNumber,
-                              returnItem?.invoiceNo,
-                              returnItem?.sale?.invoiceNumber,
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-slate-700">
-                            {firstValue(
-                              returnItem?.product?.name,
-                              returnItem?.productName,
-                              returnItem?.itemName,
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-slate-400">
-                            {firstValue(
-                              returnItem?.reason,
-                              returnItem?.notes,
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-right font-black text-red-600">
-                            {formatMoney(getReturnAmount(returnItem))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* PRINT RETURNS */}
-                <table className="print-only print-table">
-                  <thead>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs print-table">
+                  <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200 print:bg-slate-100 print:text-[7px]">
                     <tr>
-                      <th>Date</th>
-                      <th>Invoice</th>
-                      <th>Product</th>
-                      <th>Reason</th>
-                      <th>Refund</th>
+                      <th className="px-4 py-2">Date</th>
+                      <th className="px-4 py-2">Invoice #</th>
+                      <th className="px-4 py-2">Product</th>
+                      <th className="px-4 py-2">Reason</th>
+                      <th className="px-4 py-2 text-right">Refund Amount</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {ledger.returns.map((returnItem, index) => (
-                      <tr
-                        key={
-                          returnItem?._id ||
-                          returnItem?.id ||
-                          `print-return-${index}`
-                        }
-                      >
-                        <td>
-                          {formatDate(
-                            returnItem?.returnDate ||
-                              returnItem?.date ||
-                              returnItem?.createdAt
-                          )}
-                        </td>
-                        <td>
-                          {firstValue(
-                            returnItem?.invoiceNumber,
-                            returnItem?.invoiceNo,
-                            returnItem?.sale?.invoiceNumber,
-                            '-'
-                          )}
-                        </td>
-                        <td>
-                          {firstValue(
-                            returnItem?.product?.name,
-                            returnItem?.productName,
-                            returnItem?.itemName,
-                            '-'
-                          )}
-                        </td>
-                        <td>
-                          {firstValue(
-                            returnItem?.reason,
-                            returnItem?.notes,
-                            '-'
-                          )}
-                        </td>
-                        <td className="text-right">
-                          {formatMoney(getReturnAmount(returnItem))}
-                        </td>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {ledger.returns.map((ret, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-1.5 text-slate-600">{formatDate(ret?.returnDate || ret?.date)}</td>
+                        <td className="px-4 py-1.5 font-bold">{getReturnInvoiceNumber(ret)}</td>
+                        <td className="px-4 py-1.5 font-bold text-slate-800">{firstValue(ret?.product?.name, ret?.productName, '—')}</td>
+                        <td className="px-4 py-1.5 text-slate-400">{ret?.reason || '—'}</td>
+                        <td className="px-4 py-1.5 text-right font-black text-rose-600">-{formatMoney(getReturnAmount(ret))}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </>
-            )}
-          </section>
+              </div>
+            </section>
+          )}
 
-          {/* FINAL BALANCE */}
-          <div className="mt-5 bg-white border border-amber-200 rounded-2xl p-6 shadow-sm final-balance">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+          {/* 8. FINAL OUTSTANDING BALANCE SUMMARY CARD */}
+          <div className="bg-white border border-amber-300 rounded-3xl p-5 sm:p-6 shadow-sm final-balance">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="text-xs uppercase tracking-wider font-bold text-slate-400">
-                  Customer Outstanding Balance
-                </div>
-                <div className="text-3xl font-black text-amber-600 mt-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block print:text-[7.5px]">
+                  Net Payable Outstanding Balance
+                </span>
+                <p className="text-2xl sm:text-3xl font-black text-amber-600 mt-1 print:text-base">
                   {formatMoney(ledger.outstanding)}
-                </div>
-                <div className="text-xs text-slate-400 mt-2">
-                  Complete balance calculated from available sales, payments,
-                  returns and installment information.
-                </div>
+                </p>
+                <p className="text-xs text-slate-400 font-semibold mt-1 print:text-[7px]">
+                  Total Invoiced: {formatMoney(ledger.totalSales)} • Total Received: {formatMoney(ledger.totalPayments)}
+                </p>
               </div>
 
-              {ledger.outstanding <= 0 ? (
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-600 font-bold">
-                  <CheckCircle2 className="w-5 h-5 no-print" />
-                  Account Cleared
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-600 font-bold">
-                  <Clock className="w-5 h-5 no-print" />
-                  Balance Outstanding
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {ledger.outstanding <= 0 ? (
+                  <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 font-black text-xs border border-emerald-200 print:text-[8px] print:px-2 print:py-1">
+                    <CheckCircle2 className="w-4 h-4 no-print" />
+                    Account All Clear
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-50 text-amber-700 font-black text-xs border border-amber-200 print:text-[8px] print:px-2 print:py-1">
+                    <Clock className="w-4 h-4 no-print" />
+                    Payment Pending / Active
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* ACTIONS */}
-          <div className="no-print flex flex-wrap justify-end gap-2 mt-5">
+          {/* 9. PRINT-ONLY OFFICIAL SIGNATURES BLOCK */}
+          <div className="print-only print-signatures-block">
+            <div className="grid grid-cols-2 gap-8 pt-8">
+              <div className="text-center">
+                <div className="border-t border-slate-900 pt-1.5 font-bold text-[8.5px]">
+                  Customer Signature / Thumb Impression
+                </div>
+                <p className="text-[7px] text-slate-400">I confirm the above balance and payment schedule.</p>
+              </div>
+
+              <div className="text-center">
+                <div className="border-t border-slate-900 pt-1.5 font-bold text-[8.5px]">
+                  Authorized Shop Stamp & Signature
+                </div>
+                <p className="text-[7px] text-slate-400">{settings?.shopName || 'Electronics Shop'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SCREEN ACTIONS */}
+          <div className="no-print flex flex-wrap items-center justify-between gap-3 pt-2">
             <button
               type="button"
               onClick={clearLedger}
-              className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-sm flex items-center gap-2 transition"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-black text-slate-700 transition-all"
             >
-              <X className="w-4 h-4" />
-              Change Customer
+              ← Select Another Customer
             </button>
 
             <button
               type="button"
               onClick={() => navigate(`/customers/${ledger.customer?._id}`)}
-              className="h-10 px-4 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-sm flex items-center gap-2 transition shadow-sm"
+              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all shadow-md"
             >
-              <UserRound className="w-4 h-4" />
-              Full Customer Profile
+              Open Full Customer Profile →
             </button>
           </div>
 
-          {/* FOOTER */}
-          <div className="hidden print:block mt-8 pt-5 border-t border-slate-300 text-black">
-            <div className="flex justify-between text-xs">
-              <div>Customer Ledger — {getCustomerName(ledger.customer)}</div>
-              <div>Printed: {formatDateTime(new Date())}</div>
-            </div>
-          </div>
         </div>
       )}
 
       {/* =====================================================
-          PRINT CSS
+          COMPREHENSIVE PRINT STYLESHEET
       ====================================================== */}
       <style>{`
         .print-only {
@@ -2752,29 +2171,26 @@ const CustomerLedger = () => {
         @media print {
           @page {
             size: A4 portrait;
-            margin: 5mm;
+            margin: 5mm 6mm;
           }
 
-          html,
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-            color: #000 !important;
-            font-family: Arial, Helvetica, sans-serif !important;
-          }
-
-          body {
-            zoom: 0.58;
+          html, body, #root, main {
+            background: #ffffff !important;
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            position: static !important;
+            color: #000000 !important;
+            font-size: 8px !important;
           }
 
           body * {
-            visibility: hidden;
+            visibility: hidden !important;
           }
 
           #customer-ledger-print,
           #customer-ledger-print * {
-            visibility: visible;
+            visibility: visible !important;
           }
 
           #customer-ledger-print {
@@ -2782,10 +2198,12 @@ const CustomerLedger = () => {
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: white !important;
-            color: #000 !important;
+            background: #ffffff !important;
+            box-shadow: none !important;
+            border: none !important;
           }
 
           .no-print {
@@ -2796,158 +2214,20 @@ const CustomerLedger = () => {
             display: block !important;
           }
 
-          .ledger-print-header {
-            display: flex !important;
-            align-items: flex-start;
-            justify-content: space-between;
-            border-bottom: 1px solid #111;
-            padding-bottom: 5px;
-            margin-bottom: 6px;
+          .person-card-print {
+            border: 1px solid #94a3b8 !important;
+            border-radius: 4px !important;
+            margin-bottom: 4px !important;
           }
 
-          .ledger-print-title {
-            font-size: 15px;
-            font-weight: 900;
-            letter-spacing: .5px;
+          .person-header-print {
+            padding: 3px 6px !important;
+            background: #f8fafc !important;
+            border-bottom: 1px solid #cbd5e1 !important;
           }
 
-          .ledger-print-subtitle {
-            font-size: 9px;
-            margin-top: 2px;
-          }
-
-          .ledger-print-date {
-            font-size: 8px;
-            text-align: right;
-          }
-
-          #customer-ledger-print .bg-white {
-            background: white !important;
-          }
-
-          #customer-ledger-print .bg-slate-50,
-          #customer-ledger-print .bg-indigo-50,
-          #customer-ledger-print .bg-amber-50,
-          #customer-ledger-print .bg-emerald-50,
-          #customer-ledger-print .bg-red-50,
-          #customer-ledger-print .bg-purple-50 {
-            background: white !important;
-          }
-
-          #customer-ledger-print .border-slate-200,
-          #customer-ledger-print .border-amber-200 {
-            border-color: #b8b8b8 !important;
-          }
-
-          #customer-ledger-print .shadow-sm {
-            box-shadow: none !important;
-          }
-
-          #customer-ledger-print .rounded-2xl {
-            border-radius: 3px !important;
-          }
-
-          #customer-ledger-print .rounded-xl {
-            border-radius: 2px !important;
-          }
-
-          #customer-ledger-print > .bg-white.border {
-            margin-bottom: 5px !important;
-          }
-
-          #customer-ledger-print .bg-white.border > .px-5.py-4 {
+          .person-body-print {
             padding: 4px 6px !important;
-          }
-
-          #customer-ledger-print .bg-white.border > .p-5 {
-            padding: 5px 6px !important;
-          }
-
-          #customer-ledger-print .w-24.h-24 {
-            width: 48px !important;
-            height: 48px !important;
-          }
-
-          #customer-ledger-print .w-28 {
-            width: 60px !important;
-          }
-
-          #customer-ledger-print .h-20 {
-            height: 42px !important;
-          }
-
-          #customer-ledger-print .w-10.h-10 {
-            width: 22px !important;
-            height: 22px !important;
-          }
-
-          #customer-ledger-print .w-11.h-11 {
-            width: 24px !important;
-            height: 24px !important;
-          }
-
-          #customer-ledger-print .text-xl {
-            font-size: 11px !important;
-          }
-
-          #customer-ledger-print .text-lg {
-            font-size: 10px !important;
-          }
-
-          #customer-ledger-print .text-3xl {
-            font-size: 15px !important;
-          }
-
-          #customer-ledger-print .text-sm {
-            font-size: 7.5px !important;
-          }
-
-          #customer-ledger-print .text-xs {
-            font-size: 6.5px !important;
-          }
-
-          #customer-ledger-print .text-\\[10px\\] {
-            font-size: 5.5px !important;
-          }
-
-          #customer-ledger-print .text-\\[9px\\] {
-            font-size: 5px !important;
-          }
-
-          #customer-ledger-print .mt-5 {
-            margin-top: 5px !important;
-          }
-
-          #customer-ledger-print .mt-4 {
-            margin-top: 4px !important;
-          }
-
-          #customer-ledger-print .mt-3 {
-            margin-top: 3px !important;
-          }
-
-          #customer-ledger-print .mt-2 {
-            margin-top: 2px !important;
-          }
-
-          #customer-ledger-print .p-6 {
-            padding: 6px !important;
-          }
-
-          #customer-ledger-print .p-5 {
-            padding: 5px !important;
-          }
-
-          #customer-ledger-print .p-4 {
-            padding: 4px !important;
-          }
-
-          .print-section-title {
-            font-size: 8px;
-            font-weight: 900;
-            border-bottom: 1px solid #111;
-            padding-bottom: 2px;
-            margin: 5px 0 4px;
           }
 
           .print-guarantor-grid {
@@ -2956,154 +2236,75 @@ const CustomerLedger = () => {
             gap: 4px !important;
           }
 
-          .print-guarantor-grid > div {
-            min-width: 0 !important;
-          }
-
           .print-summary-grid {
             display: grid !important;
             grid-template-columns: repeat(4, 1fr) !important;
-            gap: 3px !important;
+            gap: 4px !important;
             margin-top: 4px !important;
           }
 
           .print-summary-card {
-            padding: 4px !important;
-          }
-
-          .print-status-grid {
-            display: grid !important;
-            grid-template-columns: repeat(3, 1fr) !important;
-            gap: 3px !important;
-            margin-top: 3px !important;
-          }
-
-          .print-status-card {
-            padding: 3px !important;
+            border: 1px solid #94a3b8 !important;
+            border-radius: 4px !important;
+            padding: 3px 5px !important;
           }
 
           .ledger-section {
-            margin-top: 4px !important;
-            break-inside: auto !important;
-          }
-
-          .ledger-section > .p-5 {
-            padding: 4px 5px !important;
+            margin-top: 5px !important;
+            border: 1px solid #94a3b8 !important;
+            border-radius: 4px !important;
           }
 
           .print-table {
-            display: table !important;
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 6px !important;
-            margin-top: 2px !important;
+            font-size: 7.5px !important;
+            margin: 0 !important;
           }
 
           .print-table th {
+            background-color: #f1f5f9 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            border: 0.5px solid #94a3b8 !important;
+            padding: 2.5px 3.5px !important;
             font-weight: 900 !important;
-            background: #f1f1f1 !important;
-            border: 0.5px solid #777 !important;
-            padding: 2px 3px !important;
-            text-align: left;
+            color: #0f172a !important;
           }
 
           .print-table td {
-            border: 0.5px solid #aaa !important;
-            padding: 2px 3px !important;
-            vertical-align: middle !important;
+            border: 0.5px solid #cbd5e1 !important;
+            padding: 2.5px 3.5px !important;
+            color: #0f172a !important;
           }
 
-          .print-table .text-right {
-            text-align: right !important;
-          }
-
-          .print-sale-row {
-            display: grid !important;
-            grid-template-columns: 2.4fr 1.2fr 1.2fr 1fr 1.2fr !important;
-            gap: 2px;
-            border-bottom: 0.5px solid #aaa;
-            padding: 2px 4px;
-            font-size: 6px;
-            line-height: 1.15;
-          }
-
-          .print-sale-row span {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          .print-plan-block {
-            padding: 3px 5px;
-            border-bottom: 0.5px solid #999;
-          }
-
-          .print-plan-header {
-            display: flex;
-            justify-content: space-between;
-            gap: 8px;
-            font-size: 6.5px;
-            margin-bottom: 2px;
+          .print-plan-box {
+            padding: 3px 4px !important;
+            border-bottom: 0.5px solid #cbd5e1 !important;
           }
 
           .final-balance {
-            margin-top: 4px !important;
-            padding: 5px !important;
+            margin-top: 5px !important;
+            padding: 4px 6px !important;
+            border: 1.5px solid #d97706 !important;
+            border-radius: 4px !important;
             break-inside: avoid !important;
           }
 
-          .final-balance .text-3xl {
-            font-size: 14px !important;
-          }
-
-          #customer-ledger-print .text-slate-800,
-          #customer-ledger-print .text-slate-700,
-          #customer-ledger-print .text-slate-600,
-          #customer-ledger-print .text-slate-500,
-          #customer-ledger-print .text-slate-400,
-          #customer-ledger-print .text-indigo-600,
-          #customer-ledger-print .text-indigo-500,
-          #customer-ledger-print .text-amber-600,
-          #customer-ledger-print .text-amber-500,
-          #customer-ledger-print .text-emerald-600,
-          #customer-ledger-print .text-emerald-500,
-          #customer-ledger-print .text-red-600,
-          #customer-ledger-print .text-red-500,
-          #customer-ledger-print .text-purple-600 {
-            color: #000 !important;
-          }
-
-          #customer-ledger-print img {
-            visibility: visible !important;
-            display: block !important;
-            print-color-adjust: exact !important;
-            -webkit-print-color-adjust: exact !important;
+          .print-signatures-block {
+            margin-top: 10px !important;
+            break-inside: avoid !important;
           }
 
           .guarantor-section,
           .print-summary-grid,
-          .print-status-grid,
-          .final-balance {
+          .final-balance,
+          .print-signatures-block {
             break-inside: avoid !important;
-          }
-
-          tr {
-            break-inside: avoid !important;
-          }
-
-          .screen-payment-table,
-          .screen-return-table {
-            display: none !important;
-          }
-
-          #customer-ledger-print .hidden.print\\:block {
-            display: block !important;
-            margin-top: 4px !important;
-            padding-top: 3px !important;
-            font-size: 6px !important;
           }
         }
       `}</style>
+
     </div>
   );
 };
