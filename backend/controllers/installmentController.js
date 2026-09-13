@@ -125,11 +125,12 @@ const getInstallmentPlans = async (
           createdAt: -1
         });
 
-    // Status checks are independent. Parallel execution prevents every plan
-    // from making the list page wait for the previous plan's database calls.
     await Promise.all(
       plans.map((plan) =>
-        updateOverdueStatus(plan._id, shopId)
+        updateOverdueStatus(
+          plan._id,
+          shopId
+        )
       )
     );
 
@@ -149,6 +150,7 @@ const getInstallmentPlans = async (
       success: true,
       data: refreshedPlans
     });
+
   } catch (error) {
     console.error(
       'GET INSTALLMENT PLANS ERROR:',
@@ -165,6 +167,13 @@ const getInstallmentPlans = async (
 
 // ============================================================
 // GET DUE INSTALLMENTS
+//
+// Returns:
+// - Overdue
+// - Due Today
+// - Upcoming next 7 days
+// - Counts
+// - Amount summaries
 // ============================================================
 
 const getDueInstallments = async (
@@ -178,9 +187,11 @@ const getDueInstallments = async (
     const installments =
       await Installment.find({
         shopId,
+
         remainingAmount: {
           $gt: 0
         },
+
         status: {
           $nin: [
             'Paid',
@@ -190,6 +201,7 @@ const getDueInstallments = async (
       })
         .populate({
           path: 'installmentPlan',
+
           populate: [
             {
               path: 'customer'
@@ -205,11 +217,16 @@ const getDueInstallments = async (
         .sort({
           dueDate: 1,
           installmentNumber: 1
-        });
+        })
+        .lean();
 
     const overdue = [];
     const dueToday = [];
     const upcoming = [];
+
+    // ========================================================
+    // TODAY
+    // ========================================================
 
     const today = new Date(
       now.getFullYear(),
@@ -217,37 +234,210 @@ const getDueInstallments = async (
       now.getDate()
     );
 
-    for (const item of installments) {
-      const due = new Date(
-        item.dueDate
-      );
+    // ========================================================
+    // UPCOMING WINDOW
+    // Next 7 days
+    // ========================================================
 
-      const dueDay = new Date(
-        due.getFullYear(),
-        due.getMonth(),
-        due.getDate()
-      );
+    const upcomingEnd = new Date(
+      today
+    );
+
+    upcomingEnd.setDate(
+      upcomingEnd.getDate() + 7
+    );
+
+    // ========================================================
+    // CLASSIFY INSTALLMENTS
+    // ========================================================
+
+    for (const item of installments) {
+      if (!item.dueDate) {
+        continue;
+      }
+
+      const due =
+        new Date(item.dueDate);
+
+      const dueDay =
+        new Date(
+          due.getFullYear(),
+          due.getMonth(),
+          due.getDate()
+        );
+
+      const diffMs =
+        dueDay.getTime() -
+        today.getTime();
+
+      const diffDays =
+        Math.round(
+          diffMs /
+          (1000 * 60 * 60 * 24)
+        );
+
+      // ------------------------------------------------------
+      // OVERDUE
+      // ------------------------------------------------------
 
       if (dueDay < today) {
-        overdue.push(item);
-      } else if (
+        overdue.push({
+          ...item,
+
+          category:
+            'Overdue',
+
+          daysOverdue:
+            Math.abs(diffDays)
+        });
+
+        continue;
+      }
+
+      // ------------------------------------------------------
+      // DUE TODAY
+      // ------------------------------------------------------
+
+      if (
         dueDay.getTime() ===
         today.getTime()
       ) {
-        dueToday.push(item);
-      } else {
-        upcoming.push(item);
+        dueToday.push({
+          ...item,
+
+          category:
+            'Due Today',
+
+          daysUntilDue: 0
+        });
+
+        continue;
+      }
+
+      // ------------------------------------------------------
+      // UPCOMING
+      // NEXT 7 DAYS ONLY
+      // ------------------------------------------------------
+
+      if (
+        dueDay <=
+        upcomingEnd
+      ) {
+        upcoming.push({
+          ...item,
+
+          category:
+            'Upcoming',
+
+          daysUntilDue:
+            diffDays
+        });
       }
     }
 
+    // ========================================================
+    // COUNTS
+    // ========================================================
+
+    const totalOverdue =
+      overdue.length;
+
+    const totalDueToday =
+      dueToday.length;
+
+    const totalUpcoming =
+      upcoming.length;
+
+    const totalDue =
+      totalOverdue +
+      totalDueToday;
+
+    const totalPending =
+      totalOverdue +
+      totalDueToday +
+      totalUpcoming;
+
+    // ========================================================
+    // AMOUNTS
+    // ========================================================
+
+    const overdueAmount =
+      roundMoney(
+        overdue.reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.remainingAmount || 0
+            ),
+          0
+        )
+      );
+
+    const dueTodayAmount =
+      roundMoney(
+        dueToday.reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.remainingAmount || 0
+            ),
+          0
+        )
+      );
+
+    const upcomingAmount =
+      roundMoney(
+        upcoming.reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.remainingAmount || 0
+            ),
+          0
+        )
+      );
+
+    const totalPendingAmount =
+      roundMoney(
+        overdueAmount +
+        dueTodayAmount +
+        upcomingAmount
+      );
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
     return res.status(200).json({
       success: true,
+
       data: {
         overdue,
+
         dueToday,
-        upcoming
+
+        upcoming,
+
+        totalOverdue,
+
+        totalDueToday,
+
+        totalUpcoming,
+
+        totalDue,
+
+        totalPending,
+
+        overdueAmount,
+
+        dueTodayAmount,
+
+        upcomingAmount,
+
+        totalPendingAmount
       }
     });
+
   } catch (error) {
     console.error(
       'GET DUE INSTALLMENTS ERROR:',
@@ -257,7 +447,9 @@ const getDueInstallments = async (
     return res.status(500).json({
       message:
         'Failed to fetch due installments',
-      error: error.message
+
+      error:
+        error.message
     });
   }
 };
@@ -330,12 +522,17 @@ const getInstallmentPlanById = async (
 
     return res.status(200).json({
       success: true,
+
       data: {
-        plan: refreshedPlan,
+        plan:
+          refreshedPlan,
+
         installments,
+
         payments
       }
     });
+
   } catch (error) {
     console.error(
       'GET INSTALLMENT PLAN ERROR:',
@@ -345,7 +542,9 @@ const getInstallmentPlanById = async (
     return res.status(500).json({
       message:
         'Failed to fetch installment plan',
-      error: error.message
+
+      error:
+        error.message
     });
   }
 };
@@ -515,7 +714,8 @@ const payInstallment = async (
     // PAYMENT DATE
     // ========================================================
 
-    const paymentDate = new Date();
+    const paymentDate =
+      new Date();
 
     // ========================================================
     // ALLOCATIONS
@@ -526,17 +726,15 @@ const payInstallment = async (
     let paymentLeft =
       amountToPay;
 
-    let actualAllocatedAmount = 0;
+    let actualAllocatedAmount =
+      0;
 
     let firstAffectedInstallment =
       null;
 
     // ========================================================
     // STEP 1
-    //
-    // APPLY PAYMENT ONLY TO CURRENT INSTALLMENT FIRST.
-    //
-    // This is important for underpayment.
+    // CURRENT INSTALLMENT FIRST
     // ========================================================
 
     const currentRemainingBefore =
@@ -636,15 +834,14 @@ const payInstallment = async (
 
     // ========================================================
     // STEP 2
-    //
-    // IF PAYMENT IS MORE THAN CURRENT INSTALLMENT,
-    // DISTRIBUTE EXTRA EQUALLY ACROSS FUTURE INSTALLMENTS.
+    // EXTRA PAYMENT
     // ========================================================
 
     let extraPayment =
       roundMoney(paymentLeft);
 
-    let extraAdjustedAmount = 0;
+    let extraAdjustedAmount =
+      0;
 
     if (
       extraPayment > 0
@@ -652,11 +849,14 @@ const payInstallment = async (
       const futureInstallments =
         await Installment.find({
           shopId,
-          installmentPlan: plan._id,
+          installmentPlan:
+            plan._id,
+
           installmentNumber: {
             $gt:
               currentInstallment.installmentNumber
           },
+
           remainingAmount: {
             $gt: 0
           }
@@ -670,13 +870,6 @@ const payInstallment = async (
 
       let availableFuture =
         futureInstallments;
-
-      // ------------------------------------------------------
-      // Equal distribution loop
-      //
-      // We repeat because one installment may have a smaller
-      // remaining balance than the equal share.
-      // ------------------------------------------------------
 
       while (
         remainingExtra > 0.009 &&
@@ -695,7 +888,9 @@ const payInstallment = async (
         }
 
         const nextRound = [];
-        let distributedThisRound = 0;
+
+        let distributedThisRound =
+          0;
 
         for (
           const installment
@@ -838,15 +1033,11 @@ const payInstallment = async (
           nextRound;
       }
 
-      // ------------------------------------------------------
-      // Any amount still left means the entire plan is already
-      // covered. We DO NOT silently lose it.
-      // ------------------------------------------------------
-
       paymentLeft =
         roundMoney(
           remainingExtra
         );
+
     } else {
       paymentLeft = 0;
     }
@@ -867,9 +1058,6 @@ const payInstallment = async (
 
     // ========================================================
     // CARRY FORWARD
-    //
-    // This now means ONLY the portion of payment allocated
-    // to future installments.
     // ========================================================
 
     const carryForwardAmount =
@@ -934,6 +1122,7 @@ const payInstallment = async (
 
       plan.status =
         'Completed';
+
     } else {
       const overdueExists =
         await Installment.exists({
@@ -998,6 +1187,7 @@ const payInstallment = async (
 
       defaultNote =
         `Partial payment of ${amountToPay} received for installment #${currentInstallment.installmentNumber}. Remaining on this installment: ${partialRemaining}.`;
+
     } else if (
       extraAdjustedAmount > 0
     ) {
@@ -1034,7 +1224,6 @@ const payInstallment = async (
         installment:
           firstAffectedInstallment._id,
 
-        // Actual amount received from customer
         amount:
           amountToPay,
 

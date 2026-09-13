@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
@@ -157,7 +158,7 @@ const Dashboard = () => {
   };
 
   // =========================================================
-  // WHATSAPP
+  // WHATSAPP REMINDER
   // =========================================================
   const formatWhatsAppNumber = (phoneStr) => {
     if (!phoneStr) return '';
@@ -476,15 +477,11 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     toast.success('Index Record CSV exported successfully.');
   };
 
-  // =========================================================
-  // PRINT HANDLER (FIXED FOR ZERO SCROLL OFFSET & RENDERING)
-  // =========================================================
   const handleIndexRecordPrint = () => {
     if (indexRecordRows.length === 0) {
       return toast.error(`No due installments found for ${indexMonthLabel}.`);
     }
 
-    // Scroll parent layout and window to top so printable content isn't clipped
     window.scrollTo(0, 0);
     const scrollContainer = document.querySelector('main')?.parentElement;
     if (scrollContainer) {
@@ -565,88 +562,19 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     (s) => s.paymentType === 'Installment'
   );
 
-  // Revenue
-  const totalRevenue = filteredSalesList.reduce(
-    (sum, s) => sum + Number(s.finalTotal || 0),
-    0
-  );
+  // Cash Revenue
   const cashRevenue = cashSalesList.reduce(
     (sum, s) => sum + Number(s.finalTotal || 0),
     0
   );
 
-  // Cash Profit
+  // Cash Cost & Cash Profit
   const cashCost = cashSalesList.reduce(
     (sum, s) =>
       sum + Number(s.quantity || 0) * Number(s.product?.purchasePrice || 0),
     0
   );
   const cashProfit = cashRevenue - cashCost;
-
-  // Installment Profit
-  const installmentRevenue = installmentSalesList.reduce(
-    (sum, s) => sum + Number(s.finalTotal || 0),
-    0
-  );
-  const installmentCost = installmentSalesList.reduce(
-    (sum, s) =>
-      sum + Number(s.quantity || 0) * Number(s.product?.purchasePrice || 0),
-    0
-  );
-
-  const installmentMarkupProfit = installmentSalesList.reduce((sum, s) => {
-    const finalTotal = Number(s.finalTotal || 0);
-    const downPayment = Number(s.downPayment || 0);
-    const duration = Number(s.installmentDuration || 0);
-
-    let markupPercent = 0;
-    if (duration === 3) {
-      markupPercent = 15;
-    } else if (duration === 6) {
-      markupPercent = 25;
-    } else if (duration === 12) {
-      markupPercent = 50;
-    } else if (duration <= 3) {
-      markupPercent = 15;
-    } else if (duration <= 6) {
-      markupPercent = 25;
-    } else {
-      markupPercent = 50;
-    }
-
-    const remainingPrincipal = Math.max(0, finalTotal - downPayment);
-    const markupAmount = Math.round(remainingPrincipal * (markupPercent / 100));
-
-    return sum + markupAmount;
-  }, 0);
-
-  const installmentProductProfit = installmentRevenue - installmentCost;
-  const installmentProfit = installmentProductProfit + installmentMarkupProfit;
-
-  // Installment Payments
-  const installmentDownPayments = installmentSalesList.reduce(
-    (sum, s) => sum + Number(s.downPayment || 0),
-    0
-  );
-  const installmentPayments = filteredPaymentsList.reduce(
-    (sum, pay) => sum + Number(pay.amount || 0),
-    0
-  );
-  const totalInstallmentPaymentsReceived =
-    installmentDownPayments + installmentPayments;
-
-  // Totals
-  const totalCollected = cashRevenue + totalInstallmentPaymentsReceived;
-  const totalOutstanding = filteredFinancingList.reduce(
-    (sum, p) => sum + Number(p.remainingBalance || 0),
-    0
-  );
-  const grossProfit = cashProfit + installmentProfit;
-  const totalExpensesVal = filteredExpensesList.reduce(
-    (sum, e) => sum + Number(e.amount || 0),
-    0
-  );
-  const netProfitVal = grossProfit - totalExpensesVal;
 
   // Search Filter
   const searchFilter = (item) => {
@@ -690,36 +618,45 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       };
     });
 
-  // Detailed Installment Profit
+  // =========================================================
+  // DETAILED INSTALLMENT PROFIT LIST
+  // (Product Profit + Markup Profit Summed)
+  // =========================================================
   const detailedInstallmentProfitList = installmentSalesList
     .filter((s) => searchFilter(s))
     .map((sale) => {
-      const quantity = Number(sale.quantity || 0);
+      const quantity = Number(sale.quantity || 1);
       const purchasePrice = Number(sale.product?.purchasePrice || 0);
       const originalCost = quantity * purchasePrice;
-      const sellingPrice = Number(sale.finalTotal || 0);
+
+      // Base retail price
+      const baseCashPrice =
+        (Number(sale.product?.sellingPrice || 0) * quantity) ||
+        Number(sale.finalTotal || 0);
+
       const downPayment = Number(sale.downPayment || 0);
       const duration = Number(sale.installmentDuration || 0);
 
+      // Markup % based on duration
       let markupPercent = 0;
-      if (duration === 3) {
-        markupPercent = 15;
-      } else if (duration === 6) {
-        markupPercent = 25;
-      } else if (duration === 12) {
-        markupPercent = 50;
-      } else if (duration <= 3) {
-        markupPercent = 15;
-      } else if (duration <= 6) {
-        markupPercent = 25;
-      } else {
-        markupPercent = 50;
-      }
+      if (duration === 3) markupPercent = 15;
+      else if (duration === 6) markupPercent = 25;
+      else if (duration === 12) markupPercent = 50;
+      else if (duration <= 3) markupPercent = 15;
+      else if (duration <= 6) markupPercent = 25;
+      else markupPercent = 50;
 
-      const remainingPrincipal = Math.max(0, sellingPrice - downPayment);
+      // Markup Amount on remaining principal
+      const remainingPrincipal = Math.max(0, baseCashPrice - downPayment);
       const markupAmount = Math.round(remainingPrincipal * (markupPercent / 100));
-      const totalCustomerPayable = sellingPrice + markupAmount;
 
+      // Customer Total Agreement Payable
+      const totalCustomerPayable = Math.max(
+        Number(sale.finalTotal || 0),
+        baseCashPrice + markupAmount
+      );
+
+      // Payments against this sale
       const customerPayments = filteredPaymentsList.filter((payment) => {
         const paymentSaleId = payment.sale?._id || payment.sale;
         return (
@@ -729,21 +666,33 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         );
       });
 
-      const installmentPaymentsReceived = customerPayments.reduce(
-        (sum, payment) => sum + Number(payment.amount || 0),
-        0
-      );
+      const installmentPaymentsReceived = customerPayments.reduce((sum, payment) => {
+        const isDownPay =
+          payment.paymentType === 'Down Payment' ||
+          payment.type === 'Down Payment' ||
+          payment.isDownPayment === true;
+        if (isDownPay) return sum;
+        return sum + Number(payment.amount || 0);
+      }, 0);
+
       const totalReceived = downPayment + installmentPaymentsReceived;
       const remainingAmount = Math.max(0, totalCustomerPayable - totalReceived);
-      const productProfit = sellingPrice - originalCost;
-      const totalProfit = productProfit + markupAmount;
+
+      // 1. Base Product Margin
+      const productBaseProfit = Math.max(0, baseCashPrice - originalCost);
+
+      // 2. Financing Markup Profit
+      const markupProfit = markupAmount;
+
+      // 3. ✅ COMBINED: Product Profit + Markup Profit
+      const totalProfit = productBaseProfit + markupProfit;
 
       return {
         ...sale,
         quantity,
         purchasePrice,
         originalCost,
-        sellingPrice,
+        sellingPrice: baseCashPrice,
         downPayment,
         duration,
         markupPercent,
@@ -753,10 +702,77 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         installmentPaymentsReceived,
         totalReceived,
         remainingAmount,
-        productProfit,
-        totalProfit,
+        productProfit: productBaseProfit, // Product Profit
+        totalProfit,                      // Product Profit + Markup Profit
       };
     });
+
+  // =========================================================
+  // INSTALLMENT TOTALS (Product Profit + Markup Profit)
+  // =========================================================
+  const installmentCost = detailedInstallmentProfitList.reduce(
+    (sum, s) => sum + Number(s.originalCost || 0),
+    0
+  );
+
+  const installmentBaseProductProfit = detailedInstallmentProfitList.reduce(
+    (sum, s) => sum + Number(s.productProfit || 0),
+    0
+  );
+
+  const installmentMarkupProfit = detailedInstallmentProfitList.reduce(
+    (sum, s) => sum + Number(s.markupAmount || 0),
+    0
+  );
+
+  // ✅ Total Installment Profit = Product Profit + Markup Profit
+  const installmentProfit = installmentBaseProductProfit + installmentMarkupProfit;
+
+  // Installment Revenue
+  const installmentRevenue = detailedInstallmentProfitList.reduce(
+    (sum, s) => sum + Number(s.totalCustomerPayable || 0),
+    0
+  );
+
+  // Total Revenue (Cash + Installment Contracts)
+  const totalRevenue = cashRevenue + installmentRevenue;
+
+  // Collections (Safe from double counting)
+  const installmentDownPayments = installmentSalesList.reduce(
+    (sum, s) => sum + Number(s.downPayment || 0),
+    0
+  );
+
+  const installmentPayments = filteredPaymentsList.reduce((sum, pay) => {
+    const isDownPay =
+      pay.paymentType === 'Down Payment' ||
+      pay.type === 'Down Payment' ||
+      pay.isDownPayment === true;
+    if (isDownPay) return sum;
+    return sum + Number(pay.amount || 0);
+  }, 0);
+
+  const totalInstallmentPaymentsReceived =
+    installmentDownPayments + installmentPayments;
+
+  const totalCollected = cashRevenue + totalInstallmentPaymentsReceived;
+
+  // Overall Shop Outstanding
+  const totalOutstanding = (stats?.installments?.activeFinancingList || []).reduce(
+    (sum, p) => sum + Number(p.remainingBalance || 0),
+    0
+  );
+
+  // Gross Profit = Cash Profit + Total Installment Profit (Product + Markup)
+  const grossProfit = cashProfit + installmentProfit;
+
+  const totalExpensesVal = filteredExpensesList.reduce(
+    (sum, e) => sum + Number(e.amount || 0),
+    0
+  );
+
+  // Net Profit
+  const netProfitVal = grossProfit - totalExpensesVal;
 
   // KPI Data Arrays
   const firstRowKpis = [
@@ -796,7 +812,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       value: money(installmentProfit),
       icon: Layers,
       tone: 'indigo',
-      description: 'Financing profit',
+      description: 'Product Margin + Markup Profit',
     },
     {
       name: 'Total Expenses',
@@ -944,7 +960,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         }
 
         /* =====================================================
-           INDEX RECORD 100% RELIABLE PRINT STYLESHEET
+           INDEX RECORD PRINT STYLESHEET
         ====================================================== */
         @media print {
           @page {
@@ -952,7 +968,6 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             margin: 4mm 6mm;
           }
 
-          /* Reset all parent container constraints so browser won't clip */
           html, body, #root, #root > div, main, div, section {
             background: #ffffff !important;
             color: #000000 !important;
@@ -966,12 +981,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             box-shadow: none !important;
           }
 
-          /* Hide everything in body */
           body * {
             visibility: hidden !important;
           }
 
-          /* Only show the index-record-print section */
           #index-record-print,
           #index-record-print * {
             visibility: visible !important;
@@ -990,14 +1003,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             display: block !important;
           }
 
-          /* Hide on-screen buttons in print */
           .index-print-controls,
           .index-print-actions,
           .no-print {
             display: none !important;
           }
 
-          /* Display print header */
           .index-print-header {
             display: block !important;
             visibility: visible !important;
@@ -1013,7 +1024,6 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             visibility: visible !important;
           }
 
-          /* Force Table Display */
           .index-record-table {
             display: table !important;
             width: 100% !important;
@@ -1097,7 +1107,6 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             HERO HEADER
         ====================================================== */}
         <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
-
           <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
           <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
@@ -1900,7 +1909,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   </div>
 
                   <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black">
-                    {detailedInstallmentProfitList.length} Customers
+                    {detailedInstallmentProfitList.length} Deals
                   </span>
                 </div>
               </div>
@@ -1927,17 +1936,32 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
                   <div className="flex justify-between items-center gap-4">
                     <span className="text-xs font-semibold text-slate-500">
-                      Financing Markup
+                      Product Base Margin
+                    </span>
+                    <span className="text-sm font-black text-slate-700">
+                      + {money(installmentBaseProductProfit)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Financing Markup Profit
                     </span>
                     <span className="text-sm font-black text-indigo-600">
                       + {money(installmentMarkupProfit)}
                     </span>
                   </div>
 
+                  {/* SUMMED: Product Profit + Markup Profit */}
                   <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center gap-4">
-                    <span className="text-sm font-black text-slate-900">
-                      Installment Profit
-                    </span>
+                    <div>
+                      <span className="text-sm font-black text-slate-900">
+                        Total Installment Profit
+                      </span>
+                      <p className="text-[10px] text-slate-400">
+                        Product Margin + Financing Markup
+                      </p>
+                    </div>
                     <span className="text-lg font-black text-indigo-600">
                       {money(installmentProfit)}
                     </span>
@@ -1972,7 +1996,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                           key={sale._id || index}
                           className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-200 hover:shadow-sm transition"
                         >
-                          {/* CUSTOMER */}
+                          {/* CUSTOMER HEADER */}
                           <div className="p-3.5 bg-indigo-50/40 border-b border-indigo-100">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                               <div className="min-w-0">
@@ -2009,7 +2033,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                             </div>
                           </div>
 
-                          {/* DEAL */}
+                          {/* DEAL DETAILS */}
                           <div className="p-3.5">
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                               <div>
@@ -2023,7 +2047,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
                               <div>
                                 <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
-                                  Sale Price
+                                  Cash Price
                                 </p>
                                 <p className="font-bold text-slate-800 text-[11px] mt-0.5">
                                   {money(sale.sellingPrice)}
@@ -2041,7 +2065,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
                               <div>
                                 <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
-                                  Markup
+                                  Markup Profit
                                 </p>
                                 <p className="font-bold text-indigo-600 text-[11px] mt-0.5">
                                   {sale.markupPercent}% • {money(sale.markupAmount)}
@@ -2106,7 +2130,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                   </p>
                                 </div>
 
-                                {/* PAYMENTS */}
+                                {/* INSTALLMENT PAYMENTS */}
                                 {sale.customerPayments.length > 0 ? (
                                   sale.customerPayments.map((payment, paymentIndex) => (
                                     <div
@@ -2173,9 +2197,14 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
               </div>
 
               <div className="flex justify-between items-center gap-4">
-                <span className="text-xs font-semibold text-slate-500">
-                  Installment Profit
-                </span>
+                <div>
+                  <span className="text-xs font-semibold text-slate-500">
+                    Installment Profit
+                  </span>
+                  <span className="ml-1.5 text-[10px] text-slate-400">
+                    (Product Margin + Markup)
+                  </span>
+                </div>
                 <span className="text-sm font-black text-indigo-600">
                   + {money(installmentProfit)}
                 </span>

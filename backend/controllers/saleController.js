@@ -21,6 +21,8 @@ const normalizeNumber = (value, fallback = 0) => {
 };
 
 const normalizeDate = (value) => {
+  if (!value) return null;
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
@@ -32,7 +34,6 @@ const normalizeDate = (value) => {
 
 // ============================================================
 // STOCK MOVEMENT
-// IMPORTANT: Product model uses "quantity", NOT "stock"
 // ============================================================
 
 const createSaleStockMovement = async ({
@@ -424,8 +425,26 @@ const createSale = async (req, res) => {
       installmentDuration = 0,
       selectedInstallmentDuration = 0,
       treatDownPaymentAsFirstInstallment = false,
+
+      // ======================================================
+      // IMPORTANT:
+      // FRONTEND SENDS installmentSchedule
+      // ======================================================
+      installmentSchedule = [],
+
+      // Backward compatibility
       installments = []
     } = req.body;
+
+    // ========================================================
+    // USE FRONTEND SCHEDULE FIRST
+    // ========================================================
+
+    const customInstallments =
+      Array.isArray(installmentSchedule) &&
+      installmentSchedule.length > 0
+        ? installmentSchedule
+        : installments;
 
     // --------------------------------------------------------
     // BASIC VALIDATION
@@ -494,7 +513,7 @@ const createSale = async (req, res) => {
     }
 
     // ========================================================
-    // STRICT CASH / INSTALLMENT SEPARATION
+    // CASH
     // ========================================================
 
     if (paymentType === 'Cash') {
@@ -507,8 +526,8 @@ const createSale = async (req, res) => {
           treatDownPaymentAsFirstInstallment
         ) ||
         (
-          Array.isArray(installments) &&
-          installments.length > 0
+          Array.isArray(customInstallments) &&
+          customInstallments.length > 0
         );
 
       if (hasInstallmentData) {
@@ -518,6 +537,10 @@ const createSale = async (req, res) => {
         });
       }
     }
+
+    // ========================================================
+    // INSTALLMENT
+    // ========================================================
 
     if (paymentType === 'Installment') {
       const selectedDurationCheck =
@@ -644,87 +667,41 @@ const createSale = async (req, res) => {
       const sale =
         await Sale.create({
           shopId,
-
-          saleId:
-            invoiceNumber,
-
+          saleId: invoiceNumber,
           customer,
-
           product,
-
-          quantity:
-            qty,
-
-          unitPrice:
-            price,
-
-          discount:
-            discountAmount,
-
+          quantity: qty,
+          unitPrice: price,
+          discount: discountAmount,
           subtotal,
-
           finalTotal,
-
-          markupPercentage:
-            0,
-
-          markupAmount:
-            0,
-
-          totalWithMarkup:
-            finalTotal,
-
-          paymentType:
-            'Cash',
-
-          downPayment:
-            finalTotal,
-
-          remainingBalance:
-            0,
-
-          installmentDuration:
-            0,
-
-          selectedInstallmentDuration:
-            0,
-
-          treatDownPaymentAsFirstInstallment:
-            false,
-
-          installmentScheduleSnapshot:
-            [],
-
-          saleDate:
-            new Date()
+          markupPercentage: 0,
+          markupAmount: 0,
+          totalWithMarkup: finalTotal,
+          paymentType: 'Cash',
+          downPayment: finalTotal,
+          remainingBalance: 0,
+          installmentDuration: 0,
+          selectedInstallmentDuration: 0,
+          treatDownPaymentAsFirstInstallment: false,
+          installmentScheduleSnapshot: [],
+          saleDate: new Date()
         });
 
       await createSaleStockMovement({
         shopId,
-
-        product:
-          productDoc._id,
-
-        quantity:
-          qty,
-
+        product: productDoc._id,
+        quantity: qty,
         previousQuantity,
-
         newQuantity,
-
-        reference:
-          invoiceNumber,
-
-        reason:
-          `Sale ${invoiceNumber}`
+        reference: invoiceNumber,
+        reason: `Sale ${invoiceNumber}`
       });
 
       return res.status(201).json({
         success: true,
-
         message:
           'Cash sale created successfully.',
-
         data: {
           sale
         }
@@ -758,10 +735,6 @@ const createSale = async (req, res) => {
         treatDownPaymentAsFirstInstallment
       );
 
-    // --------------------------------------------------------
-    // DOWN PAYMENT VALIDATION
-    // --------------------------------------------------------
-
     if (dPayment < 0) {
       return res.status(400).json({
         message:
@@ -783,15 +756,9 @@ const createSale = async (req, res) => {
     const calculation =
       calculateInstallmentSale({
         finalTotal,
-
-        downPayment:
-          dPayment,
-
-        markupPercentage:
-          markup,
-
+        downPayment: dPayment,
+        markupPercentage: markup,
         selectedDuration,
-
         treatDownPaymentAsFirstInstallment:
           treatDownPayment
       });
@@ -814,16 +781,16 @@ const createSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // SCHEDULE
-    // --------------------------------------------------------
+    // ========================================================
 
     let futureSchedule = [];
 
     if (financedAmount > 0) {
       if (
-        Array.isArray(installments) &&
-        installments.length > 0
+        Array.isArray(customInstallments) &&
+        customInstallments.length > 0
       ) {
         const startingNumber =
           treatDownPayment
@@ -832,7 +799,8 @@ const createSale = async (req, res) => {
 
         const validation =
           validateSchedule({
-            installments,
+            installments:
+              customInstallments,
 
             expectedCount:
               actualInstallmentCount,
@@ -878,9 +846,9 @@ const createSale = async (req, res) => {
       }
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // COMPLETE INVOICE SCHEDULE
-    // --------------------------------------------------------
+    // ========================================================
 
     const invoiceSchedule = [];
 
@@ -890,12 +858,8 @@ const createSale = async (req, res) => {
     ) {
       invoiceSchedule.push({
         installmentNumber: 1,
-
-        amount:
-          dPayment,
-
-        dueDate:
-          new Date()
+        amount: dPayment,
+        dueDate: new Date()
       });
     }
 
@@ -903,9 +867,9 @@ const createSale = async (req, res) => {
       ...futureSchedule
     );
 
-    // --------------------------------------------------------
-    // FINAL INVOICE NUMBER
-    // --------------------------------------------------------
+    // ========================================================
+    // INVOICE
+    // ========================================================
 
     const saleId =
       await generateSaleID(shopId);
@@ -932,9 +896,9 @@ const createSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // STOCK
-    // --------------------------------------------------------
+    // ========================================================
 
     const previousQuantity =
       Number(productDoc.quantity || 0);
@@ -947,9 +911,9 @@ const createSale = async (req, res) => {
 
     await productDoc.save();
 
-    // --------------------------------------------------------
+    // ========================================================
     // SALE
-    // --------------------------------------------------------
+    // ========================================================
 
     const sale =
       await Sale.create({
@@ -1018,9 +982,9 @@ const createSale = async (req, res) => {
           new Date()
       });
 
-    // --------------------------------------------------------
+    // ========================================================
     // STOCK MOVEMENT
-    // --------------------------------------------------------
+    // ========================================================
 
     await createSaleStockMovement({
       shopId,
@@ -1042,9 +1006,9 @@ const createSale = async (req, res) => {
         `Installment Sale ${invoiceNumber}`
     });
 
-    // --------------------------------------------------------
+    // ========================================================
     // PLAN
-    // --------------------------------------------------------
+    // ========================================================
 
     const planId =
       await generatePlanID(shopId);
@@ -1126,9 +1090,9 @@ const createSale = async (req, res) => {
         }
       });
 
-    // --------------------------------------------------------
-    // CREATE INSTALLMENT RECORDS
-    // --------------------------------------------------------
+    // ========================================================
+    // INSTALLMENT RECORDS
+    // ========================================================
 
     const installmentDocuments = [];
 
@@ -1213,9 +1177,9 @@ const createSale = async (req, res) => {
       );
     }
 
-    // --------------------------------------------------------
-    // CREATE PAYMENT RECORD FOR DOWN PAYMENT
-    // --------------------------------------------------------
+    // ========================================================
+    // DOWN PAYMENT PAYMENT
+    // ========================================================
 
     if (
       treatDownPayment &&
@@ -1284,9 +1248,9 @@ const createSale = async (req, res) => {
       }
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // RESPONSE
-    // --------------------------------------------------------
+    // ========================================================
 
     const createdSale =
       await Sale.findOne({
@@ -1397,10 +1361,6 @@ const getSales = async (req, res) => {
       shopId
     };
 
-    // --------------------------------------------------------
-    // STRICT TYPE FILTER
-    // --------------------------------------------------------
-
     if (
       requestedType === 'cash'
     ) {
@@ -1426,9 +1386,7 @@ const getSales = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-
-      data:
-        sales
+      data: sales
     });
 
   } catch (error) {
@@ -1611,8 +1569,25 @@ const updateSale = async (req, res) => {
       treatDownPaymentAsFirstInstallment =
         sale.treatDownPaymentAsFirstInstallment,
 
+      // ======================================================
+      // IMPORTANT FIX
+      // ======================================================
+
+      installmentSchedule = [],
+
+      // Backward compatibility
       installments = []
     } = req.body;
+
+    // ========================================================
+    // USE FRONTEND SCHEDULE FIRST
+    // ========================================================
+
+    const customInstallments =
+      Array.isArray(installmentSchedule) &&
+      installmentSchedule.length > 0
+        ? installmentSchedule
+        : installments;
 
     // --------------------------------------------------------
     // STRICT PAYMENT TYPE
@@ -1627,10 +1602,6 @@ const updateSale = async (req, res) => {
           'Invalid payment type.'
       });
     }
-
-    // --------------------------------------------------------
-    // SALE TYPE CANNOT CHANGE
-    // --------------------------------------------------------
 
     if (
       paymentType !==
@@ -1734,8 +1705,7 @@ const updateSale = async (req, res) => {
     }
 
     // --------------------------------------------------------
-    // CORRECT TOTAL CALCULATION
-    // IMPORTANT: This was missing in your old updateSale()
+    // TOTAL
     // --------------------------------------------------------
 
     const subtotal =
@@ -1758,8 +1728,6 @@ const updateSale = async (req, res) => {
     if (
       paymentType === 'Cash'
     ) {
-      // Cash sale MUST NOT contain installment information.
-
       if (
         Number(dPayment) !==
           Number(sale.finalTotal) &&
@@ -1779,8 +1747,8 @@ const updateSale = async (req, res) => {
           treatDownPaymentAsFirstInstallment
         ) ||
         (
-          Array.isArray(installments) &&
-          installments.length > 0
+          Array.isArray(customInstallments) &&
+          customInstallments.length > 0
         )
       ) {
         return res.status(400).json({
@@ -1930,10 +1898,6 @@ const updateSale = async (req, res) => {
         });
       }
 
-      // ------------------------------------------------------
-      // REMOVE OLD PLAN IF ANY
-      // ------------------------------------------------------
-
       const oldPlan =
         await InstallmentPlan.findOne({
           sale:
@@ -1957,10 +1921,6 @@ const updateSale = async (req, res) => {
           shopId
         });
       }
-
-      // ------------------------------------------------------
-      // UPDATE CASH SALE
-      // ------------------------------------------------------
 
       sale.customer =
         customer;
@@ -2031,16 +1991,6 @@ const updateSale = async (req, res) => {
     // INSTALLMENT UPDATE
     // ========================================================
 
-    if (
-      paymentType !==
-      'Installment'
-    ) {
-      return res.status(400).json({
-        message:
-          'Invalid payment type.'
-      });
-    }
-
     const selectedDuration =
       Number(
         selectedInstallmentDuration ||
@@ -2063,10 +2013,6 @@ const updateSale = async (req, res) => {
       Boolean(
         treatDownPaymentAsFirstInstallment
       );
-
-    // --------------------------------------------------------
-    // DOWN PAYMENT
-    // --------------------------------------------------------
 
     if (dPayment < 0) {
       return res.status(400).json({
@@ -2123,20 +2069,21 @@ const updateSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // BUILD SCHEDULE
-    // --------------------------------------------------------
+    // ========================================================
 
     let futureSchedule = [];
 
     if (financedAmount > 0) {
       if (
-        Array.isArray(installments) &&
-        installments.length > 0
+        Array.isArray(customInstallments) &&
+        customInstallments.length > 0
       ) {
         const validation =
           validateSchedule({
-            installments,
+            installments:
+              customInstallments,
 
             expectedCount:
               actualInstallmentCount,
@@ -2184,9 +2131,9 @@ const updateSale = async (req, res) => {
       }
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // COMPLETE INVOICE SCHEDULE
-    // --------------------------------------------------------
+    // ========================================================
 
     const invoiceSchedule = [];
 
@@ -2210,9 +2157,9 @@ const updateSale = async (req, res) => {
       ...futureSchedule
     );
 
-    // --------------------------------------------------------
+    // ========================================================
     // STOCK
-    // --------------------------------------------------------
+    // ========================================================
 
     const oldProduct =
       await Product.findOne({
@@ -2355,9 +2302,9 @@ const updateSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // REMOVE OLD PLAN
-    // --------------------------------------------------------
+    // ========================================================
 
     const oldPlan =
       await InstallmentPlan.findOne({
@@ -2383,9 +2330,9 @@ const updateSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
-    // UPDATE INSTALLMENT SALE
-    // --------------------------------------------------------
+    // ========================================================
+    // UPDATE SALE
+    // ========================================================
 
     sale.customer =
       customer;
@@ -2451,9 +2398,9 @@ const updateSale = async (req, res) => {
 
     await sale.save();
 
-    // --------------------------------------------------------
+    // ========================================================
     // NEW PLAN
-    // --------------------------------------------------------
+    // ========================================================
 
     const planId =
       await generatePlanID(
@@ -2534,9 +2481,9 @@ const updateSale = async (req, res) => {
         }
       });
 
-    // --------------------------------------------------------
+    // ========================================================
     // CREATE INSTALLMENT RECORDS
-    // --------------------------------------------------------
+    // ========================================================
 
     const installmentDocuments = [];
 
@@ -2627,7 +2574,9 @@ const updateSale = async (req, res) => {
 
       data: {
         sale,
+
         plan,
+
         installments:
           installmentDocuments
       }
@@ -2704,10 +2653,6 @@ const deleteSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
-    // RESTORE STOCK
-    // --------------------------------------------------------
-
     const product =
       await Product.findOne({
         _id:
@@ -2765,10 +2710,6 @@ const deleteSale = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
-    // DELETE PLAN
-    // --------------------------------------------------------
-
     const plan =
       await InstallmentPlan.findOne({
         sale:
@@ -2792,10 +2733,6 @@ const deleteSale = async (req, res) => {
         shopId
       });
     }
-
-    // --------------------------------------------------------
-    // DELETE SALE
-    // --------------------------------------------------------
 
     await Sale.deleteOne({
       _id:
@@ -2931,10 +2868,6 @@ const exchangeSaleProduct = async (
       });
     }
 
-    // --------------------------------------------------------
-    // PRICE
-    // --------------------------------------------------------
-
     const newUnitPrice =
       roundMoney(
         newProduct.salePrice ??
@@ -2955,10 +2888,6 @@ const exchangeSaleProduct = async (
           Number(sale.discount || 0)
         )
       );
-
-    // --------------------------------------------------------
-    // FINANCIAL REBUILD
-    // --------------------------------------------------------
 
     let newMarkupPercentage =
       roundMoney(
@@ -3075,10 +3004,6 @@ const exchangeSaleProduct = async (
       }
     }
 
-    // --------------------------------------------------------
-    // STOCK
-    // --------------------------------------------------------
-
     const oldProductPreviousQuantity =
       Number(
         oldProduct.quantity || 0
@@ -3106,10 +3031,6 @@ const exchangeSaleProduct = async (
       newProductNewQuantity;
 
     await newProduct.save();
-
-    // --------------------------------------------------------
-    // UPDATE SALE
-    // --------------------------------------------------------
 
     sale.product =
       newProduct._id;
@@ -3221,10 +3142,6 @@ const exchangeSaleProduct = async (
 
     await sale.save();
 
-    // --------------------------------------------------------
-    // OLD PLAN
-    // --------------------------------------------------------
-
     const oldPlan =
       await InstallmentPlan.findOne({
         sale:
@@ -3248,10 +3165,6 @@ const exchangeSaleProduct = async (
         shopId
       });
     }
-
-    // --------------------------------------------------------
-    // NEW PLAN
-    // --------------------------------------------------------
 
     if (
       sale.paymentType ===
@@ -3438,10 +3351,6 @@ const exchangeSaleProduct = async (
       }
     }
 
-    // --------------------------------------------------------
-    // STOCK MOVEMENTS
-    // --------------------------------------------------------
-
     await StockMovement.deleteMany({
       shopId,
 
@@ -3495,10 +3404,6 @@ const exchangeSaleProduct = async (
       reference:
         sale.saleId
     });
-
-    // --------------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------------
 
     const updatedSale =
       await Sale.findOne({
