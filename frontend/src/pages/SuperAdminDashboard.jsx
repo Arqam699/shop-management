@@ -932,7 +932,7 @@ const SuperAdminDashboard = () => {
                     onChange={(e) => setCreatePlan(e.target.value)}
                     className="w-full h-11 border border-slate-200 rounded-xl px-3.5 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500"
                   >
-                    <option value="Free Trial">Free Trial (3 Days)</option>
+                    <option value="Free Trial">Free Trial (7 Days)</option>
                     <option value="Complete">Complete Plan</option>
                   </select>
                 </div>
