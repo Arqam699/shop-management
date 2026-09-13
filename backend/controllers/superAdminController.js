@@ -275,37 +275,34 @@ const createShopAdmin = async (req, res) => {
       });
     }
 
+// -----------------------------
+// SUBSCRIPTION EXPIRY
+// -----------------------------
 
-    // -----------------------------
-    // SUBSCRIPTION EXPIRY
-    // -----------------------------
+const now = new Date();
 
-    const now = new Date();
+let subscriptionExpiresAt;
 
-    let subscriptionExpiresAt;
+if (
+  subscriptionPlan === 'Free Trial'
+) {
 
+  subscriptionExpiresAt =
+    new Date(
+      now.getTime() +
+      7 * 24 * 60 * 60 * 1000
+    );
 
-    if (
-      subscriptionPlan === 'Free Trial'
-    ) {
+} else {
 
-      subscriptionExpiresAt =
-        new Date(
-          now.getTime() +
-          3 * 24 * 60 * 60 * 1000
-        );
+  subscriptionExpiresAt =
+    new Date(now);
 
-    } else {
-
-      subscriptionExpiresAt =
-        new Date(now);
-
-      subscriptionExpiresAt.setMonth(
-        subscriptionExpiresAt.getMonth() +
-        Number(durationMonths)
-      );
-    }
-
+  subscriptionExpiresAt.setMonth(
+    subscriptionExpiresAt.getMonth() +
+    Number(durationMonths)
+  );
+}
 
     // -----------------------------
     // CREATE SHOP
