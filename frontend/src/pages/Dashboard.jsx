@@ -1814,6 +1814,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                   <p className="font-bold text-xs text-slate-700 break-words">
                                     {sale.product?.name || 'Deleted Product'}
                                   </p>
+                                  <p className="text-[10px] font-semibold text-indigo-600 mt-0.5">
+                                    Model: {sale.product?.model || sale.product?.productModel || sale.product?.modelNumber || sale.model || sale.productModel || sale.modelNumber || 'N/A'}
+                                  </p>
                                   <p className="text-[10px] text-slate-400 mt-0.5">
                                     Qty {sale.quantity}
                                     <span className="mx-1">•</span>
@@ -1988,6 +1991,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                   </p>
                                   <p className="text-[10px] text-slate-500 truncate">
                                     Product: {sale.product?.name || 'Item'}
+                                  </p>
+                                  <p className="text-[10px] font-semibold text-indigo-600 truncate">
+                                    Model: {sale.product?.model || sale.product?.productModel || sale.product?.modelNumber || sale.model || sale.productModel || sale.modelNumber || 'N/A'}
                                   </p>
                                 </div>
                               </div>

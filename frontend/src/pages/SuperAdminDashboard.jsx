@@ -51,6 +51,13 @@ const SuperAdminDashboard = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [createPlan, setCreatePlan] = useState('Free Trial');
   const [createCompleteMonths, setCreateCompleteMonths] = useState(1);
+  const [monthlyCharge, setMonthlyCharge] = useState('');
+
+  // =====================================================
+  // MONTHLY CHARGE EDITOR
+  // =====================================================
+  const [chargeModal, setChargeModal] = useState(null);
+  const [editedMonthlyCharge, setEditedMonthlyCharge] = useState('');
 
   // =====================================================
   // RENEW MODAL
@@ -218,6 +225,7 @@ const SuperAdminDashboard = () => {
     setAdminPassword('');
     setCreatePlan('Free Trial');
     setCreateCompleteMonths(1);
+    setMonthlyCharge('');
   };
 
   const openCreateShopModal = () => {
@@ -254,6 +262,14 @@ const SuperAdminDashboard = () => {
       setError('Admin password must be at least 6 characters.');
       return;
     }
+    if (
+      monthlyCharge === '' ||
+      !Number.isFinite(Number(monthlyCharge)) ||
+      Number(monthlyCharge) < 0
+    ) {
+      setError('Please enter a valid monthly charge.');
+      return;
+    }
 
     if (
       createPlan === 'Complete' &&
@@ -275,6 +291,7 @@ const SuperAdminDashboard = () => {
         phone: phone.trim(),
         password: adminPassword,
         subscriptionPlan: createPlan,
+        monthlyCharge: Number(monthlyCharge),
       };
 
       if (createPlan === 'Complete') {
@@ -295,6 +312,54 @@ const SuperAdminDashboard = () => {
       console.error('Create Shop Error:', error);
       if (error.status === 401) return;
       setError(error.message || 'Failed to create shop.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openChargeModal = (shop) => {
+    setChargeModal(shop);
+    setEditedMonthlyCharge(String(Number(shop.monthlyCharge || 0)));
+    setError('');
+  };
+
+  const closeChargeModal = () => {
+    if (actionLoading === 'monthly-charge') return;
+    setChargeModal(null);
+  };
+
+  const handleUpdateMonthlyCharge = async () => {
+    if (!chargeModal) return;
+
+    if (
+      editedMonthlyCharge === '' ||
+      !Number.isFinite(Number(editedMonthlyCharge)) ||
+      Number(editedMonthlyCharge) < 0
+    ) {
+      setError('Please enter a valid monthly charge.');
+      return;
+    }
+
+    try {
+      setActionLoading('monthly-charge');
+      setError('');
+
+      await fetchJson(
+        `${API_URL}/api/super-admin/shops/${chargeModal.shopId}/monthly-charge`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ monthlyCharge: Number(editedMonthlyCharge) }),
+        }
+      );
+
+      setChargeModal(null);
+      toast.success('Monthly charge updated successfully.');
+      await fetchDashboardData();
+    } catch (error) {
+      console.error('Update Monthly Charge Error:', error);
+      if (error.status === 401) return;
+      setError(error.message || 'Failed to update monthly charge.');
     } finally {
       setActionLoading(null);
     }
@@ -569,9 +634,27 @@ const SuperAdminDashboard = () => {
     const parsedDate = new Date(date);
     if (Number.isNaN(parsedDate.getTime())) return '—';
     return parsedDate.toLocaleDateString('en-PK', {
+      timeZone: 'Asia/Karachi',
       day: '2-digit',
       month: 'short',
       year: 'numeric',
+    });
+  };
+
+  const formatPakistanDateTime = (date) => {
+    if (!date) return '—';
+
+    const parsedDate = new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) return '—';
+
+    return parsedDate.toLocaleString('en-PK', {
+      timeZone: 'Asia/Karachi',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     });
   };
 
@@ -721,6 +804,7 @@ const SuperAdminDashboard = () => {
                     <th className="px-5 py-4">Owner Name</th>
                     <th className="px-5 py-4">Admin Email</th>
                     <th className="px-5 py-4">Plan</th>
+                    <th className="px-5 py-4 text-right">Monthly Charge</th>
                     <th className="px-5 py-4 text-center">Status</th>
                     <th className="px-5 py-4">Expiry Date</th>
                     <th className="px-5 py-4 text-center">Actions</th>
@@ -751,6 +835,13 @@ const SuperAdminDashboard = () => {
                           <span className="px-2.5 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-black">
                             {shop.subscriptionPlan || '—'}
                           </span>
+                        </td>
+
+                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <p className="font-black text-emerald-700">
+                            Rs. {Number(shop.monthlyCharge || 0).toLocaleString()}
+                          </p>
+                          <p className="text-[9px] font-semibold text-slate-400">per month</p>
                         </td>
 
                         <td className="px-5 py-3.5 text-center">
@@ -814,6 +905,15 @@ const SuperAdminDashboard = () => {
                                 Activate
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() => openChargeModal(shop)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black hover:bg-emerald-100 transition-all"
+                            >
+                              Charge
+                            </button>
 
                             <button
                               type="button"
@@ -950,6 +1050,20 @@ const SuperAdminDashboard = () => {
                   </div>
                 )}
               </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">Monthly Software Charge (Rs.) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={monthlyCharge}
+                  onChange={(e) => setMonthlyCharge(e.target.value)}
+                  placeholder="e.g. 3000"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">Only Super Admin record; every shop can have a different charge.</p>
+              </div>
             </div>
 
             <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
@@ -967,6 +1081,45 @@ const SuperAdminDashboard = () => {
                 className="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800 disabled:opacity-50"
               >
                 {actionLoading === 'create-shop' ? 'Creating Shop...' : 'Save & Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          EDIT MONTHLY CHARGE MODAL
+      ====================================================== */}
+      {chargeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
+              <div>
+                <h3 className="text-base font-black">Edit Monthly Charge</h3>
+                <p className="mt-1 text-[10px] text-slate-400">{chargeModal.shopName}</p>
+              </div>
+              <button type="button" onClick={closeChargeModal} className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 p-6">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Monthly Software Charge (Rs.)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editedMonthlyCharge}
+                onChange={(e) => setEditedMonthlyCharge(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
+              />
+              <p className="text-[10px] text-slate-400">Set a new amount here to increase or decrease this shop's monthly charge.</p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4 sm:p-5">
+              <button type="button" onClick={closeChargeModal} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600">Cancel</button>
+              <button type="button" onClick={handleUpdateMonthlyCharge} disabled={actionLoading === 'monthly-charge'} className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50">
+                {actionLoading === 'monthly-charge' ? 'Saving...' : 'Save Charge'}
               </button>
             </div>
           </div>
@@ -1113,7 +1266,7 @@ const SuperAdminDashboard = () => {
                       <tr key={idx} className="hover:bg-slate-50/60">
                         <td className="px-4 py-3 font-mono font-bold text-slate-800">{entry.ip}</td>
                         <td className="px-4 py-3 text-slate-600">{entry.adminEmail || '—'}</td>
-                        <td className="px-4 py-3 text-slate-500">{entry.loggedInAt ? new Date(entry.loggedInAt).toLocaleString('en-PK') : '—'}</td>
+                        <td className="px-4 py-3 text-slate-500">{formatPakistanDateTime(entry.loggedInAt)}</td>
                       </tr>
                     ))}
                   </tbody>

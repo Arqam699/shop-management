@@ -48,6 +48,7 @@ const SidebarMenuItem = ({
   item,
   sidebarCollapsed,
   isOpen,
+  isAnyMenuOpen,
   onToggle,
   onNavigate,
 }) => {
@@ -60,14 +61,25 @@ const SidebarMenuItem = ({
      CHECK ACTIVE ROUTE
   ===================================================== */
 
-  const isChildActive = item.children?.some((child) => {
-    const childPath = child.path.split('?')[0];
+  const isSubmenuItemActive = (path) => {
+    const [childPath, childQuery] = path.split('?');
 
-    return (
-      location.pathname === childPath ||
-      location.pathname.startsWith(`${childPath}/`)
-    );
-  });
+    if (location.pathname !== childPath) return false;
+
+    // The cash-sale and installment-sale routes share a pathname, so query
+    // parameters must also match to avoid highlighting both links.
+    return !childQuery || location.search === `?${childQuery}`;
+  };
+
+  const isChildActive = item.children?.some((child) =>
+    isSubmenuItemActive(child.path)
+  );
+
+  // Keep a dropdown visibly selected as soon as it is opened. Once a submenu
+  // route is selected, the route itself keeps that parent selected as well.
+  const isMenuActive = Boolean(
+    isOpen || (!isAnyMenuOpen && isChildActive)
+  );
 
 
   /* =====================================================
@@ -78,7 +90,8 @@ const SidebarMenuItem = ({
     return (
       <NavLink
         to={item.path}
-        onClick={onNavigate}
+        end
+        onClick={() => onNavigate(false)}
         title={sidebarCollapsed ? item.name : undefined}
         className={({ isActive }) => `
           group
@@ -98,7 +111,7 @@ const SidebarMenuItem = ({
               : 'gap-3 px-3.5'
           }
           ${
-            isActive
+            isActive && !isAnyMenuOpen
               ? `
                 bg-gradient-to-r
                 from-blue-600
@@ -120,7 +133,7 @@ const SidebarMenuItem = ({
           <>
             {/* Animated Background */}
 
-            {!isActive && (
+            {(!isActive || isAnyMenuOpen) && (
               <span
                 className="
                   absolute
@@ -140,7 +153,7 @@ const SidebarMenuItem = ({
 
             {/* Active Left Indicator */}
 
-            {isActive && !sidebarCollapsed && (
+            {isActive && !isAnyMenuOpen && !sidebarCollapsed && (
               <span
                 className="
                   absolute
@@ -174,7 +187,7 @@ const SidebarMenuItem = ({
                 transition-all
                 duration-300
                 ${
-                  isActive
+                  isActive && !isAnyMenuOpen
                     ? `
                       bg-white/15
                       shadow-inner
@@ -214,7 +227,7 @@ const SidebarMenuItem = ({
 
             {/* Active Glow */}
 
-            {isActive && (
+            {isActive && !isAnyMenuOpen && (
               <span
                 className="
                   absolute
@@ -266,7 +279,7 @@ const SidebarMenuItem = ({
               : 'gap-3 px-3.5'
           }
           ${
-            isChildActive
+            isMenuActive
               ? `
                 bg-gradient-to-r
                 from-blue-600
@@ -287,7 +300,7 @@ const SidebarMenuItem = ({
 
         {/* Hover Sweep */}
 
-        {!isChildActive && (
+        {!isMenuActive && (
           <span
             className="
               absolute
@@ -307,7 +320,7 @@ const SidebarMenuItem = ({
 
         {/* Active Indicator */}
 
-        {isChildActive && !sidebarCollapsed && (
+        {isMenuActive && !sidebarCollapsed && (
           <span
             className="
               absolute
@@ -339,7 +352,7 @@ const SidebarMenuItem = ({
             transition-all
             duration-300
             ${
-              isChildActive
+              isMenuActive
                 ? 'bg-white/15 scale-105'
                 : `
                   bg-white/[0.045]
@@ -426,18 +439,20 @@ const SidebarMenuItem = ({
 
               {item.children.map((subItem, index) => {
                 const SubIcon = subItem.icon;
+                const isSubItemActive = isSubmenuItemActive(subItem.path);
 
                 return (
                   <NavLink
                     key={subItem.name}
                     to={subItem.path}
-                    onClick={onNavigate}
+                    end
+                    onClick={() => onNavigate(true)}
                     style={{
                       transitionDelay: isOpen
                         ? `${index * 45}ms`
                         : '0ms',
                     }}
-                    className={({ isActive }) => `
+                    className={() => `
                       group
                       relative
                       flex
@@ -462,7 +477,7 @@ const SidebarMenuItem = ({
                           `
                       }
                       ${
-                        isActive
+                        isSubItemActive
                           ? `
                             bg-blue-500/10
                             text-blue-300
@@ -476,11 +491,11 @@ const SidebarMenuItem = ({
                       }
                     `}
                   >
-                    {({ isActive }) => (
+                    {() => (
                       <>
                         {/* Active Dot */}
 
-                        {isActive && (
+                        {isSubItemActive && (
                           <span
                             className="
                               absolute
@@ -509,7 +524,7 @@ const SidebarMenuItem = ({
                             transition-all
                             duration-300
                             ${
-                              isActive
+                              isSubItemActive
                                 ? `
                                   bg-blue-500/15
                                   text-blue-300
@@ -597,13 +612,15 @@ const SidebarMenuItem = ({
 
             {item.children.map((subItem) => {
               const SubIcon = subItem.icon;
+              const isSubItemActive = isSubmenuItemActive(subItem.path);
 
               return (
                 <NavLink
                   key={subItem.name}
                   to={subItem.path}
-                  onClick={onNavigate}
-                  className={({ isActive }) => `
+                  end
+                  onClick={() => onNavigate(true)}
+                  className={() => `
                     group
                     flex
                     items-center
@@ -616,7 +633,7 @@ const SidebarMenuItem = ({
                     transition-all
                     duration-300
                     ${
-                      isActive
+                      isSubItemActive
                         ? `
                           bg-gradient-to-r
                           from-blue-600
@@ -633,7 +650,7 @@ const SidebarMenuItem = ({
                     }
                   `}
                 >
-                  {({ isActive }) => (
+                  {() => (
                     <>
                       <div
                         className={`
@@ -645,7 +662,7 @@ const SidebarMenuItem = ({
                           justify-center
                           transition-all
                           ${
-                            isActive
+                            isSubItemActive
                               ? 'bg-white/15'
                               : 'bg-white/[0.04] group-hover:bg-white/[0.08]'
                           }
@@ -750,10 +767,10 @@ export const Layout = ({ children }) => {
      NAVIGATION
   ===================================================== */
 
-  const handleNavigation = () => {
+  const handleNavigation = (keepMenuOpen = false) => {
     setMobileOpen(false);
 
-    if (sidebarCollapsed) {
+    if (!keepMenuOpen) {
       setOpenMenu(null);
     }
   };
@@ -1193,6 +1210,7 @@ export const Layout = ({ children }) => {
               item={item}
               sidebarCollapsed={sidebarCollapsed}
               isOpen={openMenu === item.name}
+              isAnyMenuOpen={Boolean(openMenu)}
               onToggle={() =>
                 toggleMenu(item.name)
               }

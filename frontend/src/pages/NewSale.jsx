@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import {
+  formatCnicSearchInput,
+  matchesCnicSearch,
+} from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
 
 import {
@@ -220,7 +224,13 @@ const NewSale = () => {
           .map((value) => String(value).toLowerCase().replace(/\s+/g, ' '))
           .join(' ');
 
-        return searchableText.includes(search);
+        return (
+          searchableText.includes(search) ||
+          matchesCnicSearch(
+            customer?.cnic || customer?.cnicNumber,
+            customerSearch
+          )
+        );
       })
       .slice(0, 20);
   }, [customers, customerSearch]);
@@ -918,11 +928,11 @@ const NewSale = () => {
                   type="text"
                   value={customerSearch}
                   onChange={(e) => {
-                    setCustomerSearch(e.target.value);
+                    setCustomerSearch(formatCnicSearchInput(e.target.value));
                     setShowCustomerDropdown(true);
                   }}
                   onFocus={() => setShowCustomerDropdown(true)}
-                  placeholder="Search customer by name, phone or CNIC..."
+                  placeholder="Search by name, phone or CNIC (dashes auto)..."
                   className="w-full h-11 border border-slate-200 rounded-xl pl-10 pr-10 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

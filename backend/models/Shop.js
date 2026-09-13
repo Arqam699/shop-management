@@ -62,6 +62,13 @@ const shopSchema = new mongoose.Schema(
       default: '',
     },
 
+    // Per-shop amount agreed with the owner for one month of software access.
+    monthlyCharge: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     subscriptionPlan: {
       type: String,
       enum: ['Free Trial', 'Complete', 'Basic'],

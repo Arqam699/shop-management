@@ -169,6 +169,7 @@ const createShopAdmin = async (req, res) => {
       password,
       subscriptionPlan,
       durationMonths,
+      monthlyCharge,
     } = req.body;
 
 
@@ -201,6 +202,22 @@ const createShopAdmin = async (req, res) => {
         success: false,
         message:
           'Password must be at least 6 characters',
+      });
+    }
+
+    if (
+      monthlyCharge === undefined ||
+      monthlyCharge === null ||
+      monthlyCharge === '' ||
+      !Number.isFinite(Number(monthlyCharge)) ||
+      Number(monthlyCharge) < 0
+    ) {
+
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid monthly charge (zero or greater)',
       });
     }
 
@@ -323,6 +340,9 @@ if (
           phone
             ? phone.trim()
             : '',
+
+        monthlyCharge:
+          Number(monthlyCharge),
 
         subscriptionPlan:
           subscriptionPlan,
@@ -628,6 +648,63 @@ const activateShop = async (req, res) => {
       success: false,
       message:
         'Server error while activating shop',
+    });
+  }
+};
+
+
+// =====================================================
+// UPDATE SHOP MONTHLY CHARGE
+// =====================================================
+
+const updateShopMonthlyCharge = async (req, res) => {
+  try {
+    const { shopId } = req.params;
+    const { monthlyCharge } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(shopId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop ID',
+      });
+    }
+
+    if (
+      monthlyCharge === undefined ||
+      monthlyCharge === null ||
+      monthlyCharge === '' ||
+      !Number.isFinite(Number(monthlyCharge)) ||
+      Number(monthlyCharge) < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Monthly charge must be zero or greater',
+      });
+    }
+
+    const shop = await Shop.findByIdAndUpdate(
+      shopId,
+      { $set: { monthlyCharge: Number(monthlyCharge) } },
+      { returnDocument: 'after' }
+    );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Monthly charge updated successfully',
+      monthlyCharge: shop.monthlyCharge,
+    });
+  } catch (error) {
+    console.error('Update Shop Monthly Charge Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while updating monthly charge',
     });
   }
 };
@@ -1588,6 +1665,8 @@ module.exports = {
   activateShop,
 
   renewShopSubscription,
+
+  updateShopMonthlyCharge,
 
   permanentlyDeleteShop,
 
