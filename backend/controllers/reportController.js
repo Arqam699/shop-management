@@ -48,7 +48,7 @@ const getDateRanges = () => {
 // GET DASHBOARD STATS
 //
 // @desc    Get complete real-time KPIs, active financing,
-//          expenses and profit for current shop dashboard
+//          expenses, profit and inventory intelligence
 //
 // @route   GET /api/reports/dashboard
 // @access  Private
@@ -69,11 +69,7 @@ const getDashboardStats = async (
     // ========================================================
     // CURRENT SHOP
     // ========================================================
-    //
-    // IMPORTANT SaaS SECURITY:
-    // shopId comes from authenticated middleware.
-    // Never take shopId from req.query or req.body.
-    //
+
     const shopId =
       req.shopId;
 
@@ -82,8 +78,6 @@ const getDashboardStats = async (
     // 1. INVENTORY KPIs
     // ========================================================
 
-    // These queries do not depend on each other. Running them together
-    // removes several database round-trip waits from the dashboard load.
     const [
       totalProducts,
       lowStockCount,
@@ -91,11 +85,31 @@ const getDashboardStats = async (
       products,
       totalCustomers,
     ] = await Promise.all([
-      Product.countDocuments({ shopId }),
-      Product.countDocuments({ shopId, status: 'Low Stock' }),
-      Product.countDocuments({ shopId, status: 'Out of Stock' }),
-      Product.find({ shopId }).select('quantity purchasePrice').lean(),
-      Customer.countDocuments({ shopId }),
+      Product.countDocuments({
+        shopId,
+      }),
+
+      Product.countDocuments({
+        shopId,
+        status: 'Low Stock',
+      }),
+
+      Product.countDocuments({
+        shopId,
+        status: 'Out of Stock',
+      }),
+
+      Product.find({
+        shopId,
+      })
+        .select(
+          '_id name model quantity purchasePrice sellingPrice status'
+        )
+        .lean(),
+
+      Customer.countDocuments({
+        shopId,
+      }),
     ]);
 
 
@@ -106,9 +120,8 @@ const getDashboardStats = async (
           product
         ) =>
           sum +
-          (
-            product.quantity ||
-            0
+          Number(
+            product.quantity || 0
           ),
         0
       );
@@ -122,24 +135,21 @@ const getDashboardStats = async (
         ) =>
           sum +
           (
-            (product.purchasePrice || 0) *
-            (product.quantity || 0)
+            Number(
+              product.purchasePrice || 0
+            ) *
+            Number(
+              product.quantity || 0
+            )
           ),
         0
       );
 
 
     // ========================================================
-    // 2. CUSTOMERS KPIs
+    // 2. RAW LISTS
     // ========================================================
 
-    // ========================================================
-    // 3. RAW LISTS
-    // ========================================================
-
-    // --------------------------------------------------------
-    // SALES
-    // --------------------------------------------------------
     const [
       salesList,
       activeFinancingList,
@@ -147,26 +157,671 @@ const getDashboardStats = async (
       expensesList,
       returns,
     ] = await Promise.all([
-      Sale.find({ shopId })
+
+      // ------------------------------------------------------
+      // SALES
+      // ------------------------------------------------------
+      Sale.find({
+        shopId,
+      })
         .populate('customer')
         .populate('product')
-        .sort({ createdAt: 1 })
+        .sort({
+          createdAt: 1,
+        })
         .lean(),
-      InstallmentPlan.find({ shopId })
+
+
+      // ------------------------------------------------------
+      // INSTALLMENT PLANS
+      // ------------------------------------------------------
+      InstallmentPlan.find({
+        shopId,
+      })
         .populate('customer')
         .populate('product')
-        .sort({ createdAt: 1 })
+        .sort({
+          createdAt: 1,
+        })
         .lean(),
-      Payment.find({ shopId, isArchived: { $ne: true } })
+
+
+      // ------------------------------------------------------
+      // PAYMENTS
+      // ------------------------------------------------------
+      Payment.find({
+        shopId,
+        isArchived: {
+          $ne: true,
+        },
+      })
         .populate('customer')
         .populate('sale')
         .populate('installmentPlan')
         .populate('installment')
-        .sort({ createdAt: 1 })
+        .sort({
+          createdAt: 1,
+        })
         .lean(),
-      Expense.find({ shopId }).sort({ createdAt: 1 }).lean(),
-      Return.find({ shopId }).select('refundAmount').lean(),
+
+
+      // ------------------------------------------------------
+      // EXPENSES
+      // ------------------------------------------------------
+      Expense.find({
+        shopId,
+      })
+        .sort({
+          createdAt: 1,
+        })
+        .lean(),
+
+
+      // ------------------------------------------------------
+      // RETURNS
+      // ------------------------------------------------------
+      Return.find({
+        shopId,
+      })
+        .select('refundAmount')
+        .lean(),
     ]);
+
+
+    // ========================================================
+    // 3. INVENTORY INTELLIGENCE
+    //
+    // Uses the existing products + sales data.
+    //
+    // 30 day movement is used to identify:
+    //
+    // Fast Moving
+    // Slow / No Sales
+    // Stock At Risk
+    // ========================================================
+
+    const inventoryIntelligenceMap =
+      new Map();
+
+
+    // --------------------------------------------------------
+    // CREATE PRODUCT MAP
+    // --------------------------------------------------------
+
+    for (
+      const product of products
+    ) {
+
+      const productId =
+        product._id?.toString();
+
+      if (
+        !productId
+      ) {
+        continue;
+      }
+
+
+      inventoryIntelligenceMap.set(
+        productId,
+        {
+          productId,
+
+          name:
+            product.name ||
+            'Unnamed Product',
+
+          model:
+            product.model ||
+            'N/A',
+
+          stock:
+            Number(
+              product.quantity || 0
+            ),
+
+          purchasePrice:
+            Number(
+              product.purchasePrice || 0
+            ),
+
+          sellingPrice:
+            Number(
+              product.sellingPrice || 0
+            ),
+
+          soldQuantity:
+            0,
+
+          soldQuantity30Days:
+            0,
+
+          salesCount:
+            0,
+
+          salesCount30Days:
+            0,
+
+          revenue30Days:
+            0,
+        }
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // 30 DAYS DATE
+    // --------------------------------------------------------
+
+    const inventory30DaysStart =
+      new Date();
+
+    inventory30DaysStart.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    inventory30DaysStart.setDate(
+      inventory30DaysStart.getDate() -
+      30
+    );
+
+
+    // --------------------------------------------------------
+    // CALCULATE PRODUCT MOVEMENT
+    // --------------------------------------------------------
+
+    for (
+      const sale of salesList
+    ) {
+
+      const productId =
+        sale.product?._id?.toString() ||
+        sale.product?.toString();
+
+
+      if (
+        !productId
+      ) {
+        continue;
+      }
+
+
+      const productData =
+        inventoryIntelligenceMap.get(
+          productId
+        );
+
+
+      if (
+        !productData
+      ) {
+        continue;
+      }
+
+
+      const quantitySold =
+        Number(
+          sale.quantity || 0
+        );
+
+
+      if (
+        quantitySold <= 0
+      ) {
+        continue;
+      }
+
+
+      productData.soldQuantity +=
+        quantitySold;
+
+
+      productData.salesCount +=
+        1;
+
+
+      const saleDate =
+        new Date(
+          sale.saleDate ||
+          sale.createdAt
+        );
+
+
+      if (
+        !Number.isNaN(
+          saleDate.getTime()
+        ) &&
+        saleDate >=
+          inventory30DaysStart
+      ) {
+
+        productData.soldQuantity30Days +=
+          quantitySold;
+
+        productData.salesCount30Days +=
+          1;
+
+        productData.revenue30Days +=
+          Number(
+            sale.finalTotal || 0
+          );
+      }
+    }
+
+
+    // --------------------------------------------------------
+    // BUILD PRODUCT INTELLIGENCE
+    // --------------------------------------------------------
+
+    const intelligenceProducts =
+      Array.from(
+        inventoryIntelligenceMap.values()
+      ).map(
+        product => {
+
+          const stock =
+            Number(
+              product.stock || 0
+            );
+
+
+          const sold30 =
+            Number(
+              product.soldQuantity30Days ||
+              0
+            );
+
+
+          const stockValue =
+            stock *
+            Number(
+              product.purchasePrice || 0
+            );
+
+
+          // --------------------------------------------------
+          // Average daily sales
+          // --------------------------------------------------
+
+          const averageDailySales =
+            sold30 / 30;
+
+
+          // --------------------------------------------------
+          // Estimated stock coverage
+          //
+          // How many days current stock can survive
+          // based on last 30 days movement.
+          // --------------------------------------------------
+
+          let stockCoverageDays =
+            null;
+
+
+          if (
+            averageDailySales > 0
+          ) {
+
+            stockCoverageDays =
+              Math.round(
+                stock /
+                averageDailySales
+              );
+          }
+
+
+          // --------------------------------------------------
+          // STATUS
+          // --------------------------------------------------
+
+          let movementStatus =
+            'No Sales';
+
+
+          if (
+            sold30 >= 10
+          ) {
+
+            movementStatus =
+              'Fast Moving';
+
+          } else if (
+            sold30 >= 3
+          ) {
+
+            movementStatus =
+              'Moving';
+
+          } else if (
+            sold30 > 0
+          ) {
+
+            movementStatus =
+              'Slow Moving';
+          }
+
+
+          // --------------------------------------------------
+          // STOCK RISK
+          //
+          // Risk when:
+          //
+          // 1. Product is already out of stock
+          // 2. Stock is low
+          // 3. Product is selling quickly and has
+          //    limited coverage
+          // 4. Product has stock but no sales for 30 days
+          // --------------------------------------------------
+
+          let stockRisk =
+            'Normal';
+
+
+          if (
+            stock <= 0
+          ) {
+
+            stockRisk =
+              'Out of Stock';
+
+          } else if (
+            stock <= 5 &&
+            sold30 > 0
+          ) {
+
+            stockRisk =
+              'Critical';
+
+          } else if (
+            stockCoverageDays !== null &&
+            stockCoverageDays <= 14
+          ) {
+
+            stockRisk =
+              'High';
+
+          } else if (
+            stock > 0 &&
+            sold30 === 0
+          ) {
+
+            stockRisk =
+              'Dead Stock';
+
+          } else if (
+            stockCoverageDays !== null &&
+            stockCoverageDays <= 30
+          ) {
+
+            stockRisk =
+              'Medium';
+          }
+
+
+          return {
+
+            ...product,
+
+            stock,
+
+            soldQuantity:
+              Number(
+                product.soldQuantity || 0
+              ),
+
+            soldQuantity30Days:
+              sold30,
+
+            salesCount:
+              Number(
+                product.salesCount || 0
+              ),
+
+            salesCount30Days:
+              Number(
+                product.salesCount30Days || 0
+              ),
+
+            revenue30Days:
+              Number(
+                product.revenue30Days || 0
+              ),
+
+            stockValue,
+
+            averageDailySales:
+
+              Number(
+                averageDailySales.toFixed(
+                  2
+                )
+              ),
+
+            stockCoverageDays,
+
+            movementStatus,
+
+            stockRisk,
+          };
+        }
+      );
+
+
+    // ========================================================
+    // FAST MOVING PRODUCTS
+    //
+    // Top 5 products according to 30-day quantity sold.
+    // ========================================================
+
+    const fastMovingProducts =
+      intelligenceProducts
+        .filter(
+          product =>
+            product.soldQuantity30Days > 0
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            b.soldQuantity30Days -
+            a.soldQuantity30Days
+        )
+        .slice(
+          0,
+          5
+        );
+
+
+    // ========================================================
+    // SLOW MOVING / NO SALES
+    //
+    // Products currently in stock but with very low/no
+    // movement during the last 30 days.
+    // ========================================================
+
+    const slowMovingProducts =
+      intelligenceProducts
+        .filter(
+          product =>
+            product.stock > 0 &&
+            product.soldQuantity30Days <= 2
+        )
+        .sort(
+          (
+            a,
+            b
+          ) => {
+
+            if (
+              a.soldQuantity30Days !==
+              b.soldQuantity30Days
+            ) {
+
+              return (
+                a.soldQuantity30Days -
+                b.soldQuantity30Days
+              );
+            }
+
+            return (
+              b.stock -
+              a.stock
+            );
+          }
+        )
+        .slice(
+          0,
+          5
+        );
+
+
+    // ========================================================
+    // STOCK AT RISK
+    // ========================================================
+
+    const stockAtRiskProducts =
+      intelligenceProducts
+        .filter(
+          product =>
+            product.stockRisk ===
+              'Critical' ||
+            product.stockRisk ===
+              'High' ||
+            product.stockRisk ===
+              'Dead Stock' ||
+            product.stockRisk ===
+              'Out of Stock'
+        )
+        .sort(
+          (
+            a,
+            b
+          ) => {
+
+            const riskOrder = {
+              'Out of Stock': 1,
+              'Critical': 2,
+              'High': 3,
+              'Dead Stock': 4,
+              'Medium': 5,
+              'Normal': 6,
+            };
+
+
+            return (
+              (
+                riskOrder[
+                  a.stockRisk
+                ] || 99
+              ) -
+              (
+                riskOrder[
+                  b.stockRisk
+                ] || 99
+              )
+            );
+          }
+        )
+        .slice(
+          0,
+          10
+        );
+
+
+    // ========================================================
+    // INVENTORY INTELLIGENCE SUMMARY
+    // ========================================================
+
+    const fastMovingCount =
+      intelligenceProducts.filter(
+        product =>
+          product.soldQuantity30Days >=
+          10
+      ).length;
+
+
+    const slowMovingCount =
+      intelligenceProducts.filter(
+        product =>
+          product.stock > 0 &&
+          product.soldQuantity30Days <= 2
+      ).length;
+
+
+    const stockAtRiskCount =
+      intelligenceProducts.filter(
+        product =>
+          product.stockRisk !==
+          'Normal'
+      ).length;
+
+
+    const noSalesCount =
+      intelligenceProducts.filter(
+        product =>
+          product.stock > 0 &&
+          product.soldQuantity30Days === 0
+      ).length;
+
+
+    const totalInventoryRetailValue =
+      intelligenceProducts.reduce(
+        (
+          sum,
+          product
+        ) =>
+          sum +
+          (
+            product.stock *
+            Number(
+              product.sellingPrice || 0
+            )
+          ),
+        0
+      );
+
+
+    const totalInventoryCostValue =
+      intelligenceProducts.reduce(
+        (
+          sum,
+          product
+        ) =>
+          sum +
+          Number(
+            product.stockValue || 0
+          ),
+        0
+      );
+
+
+    const inventoryIntelligence = {
+
+      analysisPeriodDays:
+        30,
+
+      totalInventoryRetailValue,
+
+      totalInventoryCostValue,
+
+      fastMovingCount,
+
+      slowMovingCount,
+
+      stockAtRiskCount,
+
+      noSalesCount,
+
+      fastMovingProducts,
+
+      slowMovingProducts,
+
+      stockAtRiskProducts,
+    };
 
 
     // ========================================================
@@ -186,6 +841,7 @@ const getDashboardStats = async (
 
     const urgentInstallments =
       await Installment.find({
+
         shopId,
 
         status: {
@@ -200,6 +856,7 @@ const getDashboardStats = async (
           $lte:
             endOfToday,
         },
+
       })
         .populate({
           path:
@@ -210,6 +867,7 @@ const getDashboardStats = async (
               path:
                 'customer',
             },
+
             {
               path:
                 'product',
@@ -219,7 +877,8 @@ const getDashboardStats = async (
         .sort({
           dueDate: 1,
         })
-        .limit(5);
+        .limit(5)
+        .lean();
 
 
     // ========================================================
@@ -234,26 +893,91 @@ const getDashboardStats = async (
       overduePlans,
       todayPayments,
     ] = await Promise.all([
-      Sale.find({ shopId, saleDate: { $gte: today } })
+
+      // ------------------------------------------------------
+      // TODAY SALES
+      // ------------------------------------------------------
+      Sale.find({
+        shopId,
+        saleDate: {
+          $gte:
+            today,
+        },
+      })
         .select('finalTotal')
         .lean(),
-      Sale.find({ shopId, saleDate: { $gte: startOfWeek } })
+
+
+      // ------------------------------------------------------
+      // WEEK SALES
+      // ------------------------------------------------------
+      Sale.find({
+        shopId,
+        saleDate: {
+          $gte:
+            startOfWeek,
+        },
+      })
         .select('finalTotal')
         .lean(),
-      Sale.find({ shopId, saleDate: { $gte: startOfMonth } })
+
+
+      // ------------------------------------------------------
+      // MONTH SALES
+      // ------------------------------------------------------
+      Sale.find({
+        shopId,
+        saleDate: {
+          $gte:
+            startOfMonth,
+        },
+      })
         .select('finalTotal')
         .lean(),
-      InstallmentPlan.countDocuments({ shopId, status: 'Active' }),
-      InstallmentPlan.countDocuments({ shopId, status: 'Overdue' }),
-      Payment.find({ shopId, paymentDate: { $gte: today } })
+
+
+      // ------------------------------------------------------
+      // ACTIVE PLANS
+      // ------------------------------------------------------
+      InstallmentPlan.countDocuments({
+        shopId,
+        status: 'Active',
+      }),
+
+
+      // ------------------------------------------------------
+      // OVERDUE PLANS
+      // ------------------------------------------------------
+      InstallmentPlan.countDocuments({
+        shopId,
+        status: 'Overdue',
+      }),
+
+
+      // ------------------------------------------------------
+      // TODAY PAYMENTS
+      // ------------------------------------------------------
+      Payment.find({
+        shopId,
+
+        isArchived: {
+          $ne: true,
+        },
+
+        paymentDate: {
+          $gte:
+            today,
+        },
+      })
         .select('amount')
         .lean(),
     ]);
 
 
-    // --------------------------------------------------------
-    // TOTAL SALES
-    // --------------------------------------------------------
+    // ========================================================
+    // 6. TOTAL SALES
+    // ========================================================
+
     const totalSalesVal =
       salesList.reduce(
         (
@@ -269,9 +993,10 @@ const getDashboardStats = async (
       );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // TODAY SALES
-    // --------------------------------------------------------
+    // ========================================================
+
     const todaySalesVal =
       todaySalesList.reduce(
         (
@@ -287,9 +1012,10 @@ const getDashboardStats = async (
       );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // WEEK SALES
-    // --------------------------------------------------------
+    // ========================================================
+
     const weekSalesVal =
       weekSalesList.reduce(
         (
@@ -305,9 +1031,10 @@ const getDashboardStats = async (
       );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // MONTH SALES
-    // --------------------------------------------------------
+    // ========================================================
+
     const monthSalesVal =
       monthSalesList.reduce(
         (
@@ -324,12 +1051,9 @@ const getDashboardStats = async (
 
 
     // ========================================================
-    // INSTALLMENT PLAN COUNTS
+    // 7. INSTALLMENT PLAN COUNTS
     // ========================================================
 
-    // --------------------------------------------------------
-    // TOTAL OUTSTANDING
-    // --------------------------------------------------------
     const totalOutstandingAmount =
       activeFinancingList.reduce(
         (
@@ -365,26 +1089,14 @@ const getDashboardStats = async (
 
 
     // ========================================================
-    // 6. PROFIT CALCULATOR
-    //
-    // Revenue
-    //   ↓
-    // Refunds
-    //   ↓
-    // Adjusted Revenue
-    //   ↓
-    // Cost of Goods Sold
-    //   ↓
-    // Gross Profit
-    //   ↓
-    // Expenses
-    //   ↓
-    // Net Profit
+    // 8. PROFIT CALCULATOR
     // ========================================================
 
-    let totalRevenue = 0;
+    let totalRevenue =
+      0;
 
-    let totalCostOfSold = 0;
+    let totalCostOfSold =
+      0;
 
 
     for (
@@ -394,6 +1106,7 @@ const getDashboardStats = async (
       // ------------------------------------------------------
       // Revenue
       // ------------------------------------------------------
+
       totalRevenue +=
         sale.finalTotal ||
         0;
@@ -402,6 +1115,7 @@ const getDashboardStats = async (
       // ------------------------------------------------------
       // Cost of sold products
       // ------------------------------------------------------
+
       if (
         sale.product
       ) {
@@ -441,6 +1155,7 @@ const getDashboardStats = async (
     // --------------------------------------------------------
     // Revenue after refunds
     // --------------------------------------------------------
+
     const finalAdjustedRevenue =
       totalRevenue -
       totalRefunded;
@@ -449,6 +1164,7 @@ const getDashboardStats = async (
     // --------------------------------------------------------
     // Gross Profit
     // --------------------------------------------------------
+
     const grossProfit =
       finalAdjustedRevenue -
       totalCostOfSold;
@@ -476,6 +1192,7 @@ const getDashboardStats = async (
     // --------------------------------------------------------
     // NET PROFIT
     // --------------------------------------------------------
+
     const netProfitValue =
       grossProfit -
       totalExpensesValue;
@@ -494,6 +1211,7 @@ const getDashboardStats = async (
         // ====================================================
         // INVENTORY
         // ====================================================
+
         inventory: {
 
           totalProducts,
@@ -505,12 +1223,20 @@ const getDashboardStats = async (
           outOfStockCount,
 
           inventoryCostValue,
+
+          // ----------------------------------------------
+          // INVENTORY INTELLIGENCE
+          // ----------------------------------------------
+
+          intelligence:
+            inventoryIntelligence,
         },
 
 
         // ====================================================
         // CUSTOMERS
         // ====================================================
+
         customers: {
 
           totalCustomers,
@@ -520,6 +1246,7 @@ const getDashboardStats = async (
         // ====================================================
         // SALES
         // ====================================================
+
         sales: {
 
           todaySalesVal,
@@ -537,6 +1264,7 @@ const getDashboardStats = async (
         // ====================================================
         // INSTALLMENTS
         // ====================================================
+
         installments: {
 
           activePlans,
@@ -558,6 +1286,7 @@ const getDashboardStats = async (
         // ====================================================
         // EXPENSES
         // ====================================================
+
         expenses: {
 
           totalExpensesValue,
@@ -569,6 +1298,7 @@ const getDashboardStats = async (
         // ====================================================
         // PROFIT
         // ====================================================
+
         profit: {
 
           totalRevenue:
@@ -596,6 +1326,7 @@ const getDashboardStats = async (
     );
 
     return res.status(500).json({
+
       success: false,
 
       message:
@@ -626,6 +1357,7 @@ const getIndexRecord = async (
     // ========================================================
     // CURRENT SHOP
     // ========================================================
+
     const shopId =
       req.shopId;
 
@@ -633,10 +1365,7 @@ const getIndexRecord = async (
     // ========================================================
     // MONTH
     // ========================================================
-    //
-    // Expected:
-    // ?month=2026-09
-    //
+
     const month =
       String(
         req.query.month || ''
@@ -646,6 +1375,7 @@ const getIndexRecord = async (
     // --------------------------------------------------------
     // Validate month format
     // --------------------------------------------------------
+
     if (
       !/^\d{4}-\d{2}$/.test(
         month
@@ -653,6 +1383,7 @@ const getIndexRecord = async (
     ) {
 
       return res.status(400).json({
+
         success: false,
 
         message:
@@ -673,6 +1404,7 @@ const getIndexRecord = async (
         yearString
       );
 
+
     const monthNumber =
       Number(
         monthString
@@ -682,12 +1414,14 @@ const getIndexRecord = async (
     // --------------------------------------------------------
     // Validate actual month
     // --------------------------------------------------------
+
     if (
       monthNumber < 1 ||
       monthNumber > 12
     ) {
 
       return res.status(400).json({
+
         success: false,
 
         message:
@@ -699,10 +1433,7 @@ const getIndexRecord = async (
     // ========================================================
     // MONTH DATE RANGE
     // ========================================================
-    //
-    // Using UTC boundaries makes the query independent from
-    // the server's timezone.
-    //
+
     const startDate =
       new Date(
         Date.UTC(
@@ -734,18 +1465,14 @@ const getIndexRecord = async (
     // ========================================================
     // GET INSTALLMENTS FOR SELECTED MONTH
     // ========================================================
-    //
-    // We intentionally use the Installment collection here.
-    //
-    // InstallmentPlan does NOT contain the actual due-date
-    // records. Installment does.
-    //
+
     const installments =
       await Installment.find({
 
         shopId,
 
         dueDate: {
+
           $gte:
             startDate,
 
@@ -753,43 +1480,55 @@ const getIndexRecord = async (
             endDate,
         },
 
-        // ----------------------------------------------------
-        // Index Record is for installments still requiring
-        // collection.
-        //
-        // Paid / Settled installments are not shown.
-        // ----------------------------------------------------
         status: {
+
           $nin: [
             'Paid',
             'Settled',
           ],
         },
+
       })
         .populate({
+
           path:
             'installmentPlan',
 
           populate: [
+
             {
               path:
                 'customer',
             },
+
             {
               path:
                 'product',
             },
+
             {
-              path: 'sale',
+              path:
+                'sale',
+
               populate: [
-                { path: 'customer' },
-                { path: 'product' },
+
+                {
+                  path:
+                    'customer',
+                },
+
+                {
+                  path:
+                    'product',
+                },
               ],
             },
           ],
         })
         .sort({
+
           dueDate: 1,
+
           installmentNumber: 1,
         });
 
@@ -797,6 +1536,7 @@ const getIndexRecord = async (
     // ========================================================
     // NO RECORDS
     // ========================================================
+
     if (
       installments.length === 0
     ) {
@@ -809,9 +1549,11 @@ const getIndexRecord = async (
 
           month,
 
-          totalRecords: 0,
+          totalRecords:
+            0,
 
-          totalInstallmentAmount: 0,
+          totalInstallmentAmount:
+            0,
 
           rows: [],
         },
@@ -821,31 +1563,21 @@ const getIndexRecord = async (
 
     // ========================================================
     // GET ALL INSTALLMENTS FOR THESE PLANS
-    //
-    // Needed for calculating:
-    //
-    // Previous Paid Amount
-    //
-    // Example:
-    //
-    // Installment 1:
-    // previous paid = down payment (if applicable)
-    //
-    // Installment 2:
-    // previous paid = down payment + installment 1 paid
-    //
-    // Installment 3:
-    // previous paid = down payment + installment 1 + 2
     // ========================================================
 
     const planIds = [
       ...new Set(
+
         installments
+
           .map(
             installment =>
-              installment.installmentPlan?._id
+              installment
+                .installmentPlan
+                ?._id
                 ?.toString()
           )
+
           .filter(Boolean)
       ),
     ];
@@ -857,11 +1589,14 @@ const getIndexRecord = async (
         shopId,
 
         installmentPlan: {
+
           $in:
             planIds,
         },
+
       })
         .sort({
+
           installmentNumber: 1,
         });
 
@@ -880,7 +1615,8 @@ const getIndexRecord = async (
     ) {
 
       const planId =
-        installment.installmentPlan
+        installment
+          .installmentPlan
           ?.toString();
 
 
@@ -921,7 +1657,8 @@ const getIndexRecord = async (
         installment => {
 
           const plan =
-            installment.installmentPlan;
+            installment
+              .installmentPlan;
 
 
           const customer =
@@ -948,10 +1685,7 @@ const getIndexRecord = async (
           // ==================================================
           // PREVIOUS PAID AMOUNT
           // ==================================================
-          //
-          // Only payments against installments BEFORE the
-          // current installment are counted.
-          //
+
           let previousPaidAmount =
             0;
 
@@ -962,13 +1696,16 @@ const getIndexRecord = async (
           ) {
 
             if (
-              previousInstallment.installmentNumber <
-              installment.installmentNumber
+              previousInstallment
+                .installmentNumber <
+              installment
+                .installmentNumber
             ) {
 
               previousPaidAmount +=
                 Number(
-                  previousInstallment.paidAmount ||
+                  previousInstallment
+                    .paidAmount ||
                   0
                 );
             }
@@ -978,16 +1715,11 @@ const getIndexRecord = async (
           // ==================================================
           // DOWN PAYMENT
           // ==================================================
-          //
-          // If down payment is NOT treated as first
-          // installment, it is still an amount already paid
-          // before the scheduled installments.
-          //
-          // Therefore it belongs in Previous Paid Amount.
-          //
+
           if (
             plan &&
-            !plan.treatDownPaymentAsFirstInstallment
+            !plan
+              .treatDownPaymentAsFirstInstallment
           ) {
 
             previousPaidAmount +=
@@ -1001,45 +1733,68 @@ const getIndexRecord = async (
           // ==================================================
           // TOTAL INSTALLMENTS
           // ==================================================
-          //
-          // duration = actual scheduled installments.
-          //
-          // Fallback to invoiceSnapshot.duration for older
-          // records where needed.
-          //
+
           const totalInstallments =
             Number(
+
               plan?.selectedDuration ||
+
               plan?.duration ||
-              plan?.invoiceSnapshot?.selectedDuration ||
-              plan?.invoiceSnapshot?.duration ||
+
+              plan
+                ?.invoiceSnapshot
+                ?.selectedDuration ||
+
+              plan
+                ?.invoiceSnapshot
+                ?.duration ||
+
               0
             );
 
 
-          // Count only installments that have been completely paid.
-          // The selected duration never changes; this is only the progress
-          // value shown as, for example, 2 / 11.
+          // ==================================================
+          // PAID INSTALLMENTS
+          // ==================================================
+
           const paidInstallments =
             planInstallments.filter(
               planInstallment => {
+
                 const amount =
                   Number(
+
                     planInstallment.amount ||
-                    planInstallment.originalAmount ||
+
+                    planInstallment
+                      .originalAmount ||
+
                     0
                   );
+
 
                 const paidAmount =
                   Number(
-                    planInstallment.paidAmount ||
+                    planInstallment
+                      .paidAmount ||
                     0
                   );
 
+
                 return (
-                  planInstallment.status === 'Paid' ||
-                  planInstallment.status === 'Settled' ||
-                  (amount > 0 && paidAmount >= amount)
+
+                  planInstallment
+                    .status ===
+                    'Paid' ||
+
+                  planInstallment
+                    .status ===
+                    'Settled' ||
+
+                  (
+                    amount > 0 &&
+                    paidAmount >= amount
+                  )
                 );
               }
             ).length;
@@ -1061,9 +1816,12 @@ const getIndexRecord = async (
             customer?.phone ||
             customer?.phoneNumber ||
             customer?.contactNumber ||
-            plan?.sale?.customer?.mobileNumber ||
-            plan?.sale?.customer?.mobile ||
-            plan?.sale?.customer?.phone ||
+            plan?.sale?.customer
+              ?.mobileNumber ||
+            plan?.sale?.customer
+              ?.mobile ||
+            plan?.sale?.customer
+              ?.phone ||
             'N/A';
 
 
@@ -1072,8 +1830,10 @@ const getIndexRecord = async (
             customer?.CNIC ||
             customer?.cnicNumber ||
             customer?.nationalId ||
-            plan?.sale?.customer?.cnic ||
-            plan?.sale?.customer?.CNIC ||
+            plan?.sale?.customer
+              ?.cnic ||
+            plan?.sale?.customer
+              ?.CNIC ||
             'N/A';
 
 
@@ -1084,7 +1844,9 @@ const getIndexRecord = async (
           const productName =
             product?.name ||
             product?.productName ||
-            plan?.invoiceSnapshot?.productName ||
+            plan
+              ?.invoiceSnapshot
+              ?.productName ||
             'N/A';
 
 
@@ -1092,7 +1854,9 @@ const getIndexRecord = async (
             product?.model ||
             product?.productModel ||
             product?.modelNumber ||
-            plan?.invoiceSnapshot?.model ||
+            plan
+              ?.invoiceSnapshot
+              ?.model ||
             'N/A';
 
 
@@ -1102,8 +1866,12 @@ const getIndexRecord = async (
 
           const installmentPrice =
             Number(
+
               installment.amount ||
-              installment.originalAmount ||
+
+              installment
+                .originalAmount ||
+
               0
             );
 
@@ -1115,7 +1883,9 @@ const getIndexRecord = async (
           return {
 
             id:
-              installment._id?.toString(),
+              installment
+                ._id
+                ?.toString(),
 
             customerName,
 
@@ -1138,7 +1908,8 @@ const getIndexRecord = async (
 
             installmentNumber:
               Number(
-                installment.installmentNumber ||
+                installment
+                  .installmentNumber ||
                 0
               ),
 
@@ -1146,7 +1917,8 @@ const getIndexRecord = async (
 
             installmentLabel:
               `${Number(
-                installment.installmentNumber ||
+                installment
+                  .installmentNumber ||
                 0
               )} / ${totalInstallments}`,
 
@@ -1155,13 +1927,15 @@ const getIndexRecord = async (
 
             paidAmount:
               Number(
-                installment.paidAmount ||
+                installment
+                  .paidAmount ||
                 0
               ),
 
             remainingAmount:
               Number(
-                installment.remainingAmount ||
+                installment
+                  .remainingAmount ||
                 0
               ),
 
