@@ -36,8 +36,137 @@ const generatePaymentID = async (shopId) => {
 
 const roundMoney = (value) => {
   return Math.round(
-    (Number(value) + Number.EPSILON) * 100
+    (Number(value || 0) + Number.EPSILON) * 100
   ) / 100;
+};
+
+// ============================================================
+// BOOLEAN HELPER
+// ============================================================
+
+const toBoolean = (value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value.toLowerCase() === 'true';
+  }
+
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+
+  return false;
+};
+
+// ============================================================
+// DOWN PAYMENT AS FIRST INSTALLMENT
+// ============================================================
+
+const isDownPaymentFirstInstallment = (plan) => {
+  if (!plan) return false;
+
+  const sale =
+    plan.sale && typeof plan.sale === 'object'
+      ? plan.sale
+      : null;
+
+  const rawValue =
+    plan.downPaymentAsFirstInstallment ??
+    plan.isDownPaymentFirstInstallment ??
+    plan.downPaymentAsFirstInstallmentEnabled ??
+    sale?.downPaymentAsFirstInstallment ??
+    sale?.isDownPaymentFirstInstallment ??
+    false;
+
+  return toBoolean(rawValue);
+};
+
+// ============================================================
+// CALCULATE ACTUAL INSTALLMENT TOTALS
+//
+// IMPORTANT:
+//
+// We use the Installment records as the source of truth.
+//
+// This prevents:
+//
+// DP = 50,000
+// First installment paid = 50,000
+//
+// from becoming:
+//
+// 50,000 + 50,000 = 100,000
+//
+// when DP is already represented by installment #1.
+// ============================================================
+
+const calculateInstallmentTotals = (installments = []) => {
+  let scheduledTotal = 0;
+  let totalPaid = 0;
+  let remainingBalance = 0;
+
+  for (const installment of installments) {
+    scheduledTotal += Number(
+      installment?.amount || 0
+    );
+
+    totalPaid += Number(
+      installment?.paidAmount || 0
+    );
+
+    remainingBalance += Number(
+      installment?.remainingAmount || 0
+    );
+  }
+
+  return {
+    scheduledTotal: roundMoney(scheduledTotal),
+    totalPaid: roundMoney(totalPaid),
+    remainingBalance: roundMoney(
+      Math.max(0, remainingBalance)
+    )
+  };
+};
+
+// ============================================================
+// REFRESH PLAN BALANCE FROM INSTALLMENTS
+//
+// This is the most important fix.
+//
+// Never subtract payment from an old/stale
+// plan.remainingBalance.
+//
+// Instead:
+//
+// remainingBalance = SUM(all installment remainingAmount)
+//
+// totalPaid = SUM(all installment paidAmount)
+// ============================================================
+
+const refreshPlanFinancials = async (
+  plan,
+  shopId
+) => {
+  const installments =
+    await Installment.find({
+      shopId,
+      installmentPlan: plan._id
+    }).lean();
+
+  const totals =
+    calculateInstallmentTotals(
+      installments
+    );
+
+  plan.remainingBalance =
+    totals.remainingBalance;
+
+  return {
+    installments,
+    ...totals
+  };
 };
 
 // ============================================================
@@ -146,6 +275,37 @@ const getInstallmentPlans = async (
         })
         .lean();
 
+    // ========================================================
+    // CORRECT PLAN FINANCIALS
+    // ========================================================
+
+    for (const plan of refreshedPlans) {
+      const installments =
+        await Installment.find({
+          shopId,
+          installmentPlan: plan._id
+        }).lean();
+
+      const totals =
+        calculateInstallmentTotals(
+          installments
+        );
+
+      // IMPORTANT:
+      // Do not add downPayment separately here.
+      //
+      // If DP is first installment,
+      // it is already inside totalPaid.
+      plan.totalPaid =
+        totals.totalPaid;
+
+      plan.remainingBalance =
+        totals.remainingBalance;
+
+      plan.installmentScheduleTotal =
+        totals.scheduledTotal;
+    }
+
     return res.status(200).json({
       success: true,
       data: refreshedPlans
@@ -160,20 +320,14 @@ const getInstallmentPlans = async (
     return res.status(500).json({
       message:
         'Failed to fetch installment plans',
-      error: error.message
+      error:
+        error.message
     });
   }
 };
 
 // ============================================================
 // GET DUE INSTALLMENTS
-//
-// Returns:
-// - Overdue
-// - Due Today
-// - Upcoming next 7 days
-// - Counts
-// - Amount summaries
 // ============================================================
 
 const getDueInstallments = async (
@@ -236,7 +390,6 @@ const getDueInstallments = async (
 
     // ========================================================
     // UPCOMING WINDOW
-    // Next 7 days
     // ========================================================
 
     const upcomingEnd = new Date(
@@ -248,7 +401,7 @@ const getDueInstallments = async (
     );
 
     // ========================================================
-    // CLASSIFY INSTALLMENTS
+    // CLASSIFY
     // ========================================================
 
     for (const item of installments) {
@@ -316,7 +469,6 @@ const getDueInstallments = async (
 
       // ------------------------------------------------------
       // UPCOMING
-      // NEXT 7 DAYS ONLY
       // ------------------------------------------------------
 
       if (
@@ -403,10 +555,6 @@ const getDueInstallments = async (
         dueTodayAmount +
         upcomingAmount
       );
-
-    // ========================================================
-    // RESPONSE
-    // ========================================================
 
     return res.status(200).json({
       success: true,
@@ -508,6 +656,47 @@ const getInstallmentPlanById = async (
           installmentNumber: 1
         });
 
+    // ========================================================
+    // CORRECT FINANCIAL TOTALS
+    // ========================================================
+
+    const totals =
+      calculateInstallmentTotals(
+        installments
+      );
+
+    const dpFirst =
+      isDownPaymentFirstInstallment(
+        refreshedPlan
+      );
+
+    // ========================================================
+    // IMPORTANT:
+    //
+    // When DP is first installment:
+    //
+    // DP = 50,000
+    // Installment #1 paid = 50,000
+    //
+    // Total customer paid = 50,000
+    //
+    // NOT:
+    //
+    // 50,000 + 50,000 = 100,000
+    // ========================================================
+
+    refreshedPlan.totalPaid =
+      totals.totalPaid;
+
+    refreshedPlan.remainingBalance =
+      totals.remainingBalance;
+
+    refreshedPlan.installmentScheduleTotal =
+      totals.scheduledTotal;
+
+    refreshedPlan.downPaymentCountedAsFirstInstallment =
+      dpFirst;
+
     const payments =
       await Payment.find({
         shopId,
@@ -552,21 +741,19 @@ const getInstallmentPlanById = async (
 // ============================================================
 // PAY INSTALLMENT
 //
-// PAYMENT RULES
+// RULES:
 //
-// 1. Underpayment stays ONLY on current installment.
-// 2. Underpayment NEVER moves to next installment.
-// 3. Exact payment clears current installment.
-// 4. Overpayment clears current installment first.
-// 5. EXTRA amount is distributed EQUALLY across all
-//    remaining installments after the current installment.
-// 6. If one future installment cannot absorb its equal share,
-//    unused extra is redistributed among the remaining
-//    installments.
-// 7. Original scheduled "amount" is NOT changed.
-// 8. Only paidAmount / remainingAmount / status are updated.
-// 9. One Payment record stores all allocations.
-// 10. shopId is enforced everywhere.
+// 1. Underpayment stays on current installment.
+// 2. Underpayment NEVER carries forward.
+// 3. Exact payment clears current.
+// 4. Overpayment clears current first.
+// 5. Extra is distributed equally across future installments.
+// 6. If one future installment gets fully cleared,
+//    remaining extra is redistributed.
+// 7. Scheduled amount NEVER changes.
+// 8. Only paidAmount / remainingAmount / status change.
+// 9. One Payment record stores allocations.
+// 10. DP-first is NOT separately added to plan balance.
 // ============================================================
 
 const payInstallment = async (
@@ -655,12 +842,38 @@ const payInstallment = async (
       });
     }
 
+    // ========================================================
+    // IMPORTANT:
+    //
+    // DO NOT USE:
+    //
+    // if (plan.remainingBalance <= 0)
+    //
+    // because old/stale plan.remainingBalance can be wrong.
+    //
+    // Actual installment records are the source of truth.
+    // ========================================================
+
+    const allPlanInstallmentsBefore =
+      await Installment.find({
+        shopId,
+        installmentPlan:
+          plan._id
+      });
+
+    const totalsBefore =
+      calculateInstallmentTotals(
+        allPlanInstallmentsBefore
+      );
+
     if (
-      plan.status === 'Completed' ||
-      Number(
-        plan.remainingBalance || 0
-      ) <= 0
+      totalsBefore.remainingBalance <= 0
     ) {
+      plan.remainingBalance = 0;
+      plan.status = 'Completed';
+
+      await plan.save();
+
       return res.status(400).json({
         message:
           'This installment plan is already completed'
@@ -691,7 +904,8 @@ const payInstallment = async (
     const installmentsFromCurrent =
       await Installment.find({
         shopId,
-        installmentPlan: plan._id,
+        installmentPlan:
+          plan._id,
         installmentNumber: {
           $gte:
             currentInstallment.installmentNumber
@@ -878,7 +1092,7 @@ const payInstallment = async (
         const equalShare =
           roundMoney(
             remainingExtra /
-              availableFuture.length
+            availableFuture.length
           );
 
         if (
@@ -1057,6 +1271,26 @@ const payInstallment = async (
     }
 
     // ========================================================
+    // REFRESH ALL INSTALLMENTS
+    //
+    // THIS IS THE IMPORTANT PART.
+    //
+    // We calculate balance from actual installment records.
+    // ========================================================
+
+    const allPlanInstallments =
+      await Installment.find({
+        shopId,
+        installmentPlan:
+          plan._id
+      });
+
+    const totalsAfter =
+      calculateInstallmentTotals(
+        allPlanInstallments
+      );
+
+    // ========================================================
     // CARRY FORWARD
     // ========================================================
 
@@ -1080,18 +1314,18 @@ const payInstallment = async (
 
     // ========================================================
     // NEW PLAN BALANCE
+    //
+    // NEVER:
+    //
+    // oldPlanBalance - payment
+    //
+    // Instead:
+    //
+    // SUM(actual installment remaining)
     // ========================================================
 
     const newPlanBalance =
-      roundMoney(
-        Math.max(
-          0,
-          Number(
-            plan.remainingBalance || 0
-          ) -
-          actualAllocatedAmount
-        )
-      );
+      totalsAfter.remainingBalance;
 
     plan.remainingBalance =
       newPlanBalance;
@@ -1101,14 +1335,12 @@ const payInstallment = async (
     // ========================================================
 
     const unpaidCount =
-      await Installment.countDocuments({
-        shopId,
-        installmentPlan:
-          plan._id,
-        remainingAmount: {
-          $gt: 0
-        }
-      });
+      allPlanInstallments.filter(
+        (item) =>
+          Number(
+            item.remainingAmount || 0
+          ) > 0
+      ).length;
 
     // ========================================================
     // PLAN STATUS
@@ -1145,18 +1377,14 @@ const payInstallment = async (
 
     // ========================================================
     // SALE BALANCE
+    //
+    // Use actual installment balance.
+    //
+    // This also prevents DP-first double counting.
     // ========================================================
 
     sale.remainingBalance =
-      roundMoney(
-        Math.max(
-          0,
-          Number(
-            sale.remainingBalance || 0
-          ) -
-          actualAllocatedAmount
-        )
-      );
+      newPlanBalance;
 
     await sale.save();
 
@@ -1266,6 +1494,40 @@ const payInstallment = async (
           installmentNumber: 1
         });
 
+    // ========================================================
+    // FINAL FINANCIAL TOTALS
+    // ========================================================
+
+    const finalTotals =
+      calculateInstallmentTotals(
+        updatedInstallments
+      );
+
+    const dpFirst =
+      isDownPaymentFirstInstallment(
+        updatedPlan
+      );
+
+    // IMPORTANT:
+    //
+    // Whether DP-first is ON or OFF,
+    // actual paid installments are the source
+    // for installment payment history.
+    //
+    // We NEVER add DP separately when it is
+    // represented as installment #1.
+    updatedPlan.totalPaid =
+      finalTotals.totalPaid;
+
+    updatedPlan.remainingBalance =
+      finalTotals.remainingBalance;
+
+    updatedPlan.installmentScheduleTotal =
+      finalTotals.scheduledTotal;
+
+    updatedPlan.downPaymentCountedAsFirstInstallment =
+      dpFirst;
+
     const updatedPayments =
       await Payment.find({
         shopId,
@@ -1305,6 +1567,19 @@ const payInstallment = async (
       carryForwardAmount,
 
       allocations,
+
+      // Helpful financial values for frontend
+      totalPaid:
+        finalTotals.totalPaid,
+
+      remainingBalance:
+        finalTotals.remainingBalance,
+
+      installmentScheduleTotal:
+        finalTotals.scheduledTotal,
+
+      downPaymentCountedAsFirstInstallment:
+        dpFirst,
 
       plan:
         updatedPlan,
