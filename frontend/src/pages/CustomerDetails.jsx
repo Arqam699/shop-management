@@ -122,7 +122,9 @@ const CustomerDetails = () => {
       customer?.area
     );
   };
-
+const getPaymentScore = (customer) => {
+  return customer?.paymentScore || null;
+};
   const getPhoto = (customer) => {
     return getValue(
       customer?.photoUrl,
@@ -412,6 +414,7 @@ const CustomerDetails = () => {
               const address = getAddress(customer);
               const city = getCity(customer);
               const photo = getPhoto(customer);
+              const paymentScore = getPaymentScore(customer);
 
               const fingerprintSaved = hasFingerprint(customer);
               const customerPhotoSaved = hasCustomerPhoto(customer);
@@ -523,6 +526,41 @@ const CustomerDetails = () => {
                         </div>
 
                       </div>
+
+                      {/* PAYMENT SCORE */}
+<div className="mt-3.5">
+  {paymentScore?.score !== null &&
+  paymentScore?.score !== undefined ? (
+    <span
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black border ${
+        paymentScore.score >= 90
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+          : paymentScore.score >= 75
+          ? 'bg-blue-50 border-blue-200 text-blue-700'
+          : paymentScore.score >= 60
+          ? 'bg-amber-50 border-amber-200 text-amber-700'
+          : paymentScore.score >= 40
+          ? 'bg-orange-50 border-orange-200 text-orange-700'
+          : 'bg-red-50 border-red-200 text-red-700'
+      }`}
+    >
+      <CreditCard className="w-3.5 h-3.5" />
+
+      <span>
+        Payment Score: {paymentScore.score}/100
+      </span>
+
+      <span className="opacity-70">
+        • {paymentScore.rating}
+      </span>
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black border bg-slate-100 border-slate-200 text-slate-400">
+      <CreditCard className="w-3.5 h-3.5" />
+      Payment Score: {paymentScore?.rating || 'No History'}
+    </span>
+  )}
+</div>
 
                       {/* VERIFICATION BADGES */}
                       <div className="flex flex-wrap items-center gap-2 mt-3.5">

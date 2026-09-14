@@ -431,7 +431,9 @@ const CustomerLedger = () => {
     if (!person || typeof person !== 'object') return '';
     return firstValue(person.city, person.town, person.area);
   };
-
+const getPaymentScore = (customer) => {
+  return customer?.paymentScore || null;
+};
   const getPhoto = (person) => {
     if (!person || typeof person !== 'object') return '';
     return resolveFirstImage(
@@ -1348,6 +1350,7 @@ const CustomerLedger = () => {
     const cnic = getCNIC(safePerson);
     const address = getAddress(safePerson);
     const city = getCity(safePerson);
+    const paymentScore = getPaymentScore(customer);
 
     const relationship = firstValue(
       safePerson.relationship,
@@ -1455,6 +1458,7 @@ const CustomerLedger = () => {
                         {fatherName || '—'}
                       </p>
                     </div>
+                    
 
                     <div>
                       <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
@@ -1617,6 +1621,7 @@ const CustomerLedger = () => {
           </div>
         </div>
       </section>
+      
 
       {/* =====================================================
           CUSTOMER SELECTOR
@@ -1710,8 +1715,45 @@ const CustomerLedger = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-slate-400 font-medium">
+                         <span
+  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] font-black border ${
+    getPaymentScore(customer)?.score >= 90
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+      : getPaymentScore(customer)?.score >= 75
+      ? 'bg-blue-50 border-blue-200 text-blue-700'
+      : getPaymentScore(customer)?.score >= 60
+      ? 'bg-amber-50 border-amber-200 text-amber-700'
+      : getPaymentScore(customer)?.score >= 40
+      ? 'bg-orange-50 border-orange-200 text-orange-700'
+      : getPaymentScore(customer)?.score !== null &&
+        getPaymentScore(customer)?.score !== undefined
+      ? 'bg-red-50 border-red-200 text-red-700'
+      : 'bg-slate-100 border-slate-200 text-slate-400'
+  }`}
+>
+  <CreditCard className="w-3 h-3" />
+
+  {getPaymentScore(customer)?.score !== null &&
+  getPaymentScore(customer)?.score !== undefined ? (
+    <>
+      <span>Payment Score:</span>
+      <strong className="font-black">
+        {getPaymentScore(customer).score}/100
+      </strong>
+
+      <span className="opacity-70">
+        • {getPaymentScore(customer).rating}
+      </span>
+    </>
+  ) : (
+    <span>
+      Payment Score: {getPaymentScore(customer)?.rating || 'No History'}
+    </span>
+  )}
+</span>
                           <span>Mobile: <strong className="text-slate-700 font-bold">{getMobile(customer) || '—'}</strong></span>
                           <span>Father: <strong className="text-slate-700 font-bold">{getFatherName(customer) || '—'}</strong></span>
+                          
                           <span>CNIC: <strong className="text-slate-700 font-bold">{getCNIC(customer) || '—'}</strong></span>
                         </div>
                       </div>

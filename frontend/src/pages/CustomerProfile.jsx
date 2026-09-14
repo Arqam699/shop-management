@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
+import { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 import {
   ArrowLeft,
@@ -22,13 +24,9 @@ import {
   StickyNote,
   Camera,
   Sparkles,
-  UserRound,
   CheckCircle2,
-  Calendar,
   CreditCard,
-  Building2,
   Receipt,
-  RotateCcw,
 } from 'lucide-react';
 
 /* =========================================================
@@ -49,7 +47,11 @@ const bufferToDataUrl = (value, mimeType) => {
       const chunkSize = 0x8000;
 
       for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+        const chunk = bytes.subarray(
+          i,
+          Math.min(i + chunkSize, bytes.length)
+        );
+
         binary += String.fromCharCode(...chunk);
       }
 
@@ -62,11 +64,15 @@ const bufferToDataUrl = (value, mimeType) => {
   }
 };
 
-const normalizeImage = (image, defaultMimeType = 'image/jpeg') => {
+const normalizeImage = (
+  image,
+  defaultMimeType = 'image/jpeg'
+) => {
   if (!image) return '';
 
   if (typeof image === 'string') {
     const value = image.trim();
+
     if (!value) return '';
 
     if (value.startsWith('data:image/')) {
@@ -84,7 +90,11 @@ const normalizeImage = (image, defaultMimeType = 'image/jpeg') => {
     return `data:${defaultMimeType};base64,${value}`;
   }
 
-  const bufferData = bufferToDataUrl(image, defaultMimeType);
+  const bufferData = bufferToDataUrl(
+    image,
+    defaultMimeType
+  );
+
   if (bufferData) {
     return bufferData;
   }
@@ -95,6 +105,7 @@ const normalizeImage = (image, defaultMimeType = 'image/jpeg') => {
     typeof image.data === 'string'
   ) {
     const value = image.data.trim();
+
     if (!value) return '';
 
     if (value.startsWith('data:image/')) {
@@ -121,7 +132,9 @@ const getPhotoImage = (image) => {
 
 const formatFingerprintDate = (value) => {
   if (!value) return 'Not available';
+
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) {
     return 'Not available';
   }
@@ -137,7 +150,9 @@ const formatFingerprintDate = (value) => {
 
 const formatPhotoDate = (value) => {
   if (!value) return 'Not available';
+
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) {
     return 'Not available';
   }
@@ -153,7 +168,9 @@ const formatPhotoDate = (value) => {
 
 const formatDate = (value) => {
   if (!value) return 'N/A';
+
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) {
     return 'N/A';
   }
@@ -165,9 +182,373 @@ const formatDate = (value) => {
   });
 };
 
-const formatCurrency = (value, currency = 'PKR') => {
+const formatCurrency = (
+  value,
+  currency = 'PKR'
+) => {
   const amount = Number(value || 0);
+
   return `${currency} ${amount.toLocaleString('en-PK')}`;
+};
+
+/* =========================================================
+   PAYMENT SCORE HELPERS
+========================================================= */
+
+const getPaymentScoreConfig = (paymentScore) => {
+  if (!paymentScore) {
+    return {
+      score: null,
+      rating: 'No History',
+      textClass: 'text-slate-500',
+      bgClass: 'bg-slate-50',
+      borderClass: 'border-slate-200',
+      badgeClass:
+        'bg-slate-100 border-slate-200 text-slate-500',
+      progressClass: 'bg-slate-400',
+      iconClass: 'text-slate-400',
+    };
+  }
+
+  const score = Number(paymentScore.score);
+
+  if (Number.isNaN(score)) {
+    return {
+      score: null,
+      rating: paymentScore.rating || 'Unavailable',
+      textClass: 'text-slate-500',
+      bgClass: 'bg-slate-50',
+      borderClass: 'border-slate-200',
+      badgeClass:
+        'bg-slate-100 border-slate-200 text-slate-500',
+      progressClass: 'bg-slate-400',
+      iconClass: 'text-slate-400',
+    };
+  }
+
+  if (score >= 90) {
+    return {
+      score,
+      rating: paymentScore.rating || 'Excellent',
+      textClass: 'text-emerald-600',
+      bgClass: 'bg-emerald-50',
+      borderClass: 'border-emerald-200',
+      badgeClass:
+        'bg-emerald-50 border-emerald-200 text-emerald-700',
+      progressClass: 'bg-emerald-500',
+      iconClass: 'text-emerald-600',
+    };
+  }
+
+  if (score >= 75) {
+    return {
+      score,
+      rating: paymentScore.rating || 'Good',
+      textClass: 'text-blue-600',
+      bgClass: 'bg-blue-50',
+      borderClass: 'border-blue-200',
+      badgeClass:
+        'bg-blue-50 border-blue-200 text-blue-700',
+      progressClass: 'bg-blue-500',
+      iconClass: 'text-blue-600',
+    };
+  }
+
+  if (score >= 60) {
+    return {
+      score,
+      rating: paymentScore.rating || 'Average',
+      textClass: 'text-amber-600',
+      bgClass: 'bg-amber-50',
+      borderClass: 'border-amber-200',
+      badgeClass:
+        'bg-amber-50 border-amber-200 text-amber-700',
+      progressClass: 'bg-amber-500',
+      iconClass: 'text-amber-600',
+    };
+  }
+
+  if (score >= 40) {
+    return {
+      score,
+      rating: paymentScore.rating || 'Risky',
+      textClass: 'text-orange-600',
+      bgClass: 'bg-orange-50',
+      borderClass: 'border-orange-200',
+      badgeClass:
+        'bg-orange-50 border-orange-200 text-orange-700',
+      progressClass: 'bg-orange-500',
+      iconClass: 'text-orange-600',
+    };
+  }
+
+  return {
+    score,
+    rating: paymentScore.rating || 'High Risk',
+    textClass: 'text-rose-600',
+    bgClass: 'bg-rose-50',
+    borderClass: 'border-rose-200',
+    badgeClass:
+      'bg-rose-50 border-rose-200 text-rose-700',
+    progressClass: 'bg-rose-500',
+    iconClass: 'text-rose-600',
+  };
+};
+
+/* =========================================================
+   PAYMENT SCORE CARD
+========================================================= */
+
+const PaymentScoreCard = ({
+  paymentScore,
+  currency = 'PKR',
+}) => {
+  const config = getPaymentScoreConfig(paymentScore);
+
+  const score =
+    config.score === null
+      ? null
+      : Math.max(
+          0,
+          Math.min(100, Number(config.score))
+        );
+
+  const hasHistory =
+    paymentScore &&
+    Number.isFinite(Number(paymentScore.score));
+
+  return (
+    <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+      {/* HEADER */}
+      <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border ${config.bgClass} ${config.borderClass}`}
+          >
+            <ShieldCheck
+              className={`w-4 h-4 ${config.iconClass}`}
+            />
+          </div>
+
+          <div>
+            <h2 className="text-sm sm:text-base font-black text-slate-900">
+              Customer Payment Score
+            </h2>
+
+            <p className="text-[10px] text-slate-400 font-semibold">
+              Payment behavior & installment history
+            </p>
+          </div>
+        </div>
+
+        <span
+          className={`px-2.5 py-1 rounded-full border text-[9px] uppercase tracking-wider font-black ${config.badgeClass}`}
+        >
+          {config.rating}
+        </span>
+      </div>
+
+      <div className="p-5 sm:p-6">
+        {/* SCORE + PROGRESS */}
+        <div className="grid grid-cols-1 lg:grid-cols-[190px_1fr] gap-5 items-center">
+          <div
+            className={`rounded-3xl border ${config.borderClass} ${config.bgClass} p-5 text-center`}
+          >
+            <p className="text-[9px] uppercase tracking-[0.18em] font-black text-slate-500">
+              Payment Score
+            </p>
+
+            <div className="mt-2 flex items-end justify-center gap-1">
+              <span
+                className={`text-5xl font-black tracking-tight ${config.textClass}`}
+              >
+                {score === null ? '—' : score}
+              </span>
+
+              {score !== null && (
+                <span className="text-xs font-black text-slate-400 mb-2">
+                  /100
+                </span>
+              )}
+            </div>
+
+            <div
+              className={`inline-flex mt-3 px-3 py-1 rounded-full border text-[10px] font-black ${config.badgeClass}`}
+            >
+              {config.rating}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div>
+                <p className="text-xs font-black text-slate-800">
+                  Payment Reliability
+                </p>
+
+                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                  Based on recorded installment/payment behavior
+                </p>
+              </div>
+
+              {score !== null && (
+                <span
+                  className={`text-xs font-black ${config.textClass}`}
+                >
+                  {score}%
+                </span>
+              )}
+            </div>
+
+            <div className="h-3 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${config.progressClass}`}
+                style={{
+                  width:
+                    score === null
+                      ? '0%'
+                      : `${score}%`,
+                }}
+              />
+            </div>
+
+            {!hasHistory ? (
+              <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                <p className="text-xs font-black text-slate-600">
+                  No payment score available yet
+                </p>
+
+                <p className="text-[10px] font-semibold text-slate-400 mt-1">
+                  Score will appear automatically after payment/installment
+                  history is recorded.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4">
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                  <p className="text-[8px] uppercase tracking-wider font-black text-emerald-600">
+                    On Time
+                  </p>
+
+                  <p className="text-lg font-black text-emerald-700 mt-0.5">
+                    {paymentScore.onTimePayments || 0}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-3">
+                  <p className="text-[8px] uppercase tracking-wider font-black text-orange-600">
+                    Late
+                  </p>
+
+                  <p className="text-lg font-black text-orange-700 mt-0.5">
+                    {paymentScore.latePayments || 0}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3">
+                  <p className="text-[8px] uppercase tracking-wider font-black text-amber-600">
+                    Partial
+                  </p>
+
+                  <p className="text-lg font-black text-amber-700 mt-0.5">
+                    {paymentScore.partialPayments || 0}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                  <p className="text-[8px] uppercase tracking-wider font-black text-rose-600">
+                    Missed
+                  </p>
+
+                  <p className="text-lg font-black text-rose-700 mt-0.5">
+                    {paymentScore.missedPayments || 0}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* EXTRA SCORE DETAILS */}
+        {hasHistory && (
+          <div className="mt-5 pt-5 border-t border-slate-100">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Overdue
+                </p>
+
+                <p className="text-sm font-black text-rose-600 mt-1">
+                  {paymentScore.overduePayments || 0}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Avg Delay
+                </p>
+
+                <p className="text-sm font-black text-slate-800 mt-1">
+                  {Number(
+                    paymentScore.averageDelayDays || 0
+                  ).toFixed(1)}{' '}
+                  Days
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Installments
+                </p>
+
+                <p className="text-sm font-black text-slate-800 mt-1">
+                  {paymentScore.totalInstallments || 0}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Total Paid
+                </p>
+
+                <p className="text-sm font-black text-emerald-600 mt-1 truncate">
+                  {formatCurrency(
+                    paymentScore.totalPaid || 0,
+                    currency
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Outstanding
+                </p>
+
+                <p className="text-sm font-black text-rose-600 mt-1 truncate">
+                  {formatCurrency(
+                    paymentScore.outstanding || 0,
+                    currency
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
+                  Status
+                </p>
+
+                <p
+                  className={`text-sm font-black mt-1 ${config.textClass}`}
+                >
+                  {config.rating}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 };
 
 /* =========================================================
@@ -186,7 +567,9 @@ const MediaPlaceholder = ({ type }) => {
       )}
 
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-        {isFingerprint ? 'No Biometric Print' : 'No Photo Available'}
+        {isFingerprint
+          ? 'No Biometric Print'
+          : 'No Photo Available'}
       </p>
     </div>
   );
@@ -196,7 +579,12 @@ const MediaPlaceholder = ({ type }) => {
    SAFE IMAGE
 ========================================================= */
 
-const SafeImage = ({ src, alt, className, placeholderType }) => {
+const SafeImage = ({
+  src,
+  alt,
+  className,
+  placeholderType,
+}) => {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -204,7 +592,11 @@ const SafeImage = ({ src, alt, className, placeholderType }) => {
   }, [src]);
 
   if (!src || failed) {
-    return <MediaPlaceholder type={placeholderType} />;
+    return (
+      <MediaPlaceholder
+        type={placeholderType}
+      />
+    );
   }
 
   return (
@@ -230,16 +622,21 @@ const IdentityMediaSection = ({
   liveImage,
   liveImageCapturedAt,
 }) => {
-  const fingerprintSrc = getFingerprintImage(fingerprintImage);
-  const photoSrc = getPhotoImage(liveImage);
+  const fingerprintSrc =
+    getFingerprintImage(fingerprintImage);
 
-  const fingerprintCaptured = Boolean(fingerprintSrc);
-  const photoCaptured = Boolean(photoSrc);
+  const photoSrc =
+    getPhotoImage(liveImage);
+
+  const fingerprintCaptured =
+    Boolean(fingerprintSrc);
+
+  const photoCaptured =
+    Boolean(photoSrc);
 
   return (
     <div className="w-full lg:w-[280px] shrink-0">
       <div className="rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 space-y-4">
-        
         {/* FINGERPRINT */}
         <div>
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -247,7 +644,10 @@ const IdentityMediaSection = ({
               <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
                 <Fingerprint className="w-3.5 h-3.5" />
               </div>
-              <p className="text-xs font-black text-slate-800">Fingerprint</p>
+
+              <p className="text-xs font-black text-slate-800">
+                Fingerprint
+              </p>
             </div>
 
             <span
@@ -257,7 +657,9 @@ const IdentityMediaSection = ({
                   : 'bg-slate-100 border-slate-200 text-slate-400'
               }`}
             >
-              {fingerprintCaptured ? 'Captured' : 'Not Captured'}
+              {fingerprintCaptured
+                ? 'Captured'
+                : 'Not Captured'}
             </span>
           </div>
 
@@ -272,9 +674,12 @@ const IdentityMediaSection = ({
 
           <div className="mt-1.5 flex items-start gap-1.5 text-[9px] text-slate-400 font-semibold">
             <CalendarDays className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
+
             <span className="truncate">
               {fingerprintCaptured
-                ? formatFingerprintDate(fingerprintCapturedAt)
+                ? formatFingerprintDate(
+                    fingerprintCapturedAt
+                  )
                 : 'Capture date not recorded'}
             </span>
           </div>
@@ -287,7 +692,10 @@ const IdentityMediaSection = ({
               <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
                 <Camera className="w-3.5 h-3.5" />
               </div>
-              <p className="text-xs font-black text-slate-800">Person Photo</p>
+
+              <p className="text-xs font-black text-slate-800">
+                Person Photo
+              </p>
             </div>
 
             <span
@@ -297,7 +705,9 @@ const IdentityMediaSection = ({
                   : 'bg-slate-100 border-slate-200 text-slate-400'
               }`}
             >
-              {photoCaptured ? 'Captured' : 'Not Captured'}
+              {photoCaptured
+                ? 'Captured'
+                : 'Not Captured'}
             </span>
           </div>
 
@@ -312,6 +722,7 @@ const IdentityMediaSection = ({
 
           <div className="mt-1.5 flex items-start gap-1.5 text-[9px] text-slate-400 font-semibold">
             <CalendarDays className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
+
             <span className="truncate">
               {photoCaptured
                 ? formatPhotoDate(liveImageCapturedAt)
@@ -319,7 +730,6 @@ const IdentityMediaSection = ({
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -329,22 +739,32 @@ const IdentityMediaSection = ({
    DETAIL ITEM
 ========================================================= */
 
-const DetailItem = ({ icon: Icon, label, value, fullWidth = false }) => {
+const DetailItem = ({
+  icon: Icon,
+  label,
+  value,
+  fullWidth = false,
+}) => {
   return (
     <div
       className={`rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 ${
-        fullWidth ? 'sm:col-span-2 xl:col-span-3' : ''
+        fullWidth
+          ? 'sm:col-span-2 xl:col-span-3'
+          : ''
       }`}
     >
       <div className="flex items-center gap-1.5 mb-1">
         <Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+
         <span className="text-[9px] uppercase tracking-wider font-black text-slate-400">
           {label}
         </span>
       </div>
 
       <p className="text-xs sm:text-sm font-black text-slate-800 break-words">
-        {value !== undefined && value !== null && String(value).trim() !== ''
+        {value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ''
           ? value
           : '—'}
       </p>
@@ -366,65 +786,159 @@ const IdentityCard = ({
 }) => {
   return (
     <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
-      
-      {/* Header */}
+      {/* HEADER */}
       <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
-        <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
-          <User className={`w-4 h-4 ${iconColor}`} />
+        <div
+          className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}
+        >
+          <User
+            className={`w-4 h-4 ${iconColor}`}
+          />
         </div>
 
         <div>
-          <h2 className="text-sm sm:text-base font-black text-slate-900">{title}</h2>
-          <p className="text-[10px] sm:text-xs text-slate-400 font-semibold">{subtitle}</p>
+          <h2 className="text-sm sm:text-base font-black text-slate-900">
+            {title}
+          </h2>
+
+          <p className="text-[10px] sm:text-xs text-slate-400 font-semibold">
+            {subtitle}
+          </p>
         </div>
       </div>
 
-      {/* Content */}
+      {/* CONTENT */}
       <div className="p-5 sm:p-6">
         <div className="flex flex-col lg:flex-row gap-6">
-          
-          {/* Details Grid */}
+          {/* DETAILS */}
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {isCustomer ? (
                 <>
-                  <DetailItem icon={FileDigit} label="Customer ID" value={person?.customerId} />
-                  <DetailItem icon={User} label="Full Name" value={person?.fullName} />
-                  <DetailItem icon={User} label="Father Name" value={person?.fatherName} />
-                  <DetailItem icon={Phone} label="Mobile Number" value={person?.mobileNumber} />
-                  <DetailItem icon={Phone} label="Alternate Mobile" value={person?.alternateMobileNumber} />
-                  <DetailItem icon={FileDigit} label="CNIC" value={person?.cnic} />
-                  <DetailItem icon={MapPin} label="City" value={person?.city} />
-                  <DetailItem icon={Mail} label="Email" value={person?.email} />
-                  <DetailItem icon={MapPin} label="Residential Address" value={person?.address} fullWidth />
+                  <DetailItem
+                    icon={FileDigit}
+                    label="Customer ID"
+                    value={person?.customerId}
+                  />
+
+                  <DetailItem
+                    icon={User}
+                    label="Full Name"
+                    value={person?.fullName}
+                  />
+
+                  <DetailItem
+                    icon={User}
+                    label="Father Name"
+                    value={person?.fatherName}
+                  />
+
+                  <DetailItem
+                    icon={Phone}
+                    label="Mobile Number"
+                    value={person?.mobileNumber}
+                  />
+
+                  <DetailItem
+                    icon={Phone}
+                    label="Alternate Mobile"
+                    value={
+                      person?.alternateMobileNumber
+                    }
+                  />
+
+                  <DetailItem
+                    icon={FileDigit}
+                    label="CNIC"
+                    value={person?.cnic}
+                  />
+
+                  <DetailItem
+                    icon={MapPin}
+                    label="City"
+                    value={person?.city}
+                  />
+
+                  <DetailItem
+                    icon={Mail}
+                    label="Email"
+                    value={person?.email}
+                  />
+
+                  <DetailItem
+                    icon={MapPin}
+                    label="Residential Address"
+                    value={person?.address}
+                    fullWidth
+                  />
+
                   {person?.notes && (
-                    <DetailItem icon={StickyNote} label="Notes / Remarks" value={person?.notes} fullWidth />
+                    <DetailItem
+                      icon={StickyNote}
+                      label="Notes / Remarks"
+                      value={person?.notes}
+                      fullWidth
+                    />
                   )}
                 </>
               ) : (
                 <>
-                  <DetailItem icon={User} label="Full Name" value={person?.name} />
-                  <DetailItem icon={User} label="Father Name" value={person?.fatherName} />
-                  <DetailItem icon={Phone} label="Mobile Number" value={person?.mobileNumber} />
-                  <DetailItem icon={FileDigit} label="CNIC" value={person?.cnic} />
-                  <DetailItem icon={User} label="Relationship" value={person?.relation} />
-                  <DetailItem icon={MapPin} label="Residential Address" value={person?.address} fullWidth />
+                  <DetailItem
+                    icon={User}
+                    label="Full Name"
+                    value={person?.name}
+                  />
+
+                  <DetailItem
+                    icon={User}
+                    label="Father Name"
+                    value={person?.fatherName}
+                  />
+
+                  <DetailItem
+                    icon={Phone}
+                    label="Mobile Number"
+                    value={person?.mobileNumber}
+                  />
+
+                  <DetailItem
+                    icon={FileDigit}
+                    label="CNIC"
+                    value={person?.cnic}
+                  />
+
+                  <DetailItem
+                    icon={User}
+                    label="Relationship"
+                    value={person?.relation}
+                  />
+
+                  <DetailItem
+                    icon={MapPin}
+                    label="Residential Address"
+                    value={person?.address}
+                    fullWidth
+                  />
                 </>
               )}
             </div>
           </div>
 
-          {/* Media */}
+          {/* MEDIA */}
           <IdentityMediaSection
-            fingerprintImage={person?.fingerprintImage}
-            fingerprintCapturedAt={person?.fingerprintCapturedAt}
+            fingerprintImage={
+              person?.fingerprintImage
+            }
+            fingerprintCapturedAt={
+              person?.fingerprintCapturedAt
+            }
             liveImage={person?.liveImage}
-            liveImageCapturedAt={person?.liveImageCapturedAt}
+            liveImageCapturedAt={
+              person?.liveImageCapturedAt
+            }
           />
-
         </div>
       </div>
-
     </section>
   );
 };
@@ -433,7 +947,13 @@ const IdentityCard = ({
    SUMMARY CARD
 ========================================================= */
 
-const SummaryCard = ({ title, value, icon: Icon, iconClass, bgClass }) => {
+const SummaryCard = ({
+  title,
+  value,
+  icon: Icon,
+  iconClass,
+  bgClass,
+}) => {
   return (
     <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all">
       <div className="flex items-center justify-between gap-3">
@@ -441,13 +961,18 @@ const SummaryCard = ({ title, value, icon: Icon, iconClass, bgClass }) => {
           <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">
             {title}
           </p>
+
           <p className="text-lg sm:text-xl font-black text-slate-900 mt-1">
             {value}
           </p>
         </div>
 
-        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${bgClass}`}>
-          <Icon className={`w-5 h-5 ${iconClass}`} />
+        <div
+          className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${bgClass}`}
+        >
+          <Icon
+            className={`w-5 h-5 ${iconClass}`}
+          />
         </div>
       </div>
     </div>
@@ -461,11 +986,15 @@ const SummaryCard = ({ title, value, icon: Icon, iconClass, bgClass }) => {
 const CustomerProfile = () => {
   const { id } = useParams();
   const { settings } = useSettings();
-  const navigate = useNavigate();
 
-  const [customer, setCustomer] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [customer, setCustomer] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [errorMsg, setErrorMsg] =
+    useState('');
 
   /* =========================================================
      FETCH CUSTOMER
@@ -477,17 +1006,27 @@ const CustomerProfile = () => {
         setLoading(true);
         setErrorMsg('');
 
-        const response = await api.get(`/customers/${id}`);
+        const response = await api.get(
+          `/customers/${id}`
+        );
 
-        if (response.data && response.data.success) {
-          const data = response.data.data;
+        if (
+          response.data &&
+          response.data.success
+        ) {
+          const data =
+            response.data.data;
+
           setCustomer(data);
         } else {
-          setErrorMsg('Customer records missing.');
+          setErrorMsg(
+            'Customer records missing.'
+          );
         }
       } catch (error) {
         setErrorMsg(
-          error?.response?.data?.message || 'Failed to load profile record data.'
+          error?.response?.data?.message ||
+            'Failed to load profile record data.'
         );
       } finally {
         setLoading(false);
@@ -509,13 +1048,16 @@ const CustomerProfile = () => {
         <div className="text-center">
           <div className="relative mx-auto w-16 h-16">
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 animate-pulse opacity-25" />
+
             <div className="relative w-16 h-16 rounded-2xl bg-slate-950 border border-white/10 shadow-2xl flex items-center justify-center">
               <User className="w-7 h-7 text-blue-400 animate-pulse" />
             </div>
           </div>
+
           <h3 className="mt-5 text-sm font-black uppercase tracking-[0.16em] text-slate-800">
             Loading Customer Profile
           </h3>
+
           <p className="mt-1 text-xs font-semibold text-slate-400">
             Querying biometric fingerprint and personal records...
           </p>
@@ -533,11 +1075,14 @@ const CustomerProfile = () => {
       <div className="max-w-3xl mx-auto py-16 px-4 animate-[pageEnter_0.3s_ease-out]">
         <div className="bg-white border border-rose-200 rounded-3xl p-8 text-center shadow-sm">
           <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
+
           <h2 className="text-lg font-black text-slate-900">
             Customer Profile Not Found
           </h2>
+
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            {errorMsg || 'The requested customer record could not be loaded.'}
+            {errorMsg ||
+              'The requested customer record could not be loaded.'}
           </p>
 
           <Link
@@ -545,6 +1090,7 @@ const CustomerProfile = () => {
             className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800 transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
+
             Back to Customers Directory
           </Link>
         </div>
@@ -556,22 +1102,40 @@ const CustomerProfile = () => {
      DATA
   ========================================================= */
 
-  const totalPurchased = customer.totalPurchased || 0;
-  const outstandingBalance = customer.outstandingBalance || 0;
-  const totalSalesCount = customer.sales?.length || 0;
-  const hasOverdue = customer.hasOverdue || false;
+  const totalPurchased =
+    customer.totalPurchased || 0;
 
-  const guarantor1 = customer.guarantor1 || {};
-  const guarantor2 = customer.guarantor2 || {};
+  const outstandingBalance =
+    customer.outstandingBalance || 0;
+
+  const totalSalesCount =
+    customer.sales?.length || 0;
+
+  const hasOverdue =
+    customer.hasOverdue || false;
+
+  const guarantor1 =
+    customer.guarantor1 || {};
+
+  const guarantor2 =
+    customer.guarantor2 || {};
+
+  const paymentScore =
+    customer.paymentScore || null;
 
   /* =========================================================
      CREDIT STATUS
   ========================================================= */
 
   let creditStatus = {
-    title: 'New Customer (No Prior History)',
-    badgeColor: 'bg-blue-50/80 border-blue-200 text-blue-800',
+    title:
+      'New Customer (No Prior History)',
+
+    badgeColor:
+      'bg-blue-50/80 border-blue-200 text-blue-800',
+
     icon: Clock,
+
     description:
       'Yeh customer pehli baar dukan par aaya hai. Iska koi pichla karobari record nahi hai.',
   };
@@ -579,69 +1143,122 @@ const CustomerProfile = () => {
   if (totalSalesCount > 0) {
     if (outstandingBalance === 0) {
       creditStatus = {
-        title: 'Record 100% Clean (All Dues Cleared)',
-        badgeColor: 'bg-emerald-50/80 border-emerald-200 text-emerald-800',
+        title:
+          'Record 100% Clean (All Dues Cleared)',
+
+        badgeColor:
+          'bg-emerald-50/80 border-emerald-200 text-emerald-800',
+
         icon: ShieldCheck,
+
         description:
           'MashaAllah! Is customer ne purani saari kistein aur cash deals mukammal ada kar di hain. Koi rupiyah baqi nahi hai.',
       };
     } else if (hasOverdue) {
       creditStatus = {
-        title: 'High Risk (Overdue Dues Pending)',
-        badgeColor: 'bg-rose-50/80 border-rose-300 text-rose-800 font-black animate-pulse',
+        title:
+          'High Risk (Overdue Dues Pending)',
+
+        badgeColor:
+          'bg-rose-50/80 border-rose-300 text-rose-800 font-black animate-pulse',
+
         icon: AlertTriangle,
+
         description:
           'Khabardar! Is customer ki pichli kiston mein se kist overdue ho chuki hai. Naya samaan dene se pehle pichle dues clear karein.',
       };
     } else {
       creditStatus = {
-        title: 'Active Account (Dues on Schedule)',
-        badgeColor: 'bg-indigo-50/80 border-indigo-200 text-indigo-800',
+        title:
+          'Active Account (Dues on Schedule)',
+
+        badgeColor:
+          'bg-indigo-50/80 border-indigo-200 text-indigo-800',
+
         icon: CheckCircle2,
+
         description:
           'Is customer ki kistein active hain aur time par jama ho rahi hain.',
       };
     }
   }
 
-  const StatusIcon = creditStatus.icon;
+  const StatusIcon =
+    creditStatus.icon;
 
-  const printedDate = new Intl.DateTimeFormat('en-PK', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Karachi',
-  }).format(new Date());
+  const printedDate =
+    new Intl.DateTimeFormat('en-PK', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Karachi',
+    }).format(new Date());
 
   /* =========================================================
      PRINT MEDIA COMPONENT
   ========================================================= */
 
-  const renderPrintMedia = (person, personLabel) => {
-    const fingerprintSrc = getFingerprintImage(person?.fingerprintImage);
-    const photoSrc = getPhotoImage(person?.liveImage);
+  const renderPrintMedia = (
+    person,
+    personLabel
+  ) => {
+    const fingerprintSrc =
+      getFingerprintImage(
+        person?.fingerprintImage
+      );
+
+    const photoSrc =
+      getPhotoImage(
+        person?.liveImage
+      );
 
     return (
       <div className="print-media-column">
-        {/* Fingerprint */}
+        {/* FINGERPRINT */}
         <div className="print-fingerprint-box">
-          <div className="print-fingerprint-title">BIOMETRIC PRINT</div>
+          <div className="print-fingerprint-title">
+            BIOMETRIC PRINT
+          </div>
+
           {fingerprintSrc ? (
-            <img src={fingerprintSrc} alt={`${personLabel} Fingerprint`} />
+            <img
+              src={fingerprintSrc}
+              alt={`${personLabel} Fingerprint`}
+            />
           ) : (
-            <div className="print-no-fingerprint">No print stored</div>
+            <div className="print-no-fingerprint">
+              No print stored
+            </div>
           )}
-          <small>{formatFingerprintDate(person?.fingerprintCapturedAt)}</small>
+
+          <small>
+            {formatFingerprintDate(
+              person?.fingerprintCapturedAt
+            )}
+          </small>
         </div>
 
-        {/* Photo */}
+        {/* PHOTO */}
         <div className="print-photo-box">
-          <div className="print-photo-title">IDENTITY PHOTO</div>
+          <div className="print-photo-title">
+            IDENTITY PHOTO
+          </div>
+
           {photoSrc ? (
-            <img src={photoSrc} alt={`${personLabel} Photo`} />
+            <img
+              src={photoSrc}
+              alt={`${personLabel} Photo`}
+            />
           ) : (
-            <div className="print-no-photo">No photo stored</div>
+            <div className="print-no-photo">
+              No photo stored
+            </div>
           )}
-          <small>{formatPhotoDate(person?.liveImageCapturedAt)}</small>
+
+          <small>
+            {formatPhotoDate(
+              person?.liveImageCapturedAt
+            )}
+          </small>
         </div>
       </div>
     );
@@ -656,16 +1273,18 @@ const CustomerProfile = () => {
       {/* =====================================================
           NORMAL SCREEN VIEW
       ===================================================== */}
+
       <div className="space-y-6 max-w-6xl mx-auto font-sans print:hidden animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
-        
+
         {/* DARK HERO HEADER */}
         <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
           <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+
           <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
           <div className="relative z-10 p-5 sm:p-7">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              
+
               <div className="flex items-center gap-3.5">
                 <Link
                   to="/customers"
@@ -681,27 +1300,36 @@ const CustomerProfile = () => {
                       <Sparkles className="w-2.5 h-2.5 text-blue-400" />
                       Verification Record
                     </span>
-                    <span className="text-slate-600">•</span>
+
+                    <span className="text-slate-600">
+                      •
+                    </span>
+
                     <span className="text-[9px] font-bold text-slate-400">
                       ID: {customer.customerId || '—'}
                     </span>
                   </div>
 
                   <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white">
-                    {customer.fullName || 'Customer Profile'}
+                    {customer.fullName ||
+                      'Customer Profile'}
                   </h1>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() =>
+                  window.print()
+                }
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all hover:scale-[1.02] active:scale-95 shrink-0 self-start sm:self-auto"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print Customer Slip</span>
-              </button>
 
+                <span>
+                  Print Customer Slip
+                </span>
+              </button>
             </div>
           </div>
         </section>
@@ -719,6 +1347,7 @@ const CustomerProfile = () => {
               <h2 className="font-black text-sm sm:text-base">
                 {creditStatus.title}
               </h2>
+
               <p className="text-xs mt-1 font-semibold opacity-95 leading-relaxed">
                 {creditStatus.description}
               </p>
@@ -736,7 +1365,7 @@ const CustomerProfile = () => {
           isCustomer
         />
 
-        {/* ZAMANTI 1 (PRIMARY GUARANTOR) */}
+        {/* ZAMANTI 1 */}
         <IdentityCard
           title="Zamanti 1 (Primary Guarantor)"
           subtitle="First guarantor biometrics, identity & photo verification"
@@ -745,7 +1374,7 @@ const CustomerProfile = () => {
           person={guarantor1}
         />
 
-        {/* ZAMANTI 2 (SECONDARY GUARANTOR) */}
+        {/* ZAMANTI 2 */}
         <IdentityCard
           title="Zamanti 2 (Secondary Guarantor)"
           subtitle="Second guarantor biometrics, identity & photo verification"
@@ -758,6 +1387,7 @@ const CustomerProfile = () => {
         <section>
           <div className="flex items-center gap-2 mb-3.5">
             <Layers className="w-4 h-4 text-blue-600" />
+
             <h2 className="text-sm font-black text-slate-900">
               Account & Deal Summary
             </h2>
@@ -768,7 +1398,8 @@ const CustomerProfile = () => {
               title="Total Purchases"
               value={formatCurrency(
                 totalPurchased,
-                settings?.currency || 'PKR'
+                settings?.currency ||
+                  'PKR'
               )}
               icon={ShoppingBag}
               iconClass="text-blue-600"
@@ -779,7 +1410,8 @@ const CustomerProfile = () => {
               title="Outstanding Balance"
               value={formatCurrency(
                 outstandingBalance,
-                settings?.currency || 'PKR'
+                settings?.currency ||
+                  'PKR'
               )}
               icon={Clock}
               iconClass="text-rose-600"
@@ -828,6 +1460,17 @@ const CustomerProfile = () => {
           </div>
         </section>
 
+        {/* =====================================================
+            PAYMENT SCORE
+        ====================================================== */}
+
+        <PaymentScoreCard
+          paymentScore={paymentScore}
+          currency={
+            settings?.currency || 'PKR'
+          }
+        />
+
         {/* INSTALLMENT PLANS */}
         <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -835,70 +1478,100 @@ const CustomerProfile = () => {
               <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                 <CreditCard className="w-4 h-4" />
               </div>
+
               <div>
                 <h2 className="text-sm sm:text-base font-black text-slate-900">
                   Active & Completed Installment Plans
                 </h2>
-                <p className="text-[10px] text-slate-400">Customer financing records</p>
+
+                <p className="text-[10px] text-slate-400">
+                  Customer financing records
+                </p>
               </div>
             </div>
 
             <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-xs font-black">
-              {customer.installmentPlans?.length || 0} Plans
+              {customer.installmentPlans?.length ||
+                0}{' '}
+              Plans
             </span>
           </div>
 
           <div className="p-5 sm:p-6">
-            {!customer.installmentPlans || customer.installmentPlans.length === 0 ? (
+            {!customer.installmentPlans ||
+            customer.installmentPlans.length ===
+              0 ? (
               <div className="text-center py-8 text-xs font-semibold text-slate-400">
                 No active or past installment plans found.
               </div>
             ) : (
               <div className="space-y-3">
-                {customer.installmentPlans.map((plan, index) => (
-                  <div
-                    key={plan._id || index}
-                    className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 hover:bg-white hover:border-amber-200 transition-all"
-                  >
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Plan Duration
-                        </p>
-                        <p className="text-xs font-black text-slate-800 mt-0.5">
-                          {plan.duration ? `${plan.duration} Months Plan` : 'Installment Deal'}
-                        </p>
-                      </div>
+                {customer.installmentPlans.map(
+                  (plan, index) => (
+                    <div
+                      key={
+                        plan._id || index
+                      }
+                      className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 hover:bg-white hover:border-amber-200 transition-all"
+                    >
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Plan Duration
+                          </p>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Total Amount
-                        </p>
-                        <p className="text-xs font-black text-slate-800 mt-0.5">
-                          {formatCurrency(plan.totalAmount, settings?.currency || 'PKR')}
-                        </p>
-                      </div>
+                          <p className="text-xs font-black text-slate-800 mt-0.5">
+                            {plan.duration
+                              ? `${plan.duration} Months Plan`
+                              : 'Installment Deal'}
+                          </p>
+                        </div>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Paid Amount
-                        </p>
-                        <p className="text-xs font-black text-emerald-600 mt-0.5">
-                          {formatCurrency(plan.paidAmount, settings?.currency || 'PKR')}
-                        </p>
-                      </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Total Amount
+                          </p>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Remaining Due
-                        </p>
-                        <p className="text-xs font-black text-rose-600 mt-0.5">
-                          {formatCurrency(plan.remainingAmount, settings?.currency || 'PKR')}
-                        </p>
+                          <p className="text-xs font-black text-slate-800 mt-0.5">
+                            {formatCurrency(
+                              plan.totalAmount,
+                              settings?.currency ||
+                                'PKR'
+                            )}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Paid Amount
+                          </p>
+
+                          <p className="text-xs font-black text-emerald-600 mt-0.5">
+                            {formatCurrency(
+                              plan.paidAmount,
+                              settings?.currency ||
+                                'PKR'
+                            )}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Remaining Due
+                          </p>
+
+                          <p className="text-xs font-black text-rose-600 mt-0.5">
+                            {formatCurrency(
+                              plan.remainingAmount,
+                              settings?.currency ||
+                                'PKR'
+                            )}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             )}
           </div>
@@ -911,263 +1584,443 @@ const CustomerProfile = () => {
               <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                 <ShoppingBag className="w-4 h-4" />
               </div>
+
               <div>
                 <h2 className="text-sm sm:text-base font-black text-slate-900">
                   Past Purchases & Deals
                 </h2>
-                <p className="text-[10px] text-slate-400">All products purchased</p>
+
+                <p className="text-[10px] text-slate-400">
+                  All products purchased
+                </p>
               </div>
             </div>
 
             <span className="px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-black">
-              {customer.sales?.length || 0} Deals
+              {customer.sales?.length || 0}{' '}
+              Deals
             </span>
           </div>
 
           <div className="p-5 sm:p-6">
-            {!customer.sales || customer.sales.length === 0 ? (
+            {!customer.sales ||
+            customer.sales.length ===
+              0 ? (
               <div className="text-center py-8 text-xs font-semibold text-slate-400">
                 No past purchases recorded for this customer.
               </div>
             ) : (
               <div className="space-y-3">
-                {customer.sales.map((sale, index) => (
-                  <div
-                    key={sale._id || index}
-                    className="border border-slate-200 rounded-2xl p-4 hover:border-blue-200 transition-all"
-                  >
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Invoice ID
-                        </p>
-                        <p className="text-xs font-black text-indigo-600 mt-0.5">
-                          {sale.saleId || sale.invoiceNumber || sale.invoiceNo || '—'}
-                        </p>
-                      </div>
+                {customer.sales.map(
+                  (sale, index) => (
+                    <div
+                      key={
+                        sale._id || index
+                      }
+                      className="border border-slate-200 rounded-2xl p-4 hover:border-blue-200 transition-all"
+                    >
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Invoice ID
+                          </p>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Purchase Date
-                        </p>
-                        <p className="text-xs font-bold text-slate-700 mt-0.5">
-                          {formatDate(sale.saleDate || sale.createdAt || sale.date)}
-                        </p>
-                      </div>
+                          <p className="text-xs font-black text-indigo-600 mt-0.5">
+                            {sale.saleId ||
+                              sale.invoiceNumber ||
+                              sale.invoiceNo ||
+                              '—'}
+                          </p>
+                        </div>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Product
-                        </p>
-                        <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">
-                          {sale.product?.name || sale.productName || sale.itemName || '—'}
-                        </p>
-                      </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Purchase Date
+                          </p>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Deal Amount
-                        </p>
-                        <p className="text-xs font-black text-slate-900 mt-0.5">
-                          {formatCurrency(
-                            sale.finalTotal ?? sale.totalAmount ?? sale.salePrice ?? 0,
-                            settings?.currency || 'PKR'
-                          )}
-                        </p>
-                      </div>
+                          <p className="text-xs font-bold text-slate-700 mt-0.5">
+                            {formatDate(
+                              sale.saleDate ||
+                                sale.createdAt ||
+                                sale.date
+                            )}
+                          </p>
+                        </div>
 
-                      <div>
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
-                          Status
-                        </p>
-                        <span
-                          className={`inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
-                            sale.status === 'paid' || sale.paymentStatus === 'paid'
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                              : sale.status === 'overdue'
-                              ? 'bg-rose-50 border-rose-200 text-rose-700'
-                              : 'bg-amber-50 border-amber-200 text-amber-700'
-                          }`}
-                        >
-                          {sale.status || sale.paymentStatus || 'Recorded'}
-                        </span>
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Product
+                          </p>
+
+                          <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">
+                            {sale.product?.name ||
+                              sale.productName ||
+                              sale.itemName ||
+                              '—'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Deal Amount
+                          </p>
+
+                          <p className="text-xs font-black text-slate-900 mt-0.5">
+                            {formatCurrency(
+                              sale.finalTotal ??
+                                sale.totalAmount ??
+                                sale.salePrice ??
+                                0,
+                              settings?.currency ||
+                                'PKR'
+                            )}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+                            Status
+                          </p>
+
+                          <span
+                            className={`inline-flex mt-0.5 px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
+                              sale.status ===
+                                'paid' ||
+                              sale.paymentStatus ===
+                                'paid'
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                : sale.status ===
+                                  'overdue'
+                                ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                : 'bg-amber-50 border-amber-200 text-amber-700'
+                            }`}
+                          >
+                            {sale.status ||
+                              sale.paymentStatus ||
+                              'Recorded'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             )}
           </div>
         </section>
-
       </div>
 
       {/* =====================================================
           ENHANCED PRINT SLIP
       ===================================================== */}
+
       <div className="customer-print-slip">
-        
         {/* PRINT HEADER */}
         <div className="print-header">
           <div>
-            <h1>{settings?.shopName || 'Electronics Shop'}</h1>
-            <p>CUSTOMER & GUARANTOR VERIFICATION RECORD SLIP</p>
+            <h1>
+              {settings?.shopName ||
+                'Electronics Shop'}
+            </h1>
+
+            <p>
+              CUSTOMER & GUARANTOR VERIFICATION RECORD SLIP
+            </p>
+
             {settings?.shopAddress && (
-              <small>{settings.shopAddress} {settings.shopPhone ? `• Phone: ${settings.shopPhone}` : ''}</small>
+              <small>
+                {settings.shopAddress}{' '}
+                {settings.shopPhone
+                  ? `• Phone: ${settings.shopPhone}`
+                  : ''}
+              </small>
             )}
           </div>
 
           <div className="print-date">
-            <span>Customer ID: <strong>{customer.customerId || '—'}</strong></span>
-            <span>Printed Date: {printedDate}</span>
+            <span>
+              Customer ID:{' '}
+              <strong>
+                {customer.customerId ||
+                  '—'}
+              </strong>
+            </span>
+
+            <span>
+              Printed Date: {printedDate}
+            </span>
           </div>
         </div>
 
         {/* CUSTOMER PRINT */}
         <div className="print-person">
-          <div className="print-title">1. CUSTOMER PERSONAL IDENTIFICATION</div>
+          <div className="print-title">
+            1. CUSTOMER PERSONAL IDENTIFICATION
+          </div>
+
           <div className="print-content">
             <div className="print-details">
               <div>
                 <span>Customer ID</span>
-                <strong>{customer.customerId || 'N/A'}</strong>
+                <strong>
+                  {customer.customerId ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Full Name</span>
-                <strong>{customer.fullName || 'N/A'}</strong>
+                <strong>
+                  {customer.fullName ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Father Name</span>
-                <strong>{customer.fatherName || 'N/A'}</strong>
+                <strong>
+                  {customer.fatherName ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Mobile Number</span>
-                <strong>{customer.mobileNumber || 'N/A'}</strong>
+                <strong>
+                  {customer.mobileNumber ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Alternate Mobile</span>
-                <strong>{customer.alternateMobileNumber || 'N/A'}</strong>
+                <strong>
+                  {customer.alternateMobileNumber ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>CNIC Number</span>
-                <strong>{customer.cnic || 'N/A'}</strong>
+                <strong>
+                  {customer.cnic || 'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>City / Area</span>
-                <strong>{customer.city || 'N/A'}</strong>
+                <strong>
+                  {customer.city || 'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Email Address</span>
-                <strong>{customer.email || 'N/A'}</strong>
+                <strong>
+                  {customer.email || 'N/A'}
+                </strong>
               </div>
-              <div style={{ gridColumn: 'span 2' }}>
-                <span>Residential Address</span>
-                <strong>{customer.address || 'N/A'}</strong>
+
+              <div
+                style={{
+                  gridColumn: 'span 2',
+                }}
+              >
+                <span>
+                  Residential Address
+                </span>
+
+                <strong>
+                  {customer.address ||
+                    'N/A'}
+                </strong>
               </div>
             </div>
-            {renderPrintMedia(customer, 'Customer')}
+
+            {renderPrintMedia(
+              customer,
+              'Customer'
+            )}
           </div>
         </div>
 
-        {/* ZAMANTI 1 PRINT */}
+        {/* ZAMANTI 1 */}
         <div className="print-person">
-          <div className="print-title">2. ZAMANTI 1 (PRIMARY GUARANTOR)</div>
+          <div className="print-title">
+            2. ZAMANTI 1 (PRIMARY GUARANTOR)
+          </div>
+
           <div className="print-content">
             <div className="print-details">
               <div>
                 <span>Full Name</span>
-                <strong>{guarantor1.name || 'N/A'}</strong>
+                <strong>
+                  {guarantor1.name ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Father Name</span>
-                <strong>{guarantor1.fatherName || 'N/A'}</strong>
+                <strong>
+                  {guarantor1.fatherName ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Mobile Number</span>
-                <strong>{guarantor1.mobileNumber || 'N/A'}</strong>
+                <strong>
+                  {guarantor1.mobileNumber ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>CNIC Number</span>
-                <strong>{guarantor1.cnic || 'N/A'}</strong>
+                <strong>
+                  {guarantor1.cnic ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Relationship</span>
-                <strong>{guarantor1.relation || 'N/A'}</strong>
+                <strong>
+                  {guarantor1.relation ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
-                <span>Residential Address</span>
-                <strong>{guarantor1.address || 'N/A'}</strong>
+                <span>
+                  Residential Address
+                </span>
+
+                <strong>
+                  {guarantor1.address ||
+                    'N/A'}
+                </strong>
               </div>
             </div>
-            {renderPrintMedia(guarantor1, 'Zamanti 1')}
+
+            {renderPrintMedia(
+              guarantor1,
+              'Zamanti 1'
+            )}
           </div>
         </div>
 
-        {/* ZAMANTI 2 PRINT */}
+        {/* ZAMANTI 2 */}
         <div className="print-person">
-          <div className="print-title">3. ZAMANTI 2 (SECONDARY GUARANTOR)</div>
+          <div className="print-title">
+            3. ZAMANTI 2 (SECONDARY GUARANTOR)
+          </div>
+
           <div className="print-content">
             <div className="print-details">
               <div>
                 <span>Full Name</span>
-                <strong>{guarantor2.name || 'N/A'}</strong>
+                <strong>
+                  {guarantor2.name ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Father Name</span>
-                <strong>{guarantor2.fatherName || 'N/A'}</strong>
+                <strong>
+                  {guarantor2.fatherName ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Mobile Number</span>
-                <strong>{guarantor2.mobileNumber || 'N/A'}</strong>
+                <strong>
+                  {guarantor2.mobileNumber ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>CNIC Number</span>
-                <strong>{guarantor2.cnic || 'N/A'}</strong>
+                <strong>
+                  {guarantor2.cnic ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
                 <span>Relationship</span>
-                <strong>{guarantor2.relation || 'N/A'}</strong>
+                <strong>
+                  {guarantor2.relation ||
+                    'N/A'}
+                </strong>
               </div>
+
               <div>
-                <span>Residential Address</span>
-                <strong>{guarantor2.address || 'N/A'}</strong>
+                <span>
+                  Residential Address
+                </span>
+
+                <strong>
+                  {guarantor2.address ||
+                    'N/A'}
+                </strong>
               </div>
             </div>
-            {renderPrintMedia(guarantor2, 'Zamanti 2')}
+
+            {renderPrintMedia(
+              guarantor2,
+              'Zamanti 2'
+            )}
           </div>
         </div>
 
-        {/* SIGNATURES BLOCK */}
+        {/* SIGNATURES */}
         <div className="print-signatures">
           <div className="signature-box">
             <div className="signature-line" />
-            <p>Customer Signature & Thumb</p>
+            <p>
+              Customer Signature & Thumb
+            </p>
           </div>
 
           <div className="signature-box">
             <div className="signature-line" />
-            <p>Guarantor 1 Signature</p>
+            <p>
+              Guarantor 1 Signature
+            </p>
           </div>
 
           <div className="signature-box">
             <div className="signature-line" />
-            <p>Guarantor 2 Signature</p>
+            <p>
+              Guarantor 2 Signature
+            </p>
           </div>
 
           <div className="signature-box">
             <div className="signature-line" />
-            <p>Authorized Shop Stamp</p>
+            <p>
+              Authorized Shop Stamp
+            </p>
           </div>
         </div>
 
         <div className="print-footer">
-          Verified and printed from {settings?.shopName || 'Electronics Shop'} POS System.
+          Verified and printed from{' '}
+          {settings?.shopName ||
+            'Electronics Shop'}{' '}
+          POS System.
         </div>
       </div>
 
       {/* =====================================================
           PRINT CSS
       ===================================================== */}
+
       <style>{`
         .customer-print-slip {
           display: none;
@@ -1179,7 +2032,8 @@ const CustomerProfile = () => {
             margin: 6mm 8mm;
           }
 
-          html, body {
+          html,
+          body {
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;

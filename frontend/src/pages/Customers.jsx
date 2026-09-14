@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
@@ -8,8 +7,8 @@ import {
   matchesMobileSearch,
 } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
-import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
+import toast from 'react-hot-toast';
 
 import {
   Plus,
@@ -35,7 +34,6 @@ import {
   RotateCcw,
   FileText,
   Package,
-  ChevronDown,
   UserPlus,
   List,
   Contact,
@@ -43,13 +41,7 @@ import {
   ArrowRight,
   Sparkles,
   CalendarRange,
-  ShieldCheck,
-  Building2,
-  MapPin,
-  Phone,
-  Mail,
-  Receipt,
-  Check,
+  Award,
 } from 'lucide-react';
 
 const FINGERPRINT_AGENT_URL = 'http://127.0.0.1:9000';
@@ -65,8 +57,6 @@ const Customers = () => {
   // CUSTOMER SECTION
   // =====================================================
   const [activeSection, setActiveSection] = useState('list');
-  const [sectionDropdownOpen, setSectionDropdownOpen] = useState(false);
-
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerSelectorSearch, setCustomerSelectorSearch] = useState('');
 
@@ -137,10 +127,6 @@ const Customers = () => {
     },
   ];
 
-  const activeSectionInfo =
-    sectionOptions.find((item) => item.id === activeSection) ||
-    sectionOptions[1];
-
   // =====================================================
   // FETCH CUSTOMERS
   // =====================================================
@@ -171,7 +157,6 @@ const Customers = () => {
   // =====================================================
   const handleSectionChange = (section) => {
     setActiveSection(section);
-    setSectionDropdownOpen(false);
 
     if (section === 'register') {
       navigate('/customers/add');
@@ -230,7 +215,7 @@ const Customers = () => {
   };
 
   // =====================================================
-  // LOAD COMPLETE CUSTOMER PROFILE
+  // LOAD COMPLETE CUSTOMER PROFILE (LEDGER)
   // =====================================================
   const loadCompleteCustomerProfile = async (customerId) => {
     try {
@@ -383,6 +368,7 @@ const Customers = () => {
 
       setCustomerProfile({
         customer: customerData,
+        paymentScore: customerData.paymentScore || null,
         sales,
         installmentPlans: plansWithSchedules,
         payments: customerPayments,
@@ -411,10 +397,6 @@ const Customers = () => {
     } finally {
       setProfileLoading(false);
     }
-  };
-
-  const handleViewProfile = async (customerId) => {
-    await loadCompleteCustomerProfile(customerId);
   };
 
   const handleOpenLedger = async () => {
@@ -585,6 +567,7 @@ const Customers = () => {
         city: fullCustomerData.city,
         email: fullCustomerData.email,
         notes: fullCustomerData.notes,
+        paymentScore: fullCustomerData.paymentScore,
         guarantor1: fullCustomerData.guarantor1
           ? {
               name: fullCustomerData.guarantor1.name,
@@ -773,6 +756,7 @@ const Customers = () => {
     const profile = customerProfile;
     const customer = profile?.customer;
     const summary = profile?.summary || {};
+    const scoreData = profile?.paymentScore || customer?.paymentScore;
 
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 lg:p-6 animate-[pageEnter_0.25s_ease-out]">
@@ -866,6 +850,113 @@ const Customers = () => {
                     />
                   </div>
                 </section>
+
+                {/* ==================================================== */}
+                {/* CUSTOMER PAYMENT SCORE & HEALTH IN LEDGER MODAL */}
+                {/* ==================================================== */}
+                {scoreData && (
+                  <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm overflow-hidden">
+                    <SectionHeader
+                      icon={<Award className="w-4 h-4" />}
+                      title="Payment Score & Credit Health"
+                      count=""
+                    />
+
+                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
+                      
+                      {/* Score Gauge */}
+                      <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white flex flex-col justify-between shadow-md">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                              Payment Score
+                            </span>
+                            <PaymentScoreBadge paymentScore={scoreData} />
+                          </div>
+
+                          <div className="mt-4 flex items-baseline gap-2">
+                            <span className="text-4xl font-black tracking-tight text-white">
+                              {scoreData.score !== null && scoreData.score !== undefined
+                                ? scoreData.score
+                                : '—'}
+                            </span>
+                            <span className="text-xs text-slate-400 font-bold">/ 100</span>
+                          </div>
+
+                          <p className="text-xs font-semibold text-slate-300 mt-1">
+                            Status: <span className="font-black text-white">{scoreData.rating || 'No History'}</span>
+                          </p>
+                        </div>
+
+                        <div className="mt-5 space-y-1.5">
+                          <div className="w-full bg-slate-700/60 rounded-full h-2.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${
+                                scoreData.color === 'green'
+                                  ? 'bg-emerald-400'
+                                  : scoreData.color === 'blue'
+                                  ? 'bg-blue-400'
+                                  : scoreData.color === 'yellow'
+                                  ? 'bg-amber-400'
+                                  : scoreData.color === 'orange'
+                                  ? 'bg-orange-400'
+                                  : scoreData.color === 'red'
+                                  ? 'bg-rose-500'
+                                  : 'bg-slate-400'
+                              }`}
+                              style={{ width: `${Math.max(5, scoreData.score || 0)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>0 (High Risk)</span>
+                            <span>100 (Excellent)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detailed Counters */}
+                      <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <ScoreMetricCard
+                          label="On-Time Payments"
+                          value={scoreData.onTimePayments ?? 0}
+                          tone="green"
+                          subtitle="Settled on or before due date"
+                        />
+                        <ScoreMetricCard
+                          label="Late Payments"
+                          value={scoreData.latePayments ?? 0}
+                          tone="yellow"
+                          subtitle="Paid after due date"
+                        />
+                        <ScoreMetricCard
+                          label="Partial Payments"
+                          value={scoreData.partialPayments ?? 0}
+                          tone="orange"
+                          subtitle="Incomplete payment made"
+                        />
+                        <ScoreMetricCard
+                          label="Missed / Overdue"
+                          value={scoreData.missedPayments ?? 0}
+                          tone="red"
+                          subtitle="Due date passed without payment"
+                        />
+                        <ScoreMetricCard
+                          label="Avg Delay Days"
+                          value={`${scoreData.averageDelayDays ?? 0} Days`}
+                          tone={scoreData.averageDelayDays > 0 ? 'red' : 'gray'}
+                          subtitle="Average days past due date"
+                        />
+                        <ScoreMetricCard
+                          label="Total Installments"
+                          value={scoreData.totalInstallments ?? 0}
+                          tone="blue"
+                          subtitle="Total scheduled installments"
+                        />
+                      </div>
+
+                    </div>
+                  </section>
+                )}
 
                 {/* 2. CUSTOMER PERSONAL DETAILS */}
                 <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
@@ -1221,7 +1312,7 @@ const Customers = () => {
   };
 
   // =====================================================
-  // CUSTOMER SELECTOR COMPONENT (FOR DETAILS & LEDGER)
+  // CUSTOMER SELECTOR (FOR DETAILS & LEDGER TABS)
   // =====================================================
   const renderCustomerSelector = (mode) => (
     <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm p-6 space-y-5 animate-[pageEnter_0.3s_ease-out]">
@@ -1243,8 +1334,8 @@ const Customers = () => {
 
           <p className="text-xs text-slate-400 font-medium mt-1">
             {mode === 'details'
-              ? 'Select a registered customer to view profile information, guarantors, and printable slips.'
-              : 'Load customer financial history including invoices, installment schedules, returns, and dues.'}
+              ? 'Select a registered customer to view profile information, guarantors, payment score, and printable slips.'
+              : 'Load customer financial history including invoices, installment schedules, score breakdown, returns, and dues.'}
           </p>
         </div>
       </div>
@@ -1279,14 +1370,19 @@ const Customers = () => {
 
       {selectedCustomer && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/5 via-violet-500/5 to-transparent border border-blue-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-[pageEnter_0.2s_ease-out]">
-          <div>
-            <span className="text-[9px] uppercase tracking-widest font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-              Selected Profile
-            </span>
-            <h4 className="text-base font-black text-slate-900 mt-1.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] uppercase tracking-widest font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                Selected Profile
+              </span>
+              <PaymentScoreBadge paymentScore={selectedCustomer.paymentScore} />
+            </div>
+
+            <h4 className="text-base font-black text-slate-900">
               {selectedCustomer.fullName}
             </h4>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5">
+
+            <p className="text-xs text-slate-500 font-semibold">
               Customer ID: <span className="font-bold text-slate-800">{selectedCustomer.customerId || '-'}</span> • Mobile: {selectedCustomer.mobileNumber || '-'} • City: {selectedCustomer.city || '-'}
             </p>
           </div>
@@ -1416,7 +1512,7 @@ const Customers = () => {
               <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
                 <tr>
                   <th className="px-6 py-4">Cust ID</th>
-                  <th className="px-6 py-4">Full Name</th>
+                  <th className="px-6 py-4">Customer Name & Score</th>
                   <th className="px-6 py-4">Father's Name</th>
                   <th className="px-6 py-4">Mobile Number</th>
                   <th className="px-6 py-4">CNIC</th>
@@ -1440,7 +1536,7 @@ const Customers = () => {
                           : 'hover:bg-slate-50/80'
                       }`}
                     >
-                      <td className="px-6 py-4 font-black text-indigo-600 tracking-wider">
+                      <td className="px-6 py-4 font-black text-indigo-600 tracking-wider whitespace-nowrap">
                         {customer.customerId}
                         {isFingerprintMatch && (
                           <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black">
@@ -1450,19 +1546,25 @@ const Customers = () => {
                         )}
                       </td>
 
-                      <td className="px-6 py-4 font-black text-slate-900">
-                        {customer.fullName}
+                      {/* Full Name With Attached Payment Score */}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="font-black text-slate-900">
+                            {customer.fullName}
+                          </span>
+                          <PaymentScoreBadge paymentScore={customer.paymentScore} />
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 text-slate-600 font-bold">
                         {customer.fatherName || '-'}
                       </td>
 
-                      <td className="px-6 py-4 text-slate-800 font-bold">
+                      <td className="px-6 py-4 text-slate-800 font-bold whitespace-nowrap">
                         {customer.mobileNumber}
                       </td>
 
-                      <td className="px-6 py-4 text-slate-500 font-medium tracking-wide">
+                      <td className="px-6 py-4 text-slate-500 font-medium tracking-wide whitespace-nowrap">
                         {customer.cnic || '-'}
                       </td>
 
@@ -1470,7 +1572,7 @@ const Customers = () => {
                         {customer.city || '-'}
                       </td>
 
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
 
                           {/* Edit Customer */}
@@ -1524,9 +1626,7 @@ const Customers = () => {
   return (
     <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
       
-      {/* =====================================================
-          DARK HERO HEADER (Matched to Layout & Dashboard)
-      ====================================================== */}
+      {/* DARK HERO HEADER */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
         <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
         <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
@@ -1551,14 +1651,12 @@ const Customers = () => {
               </h1>
 
               <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
-                Biometric fingerprint verification, registration, profile details, and complete financial ledgers.
+                Biometric fingerprint verification, registration, payment scoring, profile details, and complete financial ledgers.
               </p>
             </div>
 
             {/* ACTION BUTTONS */}
             <div className="flex flex-wrap items-center gap-2.5">
-              
-              {/* Biometric Search */}
               <button
                 type="button"
                 onClick={handleFingerprintSearch}
@@ -1578,7 +1676,6 @@ const Customers = () => {
                 )}
               </button>
 
-              {/* Register New Customer */}
               <Link
                 to="/customers/add"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
@@ -1586,16 +1683,13 @@ const Customers = () => {
                 <Plus className="w-4 h-4" />
                 <span>Register Customer</span>
               </Link>
-
             </div>
 
           </div>
         </div>
       </section>
 
-      {/* =====================================================
-          FINGERPRINT SCANNER STATUS BANNER
-      ====================================================== */}
+      {/* FINGERPRINT SCANNER STATUS BANNER */}
       {(fingerprintSearching || fingerprintMessage || fingerprintResult) && (
         <div
           className={`rounded-2xl border p-4 sm:p-5 shadow-sm animate-[pageEnter_0.3s_ease-out] ${
@@ -1679,17 +1773,6 @@ const Customers = () => {
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-start">
-              {fingerprintResult?.matched && fingerprintResult.customer && (
-                <button
-                  type="button"
-                  onClick={() => handleViewProfile(fingerprintResult.customer._id)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-sm"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  View History
-                </button>
-              )}
-
               {!fingerprintSearching && (
                 <button
                   type="button"
@@ -1704,9 +1787,7 @@ const Customers = () => {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION NAVIGATION SWITCHER TABS
-      ====================================================== */}
+      {/* SECTION NAVIGATION SWITCHER TABS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-1.5 bg-slate-200/60 rounded-2xl border border-slate-200">
         {sectionOptions.map((item) => {
           const Icon = item.icon;
@@ -1736,9 +1817,7 @@ const Customers = () => {
         })}
       </div>
 
-      {/* =====================================================
-          RENDER TAB CONTENT
-      ====================================================== */}
+      {/* RENDER TAB CONTENT */}
       {activeSection === 'list' && renderCustomerList()}
       {activeSection === 'details' && renderCustomerSelector('details')}
       {activeSection === 'ledger' && renderCustomerSelector('ledger')}
@@ -1767,6 +1846,89 @@ const Customers = () => {
 // ======================================================
 // REUSABLE SUB-COMPONENTS
 // ======================================================
+
+// Payment Score Badge for Table, Details Selector & Profiles
+const PaymentScoreBadge = ({ paymentScore }) => {
+  if (!paymentScore || paymentScore.score === null || paymentScore.score === undefined) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border bg-slate-100 border-slate-200 text-slate-500 whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+        {paymentScore?.rating || 'No History'}
+      </span>
+    );
+  }
+
+  const { score, rating, color } = paymentScore;
+
+  let style = 'bg-slate-100 border-slate-200 text-slate-700';
+  let dotColor = 'bg-slate-400';
+
+  if (color === 'green') {
+    style = 'bg-emerald-50 border-emerald-200 text-emerald-700';
+    dotColor = 'bg-emerald-500';
+  } else if (color === 'blue') {
+    style = 'bg-blue-50 border-blue-200 text-blue-700';
+    dotColor = 'bg-blue-500';
+  } else if (color === 'yellow') {
+    style = 'bg-amber-50 border-amber-200 text-amber-700';
+    dotColor = 'bg-amber-500';
+  } else if (color === 'orange') {
+    style = 'bg-orange-50 border-orange-200 text-orange-700';
+    dotColor = 'bg-orange-500';
+  } else if (color === 'red') {
+    style = 'bg-rose-50 border-rose-200 text-rose-700';
+    dotColor = 'bg-rose-500';
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${style} whitespace-nowrap`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+      <span>{score}</span>
+      <span className="opacity-80 font-semibold">• {rating}</span>
+    </span>
+  );
+};
+
+// Metric Box for Ledger Score Breakdown
+const ScoreMetricCard = ({ label, value, tone, subtitle }) => {
+  let toneClass = 'bg-slate-50/70 border-slate-200 text-slate-900';
+  let valClass = 'text-slate-900';
+
+  if (tone === 'green') {
+    toneClass = 'bg-emerald-50/50 border-emerald-200/80';
+    valClass = 'text-emerald-700';
+  } else if (tone === 'yellow') {
+    toneClass = 'bg-amber-50/50 border-amber-200/80';
+    valClass = 'text-amber-700';
+  } else if (tone === 'orange') {
+    toneClass = 'bg-orange-50/50 border-orange-200/80';
+    valClass = 'text-orange-700';
+  } else if (tone === 'red') {
+    toneClass = 'bg-rose-50/50 border-rose-200/80';
+    valClass = 'text-rose-700';
+  } else if (tone === 'blue') {
+    toneClass = 'bg-blue-50/50 border-blue-200/80';
+    valClass = 'text-blue-700';
+  }
+
+  return (
+    <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${toneClass}`}>
+      <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p className={`text-xl font-black mt-1.5 ${valClass}`}>
+        {value}
+      </p>
+      {subtitle && (
+        <p className="text-[9px] font-medium text-slate-400 mt-1 truncate">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+};
 
 const InfoBox = ({ label, value, highlight }) => (
   <div className={`rounded-xl p-3 border transition-all ${
