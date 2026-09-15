@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import {
   NavLink,
@@ -37,11 +38,71 @@ import {
   CalendarClock,
   Sparkles,
   CircleUserRound,
+  Bot,
+  ChevronRight,
 } from 'lucide-react';
 
 
 /* =====================================================
-   REUSABLE SIDEBAR MENU ITEM
+   ICON WRAPPER
+===================================================== */
+
+const MenuIcon = ({
+  icon: Icon,
+  isActive = false,
+}) => {
+  return (
+    <div
+      className={`
+        relative
+        z-10
+        flex
+        h-10
+        w-10
+        shrink-0
+        items-center
+        justify-center
+        rounded-[14px]
+        border
+        transition-all
+        duration-300
+
+        ${
+          isActive
+            ? `
+              border-white/10
+              bg-white/15
+              text-white
+              shadow-inner
+              scale-105
+            `
+            : `
+              border-white/[0.045]
+              bg-white/[0.035]
+              text-slate-500
+              group-hover:border-blue-400/20
+              group-hover:bg-blue-500/10
+              group-hover:text-blue-300
+              group-hover:scale-105
+            `
+        }
+      `}
+    >
+      <Icon
+        className="
+          h-[19px]
+          w-[19px]
+          transition-transform
+          duration-300
+        "
+      />
+    </div>
+  );
+};
+
+
+/* =====================================================
+   SIDEBAR MENU ITEM
 ===================================================== */
 
 const SidebarMenuItem = ({
@@ -56,34 +117,31 @@ const SidebarMenuItem = ({
 
   const Icon = item.icon;
 
-
-  /* =====================================================
-     CHECK ACTIVE ROUTE
-  ===================================================== */
-
   const isSubmenuItemActive = (path) => {
     const [childPath, childQuery] = path.split('?');
 
-    if (location.pathname !== childPath) return false;
+    if (location.pathname !== childPath) {
+      return false;
+    }
 
-    // The cash-sale and installment-sale routes share a pathname, so query
-    // parameters must also match to avoid highlighting both links.
-    return !childQuery || location.search === `?${childQuery}`;
+    return (
+      !childQuery ||
+      location.search === `?${childQuery}`
+    );
   };
 
-  const isChildActive = item.children?.some((child) =>
-    isSubmenuItemActive(child.path)
+  const isChildActive = item.children?.some(
+    (child) => isSubmenuItemActive(child.path)
   );
 
-  // Keep a dropdown visibly selected as soon as it is opened. Once a submenu
-  // route is selected, the route itself keeps that parent selected as well.
   const isMenuActive = Boolean(
-    isOpen || (!isAnyMenuOpen && isChildActive)
+    isOpen ||
+    (!isAnyMenuOpen && isChildActive)
   );
 
 
   /* =====================================================
-     NORMAL NAVIGATION ITEM
+     SIMPLE MENU ITEM
   ===================================================== */
 
   if (!item.children) {
@@ -92,24 +150,30 @@ const SidebarMenuItem = ({
         to={item.path}
         end
         onClick={() => onNavigate(false)}
-        title={sidebarCollapsed ? item.name : undefined}
+        title={
+          sidebarCollapsed
+            ? item.name
+            : undefined
+        }
         className={({ isActive }) => `
           group
           relative
           flex
           items-center
-          min-h-[52px]
+          min-h-[54px]
           w-full
           overflow-hidden
-          rounded-2xl
+          rounded-[18px]
+          px-2.5
           transition-all
           duration-300
           ease-out
-          ${
-            sidebarCollapsed
-              ? 'justify-center px-2'
-              : 'gap-3 px-3.5'
+
+          ${sidebarCollapsed
+            ? 'justify-center'
+            : 'gap-3'
           }
+
           ${
             isActive && !isAnyMenuOpen
               ? `
@@ -118,8 +182,7 @@ const SidebarMenuItem = ({
                 via-indigo-600
                 to-violet-600
                 text-white
-                shadow-lg
-                shadow-blue-950/40
+                shadow-[0_10px_30px_rgba(37,99,235,0.25)]
               `
               : `
                 text-slate-400
@@ -131,116 +194,83 @@ const SidebarMenuItem = ({
       >
         {({ isActive }) => (
           <>
-            {/* Animated Background */}
-
-            {(!isActive || isAnyMenuOpen) && (
+            {!isActive && (
               <span
                 className="
                   absolute
                   inset-0
-                  translate-x-[-105%]
+                  -translate-x-full
                   bg-gradient-to-r
                   from-transparent
-                  via-white/[0.04]
+                  via-white/[0.06]
                   to-transparent
-                  group-hover:translate-x-[105%]
                   transition-transform
                   duration-700
+                  group-hover:translate-x-full
                 "
               />
             )}
 
+            {isActive &&
+              !isAnyMenuOpen &&
+              !sidebarCollapsed && (
+                <span
+                  className="
+                    absolute
+                    left-0
+                    top-1/2
+                    h-7
+                    w-[3px]
+                    -translate-y-1/2
+                    rounded-r-full
+                    bg-white
+                    shadow-[0_0_14px_rgba(255,255,255,0.8)]
+                  "
+                />
+              )}
 
-            {/* Active Left Indicator */}
-
-            {isActive && !isAnyMenuOpen && !sidebarCollapsed && (
-              <span
-                className="
-                  absolute
-                  left-0
-                  top-1/2
-                  -translate-y-1/2
-                  w-[3px]
-                  h-7
-                  rounded-r-full
-                  bg-white
-                  shadow-lg
-                  shadow-white/30
-                "
-              />
-            )}
-
-
-            {/* ICON */}
-
-            <div
-              className={`
-                relative
-                z-10
-                w-9
-                h-9
-                shrink-0
-                rounded-xl
-                flex
-                items-center
-                justify-center
-                transition-all
-                duration-300
-                ${
-                  isActive && !isAnyMenuOpen
-                    ? `
-                      bg-white/15
-                      shadow-inner
-                      scale-105
-                    `
-                    : `
-                      bg-white/[0.045]
-                      text-slate-400
-                      group-hover:text-blue-300
-                      group-hover:bg-blue-500/10
-                      group-hover:scale-105
-                    `
-                }
-              `}
-            >
-              <Icon className="w-[18px] h-[18px]" />
-            </div>
-
-
-            {/* TEXT */}
+            <MenuIcon
+              icon={Icon}
+              isActive={
+                isActive && !isAnyMenuOpen
+              }
+            />
 
             {!sidebarCollapsed && (
               <span
                 className="
                   relative
                   z-10
+                  min-w-0
                   flex-1
                   truncate
                   text-left
-                  tracking-[0.01em]
+                  text-[13px]
+                  font-semibold
+                  tracking-[-0.01em]
                 "
               >
                 {item.name}
               </span>
             )}
 
-
-            {/* Active Glow */}
-
-            {isActive && !isAnyMenuOpen && (
-              <span
-                className="
-                  absolute
-                  right-4
-                  w-1.5
-                  h-1.5
-                  rounded-full
-                  bg-white
-                  shadow-[0_0_12px_rgba(255,255,255,0.9)]
-                  animate-pulse
-                "
-              />
-            )}
+            {isActive &&
+              !isAnyMenuOpen &&
+              !sidebarCollapsed && (
+                <span
+                  className="
+                    relative
+                    z-10
+                    mr-1
+                    h-1.5
+                    w-1.5
+                    shrink-0
+                    rounded-full
+                    bg-white
+                    shadow-[0_0_12px_rgba(255,255,255,0.95)]
+                  "
+                />
+              )}
           </>
         )}
       </NavLink>
@@ -255,29 +285,33 @@ const SidebarMenuItem = ({
   return (
     <div className="relative">
 
-      {/* MAIN MENU */}
-
       <button
         type="button"
         onClick={onToggle}
-        title={sidebarCollapsed ? item.name : undefined}
+        title={
+          sidebarCollapsed
+            ? item.name
+            : undefined
+        }
         className={`
           group
           relative
           flex
-          items-center
-          min-h-[52px]
+          min-h-[54px]
           w-full
+          items-center
           overflow-hidden
-          rounded-2xl
+          rounded-[18px]
+          px-2.5
           transition-all
           duration-300
           ease-out
-          ${
-            sidebarCollapsed
-              ? 'justify-center px-2'
-              : 'gap-3 px-3.5'
+
+          ${sidebarCollapsed
+            ? 'justify-center'
+            : 'gap-3'
           }
+
           ${
             isMenuActive
               ? `
@@ -286,86 +320,55 @@ const SidebarMenuItem = ({
                 via-indigo-600
                 to-violet-600
                 text-white
-                shadow-lg
-                shadow-blue-950/40
+                shadow-[0_10px_30px_rgba(37,99,235,0.25)]
               `
               : `
                 text-slate-400
-                hover:text-white
                 hover:bg-white/[0.055]
+                hover:text-white
               `
           }
         `}
       >
-
-        {/* Hover Sweep */}
 
         {!isMenuActive && (
           <span
             className="
               absolute
               inset-0
-              translate-x-[-110%]
+              -translate-x-full
               bg-gradient-to-r
               from-transparent
-              via-white/[0.04]
+              via-white/[0.06]
               to-transparent
-              group-hover:translate-x-[110%]
               transition-transform
               duration-700
+              group-hover:translate-x-full
             "
           />
         )}
 
+        {isMenuActive &&
+          !sidebarCollapsed && (
+            <span
+              className="
+                absolute
+                left-0
+                top-1/2
+                h-7
+                w-[3px]
+                -translate-y-1/2
+                rounded-r-full
+                bg-white
+                shadow-[0_0_14px_rgba(255,255,255,0.8)]
+              "
+            />
+          )}
 
-        {/* Active Indicator */}
-
-        {isMenuActive && !sidebarCollapsed && (
-          <span
-            className="
-              absolute
-              left-0
-              top-1/2
-              -translate-y-1/2
-              w-[3px]
-              h-7
-              rounded-r-full
-              bg-white
-            "
-          />
-        )}
-
-
-        {/* ICON */}
-
-        <div
-          className={`
-            relative
-            z-10
-            w-9
-            h-9
-            shrink-0
-            rounded-xl
-            flex
-            items-center
-            justify-center
-            transition-all
-            duration-300
-            ${
-              isMenuActive
-                ? 'bg-white/15 scale-105'
-                : `
-                  bg-white/[0.045]
-                  group-hover:bg-blue-500/10
-                  group-hover:text-blue-300
-                  group-hover:scale-105
-                `
-            }
-          `}
-        >
-          <Icon className="w-[18px] h-[18px]" />
-        </div>
-
+        <MenuIcon
+          icon={Icon}
+          isActive={isMenuActive}
+        />
 
         {!sidebarCollapsed && (
           <>
@@ -373,39 +376,42 @@ const SidebarMenuItem = ({
               className="
                 relative
                 z-10
+                min-w-0
                 flex-1
                 truncate
                 text-left
+                text-[13px]
+                font-semibold
               "
             >
               {item.name}
             </span>
 
-
             <ChevronDown
               className={`
                 relative
                 z-10
-                w-4
+                mr-1
                 h-4
+                w-4
                 shrink-0
                 transition-all
                 duration-300
+
                 ${
                   isOpen
                     ? 'rotate-180 text-white'
-                    : ''
+                    : 'text-slate-600'
                 }
               `}
             />
           </>
         )}
-
       </button>
 
 
       {/* =================================================
-         EXPANDED ACCORDION
+          EXPANDED SUBMENU
       ================================================= */}
 
       {!sidebarCollapsed && (
@@ -415,6 +421,7 @@ const SidebarMenuItem = ({
             transition-all
             duration-500
             ease-[cubic-bezier(0.16,1,0.3,1)]
+
             ${
               isOpen
                 ? 'grid-rows-[1fr] opacity-100'
@@ -427,264 +434,300 @@ const SidebarMenuItem = ({
             <div
               className="
                 relative
-                mt-2
                 ml-5
-                pl-4
-                pb-1
+                mt-2
+                space-y-1
                 border-l
                 border-white/[0.07]
-                space-y-1
+                pl-4
+                pb-1
               "
             >
 
-              {item.children.map((subItem, index) => {
-                const SubIcon = subItem.icon;
-                const isSubItemActive = isSubmenuItemActive(subItem.path);
+              {item.children.map(
+                (subItem, index) => {
+                  const SubIcon = subItem.icon;
 
-                return (
-                  <NavLink
-                    key={subItem.name}
-                    to={subItem.path}
-                    end
-                    onClick={() => onNavigate(true)}
-                    style={{
-                      transitionDelay: isOpen
-                        ? `${index * 45}ms`
-                        : '0ms',
-                    }}
-                    className={() => `
-                      group
-                      relative
-                      flex
-                      items-center
-                      gap-3
-                      px-3
-                      py-2.5
-                      rounded-xl
-                      text-xs
-                      font-semibold
-                      transition-all
-                      duration-300
-                      ${
-                        isOpen
-                          ? `
-                            translate-x-0
-                            opacity-100
-                          `
-                          : `
-                            -translate-x-2
-                            opacity-0
-                          `
+                  const isSubItemActive =
+                    isSubmenuItemActive(
+                      subItem.path
+                    );
+
+                  return (
+                    <NavLink
+                      key={subItem.name}
+                      to={subItem.path}
+                      end
+                      onClick={() =>
+                        onNavigate(true)
                       }
-                      ${
-                        isSubItemActive
-                          ? `
-                            bg-blue-500/10
-                            text-blue-300
-                          `
-                          : `
-                            text-slate-500
-                            hover:text-white
-                            hover:bg-white/[0.045]
-                            hover:translate-x-1
-                          `
-                      }
-                    `}
-                  >
-                    {() => (
-                      <>
-                        {/* Active Dot */}
+                      style={{
+                        transitionDelay: isOpen
+                          ? `${index * 45}ms`
+                          : '0ms',
+                      }}
+                      className={`
+                        group
+                        relative
+                        flex
+                        items-center
+                        gap-3
+                        rounded-xl
+                        px-2.5
+                        py-2.5
+                        text-xs
+                        font-semibold
+                        transition-all
+                        duration-300
 
-                        {isSubItemActive && (
-                          <span
-                            className="
-                              absolute
-                              -left-[21px]
-                              w-2
-                              h-2
-                              rounded-full
-                              bg-blue-400
-                              shadow-[0_0_10px_rgba(96,165,250,0.9)]
-                            "
-                          />
-                        )}
+                        ${
+                          isOpen
+                            ? 'translate-x-0 opacity-100'
+                            : '-translate-x-2 opacity-0'
+                        }
 
+                        ${
+                          isSubItemActive
+                            ? `
+                              bg-blue-500/10
+                              text-blue-300
+                            `
+                            : `
+                              text-slate-500
+                              hover:bg-white/[0.045]
+                              hover:text-white
+                              hover:translate-x-1
+                            `
+                        }
+                      `}
+                    >
 
-                        {/* SUB ICON */}
+                      {isSubItemActive && (
+                        <span
+                          className="
+                            absolute
+                            -left-[21px]
+                            h-2
+                            w-2
+                            rounded-full
+                            bg-blue-400
+                            shadow-[0_0_12px_rgba(96,165,250,0.9)]
+                          "
+                        />
+                      )}
 
-                        <div
-                          className={`
-                            w-7
-                            h-7
+                      <div
+                        className={`
+                          flex
+                          h-8
+                          w-8
+                          shrink-0
+                          items-center
+                          justify-center
+                          rounded-lg
+                          border
+                          transition-all
+                          duration-300
+
+                          ${
+                            isSubItemActive
+                              ? `
+                                border-blue-400/20
+                                bg-blue-500/15
+                                text-blue-300
+                              `
+                              : `
+                                border-white/[0.04]
+                                bg-white/[0.035]
+                                text-slate-500
+                                group-hover:bg-white/[0.07]
+                                group-hover:text-slate-300
+                              `
+                          }
+                        `}
+                      >
+                        <SubIcon className="h-3.5 w-3.5" />
+                      </div>
+
+                      <span className="truncate">
+                        {subItem.name}
+                      </span>
+
+                      {isSubItemActive && (
+                        <ChevronRight
+                          className="
+                            ml-auto
+                            h-3.5
+                            w-3.5
                             shrink-0
-                            rounded-lg
-                            flex
-                            items-center
-                            justify-center
-                            transition-all
-                            duration-300
-                            ${
-                              isSubItemActive
-                                ? `
-                                  bg-blue-500/15
-                                  text-blue-300
-                                `
-                                : `
-                                  bg-white/[0.035]
-                                  text-slate-500
-                                  group-hover:bg-white/[0.07]
-                                  group-hover:text-slate-300
-                                `
-                            }
-                          `}
-                        >
-                          <SubIcon className="w-3.5 h-3.5" />
-                        </div>
-
-
-                        <span className="truncate">
-                          {subItem.name}
-                        </span>
-                      </>
-                    )}
-                  </NavLink>
-                );
-              })}
+                            text-blue-300
+                          "
+                        />
+                      )}
+                    </NavLink>
+                  );
+                }
+              )}
 
             </div>
-
           </div>
         </div>
       )}
 
 
       {/* =================================================
-         COLLAPSED FLOATING MENU
+          COLLAPSED SUBMENU
       ================================================= */}
 
       {sidebarCollapsed && isOpen && (
         <div
           className="
             absolute
-            left-[68px]
+            left-[70px]
             top-0
+            z-50
             w-64
-            p-2.5
+            origin-left
             rounded-2xl
-            bg-slate-950/95
-            backdrop-blur-2xl
             border
             border-white/[0.08]
+            bg-[#0a0f1d]
+            p-2.5
             shadow-2xl
-            shadow-black/50
-            z-50
-            origin-left
+            shadow-black/60
             animate-[menuPop_0.25s_cubic-bezier(0.16,1,0.3,1)]
           "
         >
 
           <div
             className="
-              px-3
-              py-3
               mb-2
               rounded-xl
+              border
+              border-white/[0.05]
               bg-gradient-to-r
               from-blue-500/10
               to-violet-500/10
-              border
-              border-white/[0.05]
+              px-3
+              py-3
             "
           >
 
-            <p className="text-xs font-black text-white">
-              {item.name}
-            </p>
+            <div className="flex items-center gap-2">
 
-            <p className="text-[10px] text-slate-500 mt-1">
-              {item.description}
-            </p>
+              <div
+                className="
+                  flex
+                  h-8
+                  w-8
+                  items-center
+                  justify-center
+                  rounded-lg
+                  bg-blue-500/10
+                  text-blue-300
+                "
+              >
+                <Icon className="h-4 w-4" />
+              </div>
 
+              <div className="min-w-0">
+                <p className="text-xs font-black text-white">
+                  {item.name}
+                </p>
+
+                <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                  {item.description}
+                </p>
+              </div>
+
+            </div>
           </div>
 
 
           <div className="space-y-1">
 
-            {item.children.map((subItem) => {
-              const SubIcon = subItem.icon;
-              const isSubItemActive = isSubmenuItemActive(subItem.path);
+            {item.children.map(
+              (subItem) => {
+                const SubIcon = subItem.icon;
 
-              return (
-                <NavLink
-                  key={subItem.name}
-                  to={subItem.path}
-                  end
-                  onClick={() => onNavigate(true)}
-                  className={() => `
-                    group
-                    flex
-                    items-center
-                    gap-3
-                    px-3
-                    py-2.5
-                    rounded-xl
-                    text-xs
-                    font-semibold
-                    transition-all
-                    duration-300
-                    ${
-                      isSubItemActive
-                        ? `
-                          bg-gradient-to-r
-                          from-blue-600
-                          to-violet-600
-                          text-white
-                          shadow-lg
-                          shadow-blue-950/30
-                        `
-                        : `
-                          text-slate-400
-                          hover:text-white
-                          hover:bg-white/[0.05]
-                        `
+                const isSubItemActive =
+                  isSubmenuItemActive(
+                    subItem.path
+                  );
+
+                return (
+                  <NavLink
+                    key={subItem.name}
+                    to={subItem.path}
+                    end
+                    onClick={() =>
+                      onNavigate(true)
                     }
-                  `}
-                >
-                  {() => (
-                    <>
-                      <div
-                        className={`
-                          w-8
-                          h-8
-                          rounded-lg
-                          flex
-                          items-center
-                          justify-center
-                          transition-all
-                          ${
-                            isSubItemActive
-                              ? 'bg-white/15'
-                              : 'bg-white/[0.04] group-hover:bg-white/[0.08]'
-                          }
-                        `}
-                      >
-                        <SubIcon className="w-4 h-4" />
-                      </div>
+                    className={`
+                      group
+                      flex
+                      items-center
+                      gap-3
+                      rounded-xl
+                      px-3
+                      py-2.5
+                      text-xs
+                      font-semibold
+                      transition-all
+                      duration-300
 
-                      <span>
-                        {subItem.name}
-                      </span>
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
+                      ${
+                        isSubItemActive
+                          ? `
+                            bg-gradient-to-r
+                            from-blue-600
+                            to-violet-600
+                            text-white
+                            shadow-lg
+                            shadow-blue-950/30
+                          `
+                          : `
+                            text-slate-400
+                            hover:bg-white/[0.05]
+                            hover:text-white
+                          `
+                      }
+                    `}
+                  >
+
+                    <div
+                      className={`
+                        flex
+                        h-8
+                        w-8
+                        shrink-0
+                        items-center
+                        justify-center
+                        rounded-lg
+                        transition-all
+
+                        ${
+                          isSubItemActive
+                            ? 'bg-white/15'
+                            : 'bg-white/[0.04] group-hover:bg-white/[0.08]'
+                        }
+                      `}
+                    >
+                      <SubIcon className="h-4 w-4" />
+                    </div>
+
+                    <span className="truncate">
+                      {subItem.name}
+                    </span>
+
+                  </NavLink>
+                );
+              }
+            )}
 
           </div>
-
         </div>
       )}
-
     </div>
   );
 };
@@ -698,13 +741,7 @@ export const Layout = ({ children }) => {
 
   const { admin, logout } = useAuth();
   const { settings } = useSettings();
-
   const navigate = useNavigate();
-
-
-  /* =====================================================
-     STATES
-  ===================================================== */
 
   const [mobileOpen, setMobileOpen] =
     useState(false);
@@ -720,15 +757,18 @@ export const Layout = ({ children }) => {
 
 
   /* =====================================================
-     ESC KEY
+     KEYBOARD
   ===================================================== */
 
   useEffect(() => {
+
     const handleKeyDown = (event) => {
+
       if (event.key === 'Escape') {
         setMobileOpen(false);
         setOpenMenu(null);
       }
+
     };
 
     window.addEventListener(
@@ -736,12 +776,12 @@ export const Layout = ({ children }) => {
       handleKeyDown
     );
 
-    return () => {
+    return () =>
       window.removeEventListener(
         'keydown',
         handleKeyDown
       );
-    };
+
   }, []);
 
 
@@ -755,6 +795,7 @@ export const Layout = ({ children }) => {
 
 
   const confirmLogout = async () => {
+
     await logout();
 
     setLogoutModalOpen(false);
@@ -767,7 +808,10 @@ export const Layout = ({ children }) => {
      NAVIGATION
   ===================================================== */
 
-  const handleNavigation = (keepMenuOpen = false) => {
+  const handleNavigation = (
+    keepMenuOpen = false
+  ) => {
+
     setMobileOpen(false);
 
     if (!keepMenuOpen) {
@@ -777,11 +821,13 @@ export const Layout = ({ children }) => {
 
 
   const toggleMenu = (menuName) => {
+
     setOpenMenu((currentMenu) =>
       currentMenu === menuName
         ? null
         : menuName
     );
+
   };
 
 
@@ -795,6 +841,12 @@ export const Layout = ({ children }) => {
       name: 'Dashboard',
       path: '/dashboard',
       icon: LayoutDashboard,
+    },
+
+    {
+      name: 'Shop Assistant',
+      path: '/assistant',
+      icon: Bot,
     },
 
     {
@@ -815,26 +867,31 @@ export const Layout = ({ children }) => {
       description: 'Customer Management',
 
       children: [
+
         {
           name: 'Register Customers',
           path: '/customers/add',
           icon: UserPlus,
         },
+
         {
           name: 'Customers List',
           path: '/customers',
           icon: List,
         },
+
         {
           name: 'Customers Details',
           path: '/customers/details',
           icon: UserRound,
         },
+
         {
           name: 'Customers Ledger',
           path: '/customers/ledger',
           icon: BookOpen,
         },
+
       ],
     },
 
@@ -844,16 +901,19 @@ export const Layout = ({ children }) => {
       description: 'Cash Sales Management',
 
       children: [
+
         {
           name: 'Sales History',
           path: '/sales',
           icon: ShoppingCart,
         },
+
         {
           name: 'New Cash Sale',
           path: '/sales/new?type=cash',
           icon: Banknote,
         },
+
       ],
     },
 
@@ -863,16 +923,19 @@ export const Layout = ({ children }) => {
       description: 'Installment Management',
 
       children: [
+
         {
           name: 'Installment Sales',
           path: '/installments',
           icon: Layers,
         },
+
         {
           name: 'New Installment Sale',
           path: '/sales/new?type=installment',
           icon: CalendarClock,
         },
+
       ],
     },
 
@@ -922,7 +985,7 @@ export const Layout = ({ children }) => {
 
 
   /* =====================================================
-     SIDEBAR CONTENT
+     SIDEBAR
   ===================================================== */
 
   const sidebarContent = (
@@ -931,32 +994,27 @@ export const Layout = ({ children }) => {
       className="
         relative
         flex
-        flex-col
         h-full
+        flex-col
         overflow-hidden
+        bg-[#070b16]
         text-white
-        bg-gradient-to-b
-        from-[#080d1b]
-        via-[#0b1020]
-        to-[#060913]
       "
     >
 
-
-      {/* AMBIENT BACKGROUND GLOWS */}
+      {/* BACKGROUND EFFECTS */}
 
       <div
         className="
           pointer-events-none
           absolute
-          -top-40
           -left-32
-          w-80
-          h-80
+          -top-40
+          h-96
+          w-96
           rounded-full
-          bg-blue-600/10
+          bg-blue-600/[0.10]
           blur-3xl
-          animate-pulse
         "
       />
 
@@ -964,19 +1022,19 @@ export const Layout = ({ children }) => {
         className="
           pointer-events-none
           absolute
-          top-1/3
           -right-40
-          w-80
-          h-80
+          top-1/3
+          h-96
+          w-96
           rounded-full
-          bg-violet-600/10
+          bg-violet-600/[0.08]
           blur-3xl
         "
       />
 
 
       {/* =================================================
-         BRAND
+          BRAND
       ================================================= */}
 
       <div
@@ -986,8 +1044,7 @@ export const Layout = ({ children }) => {
           shrink-0
           border-b
           border-white/[0.06]
-          transition-all
-          duration-300
+
           ${
             sidebarCollapsed
               ? 'p-3'
@@ -1002,13 +1059,12 @@ export const Layout = ({ children }) => {
 
             <div
               className="
-                relative
-                w-11
-                h-11
-                rounded-2xl
                 flex
+                h-11
+                w-11
                 items-center
                 justify-center
+                rounded-2xl
                 bg-gradient-to-br
                 from-blue-500
                 via-indigo-500
@@ -1017,25 +1073,13 @@ export const Layout = ({ children }) => {
                 shadow-blue-950/50
               "
             >
-
-              <div
+              <ShieldCheck
                 className="
-                  absolute
-                  inset-0
-                  rounded-2xl
-                  bg-white/10
-                  animate-pulse
+                  h-5
+                  w-5
+                  text-white
                 "
               />
-
-              <ShieldCheck className="
-                relative
-                z-10
-                w-5
-                h-5
-                text-white
-              " />
-
             </div>
 
           </div>
@@ -1046,14 +1090,13 @@ export const Layout = ({ children }) => {
 
             <div
               className="
-                relative
-                w-11
-                h-11
-                shrink-0
-                rounded-2xl
                 flex
+                h-11
+                w-11
+                shrink-0
                 items-center
                 justify-center
+                rounded-2xl
                 bg-gradient-to-br
                 from-blue-500
                 via-indigo-500
@@ -1062,81 +1105,42 @@ export const Layout = ({ children }) => {
                 shadow-blue-950/50
               "
             >
-
-              <ShieldCheck className="
-                relative
-                z-10
-                w-5
-                h-5
-                text-white
-              " />
-
+              <ShieldCheck
+                className="
+                  h-5
+                  w-5
+                  text-white
+                "
+              />
             </div>
-
 
             <div className="min-w-0">
 
               <h2
                 className="
+                  truncate
                   text-sm
                   font-black
                   tracking-tight
                   text-white
-                  truncate
                 "
               >
-                {settings?.shopName || 'Electronics Shop'}
+                {settings?.shopName ||
+                  'Electronics Shop'}
               </h2>
 
-
-              <div className="
-                flex
-                items-center
-                gap-2
-                mt-1
-              ">
-
-                <span className="
-                  relative
-                  flex
-                  w-2
-                  h-2
-                ">
-
-                  <span className="
-                    absolute
-                    inline-flex
-                    w-full
-                    h-full
-                    rounded-full
-                    bg-emerald-400
-                    opacity-70
-                    animate-ping
-                  " />
-
-                  <span className="
-                    relative
-                    inline-flex
-                    w-2
-                    h-2
-                    rounded-full
-                    bg-emerald-400
-                  " />
-
-                </span>
-
-
-                <span className="
+              <p
+                className="
+                  mt-1.5
                   text-[10px]
+                  font-bold
                   uppercase
                   tracking-[0.14em]
-                  font-bold
                   text-slate-500
-                ">
-                  Admin Console
-                </span>
-
-              </div>
+                "
+              >
+                Admin Console
+              </p>
 
             </div>
 
@@ -1148,7 +1152,7 @@ export const Layout = ({ children }) => {
 
 
       {/* =================================================
-         NAVIGATION
+          NAVIGATION
       ================================================= */}
 
       <nav
@@ -1157,12 +1161,11 @@ export const Layout = ({ children }) => {
           z-10
           flex-1
           overflow-y-auto
-          transition-all
-          duration-300
+
           ${
             sidebarCollapsed
               ? 'p-2.5'
-              : 'p-3.5'
+              : 'p-3'
           }
         `}
       >
@@ -1171,29 +1174,44 @@ export const Layout = ({ children }) => {
 
           <div
             className="
+              mb-3
               flex
               items-center
               gap-2
-              px-3
-              pt-1
-              pb-3
+              px-2.5
             "
           >
 
-            <Sparkles className="
-              w-3
-              h-3
-              text-blue-400
-            " />
+            <div
+              className="
+                flex
+                h-6
+                w-6
+                items-center
+                justify-center
+                rounded-lg
+                bg-blue-500/10
+              "
+            >
+              <Sparkles
+                className="
+                  h-3.5
+                  w-3.5
+                  text-blue-400
+                "
+              />
+            </div>
 
-            <p className="
-              text-[10px]
-              font-black
-              uppercase
-              tracking-[0.18em]
-              text-slate-600
-            ">
-              Navigation
+            <p
+              className="
+                text-[9px]
+                font-black
+                uppercase
+                tracking-[0.18em]
+                text-slate-600
+              "
+            >
+              Main Menu
             </p>
 
           </div>
@@ -1208,13 +1226,21 @@ export const Layout = ({ children }) => {
             <SidebarMenuItem
               key={item.name}
               item={item}
-              sidebarCollapsed={sidebarCollapsed}
-              isOpen={openMenu === item.name}
-              isAnyMenuOpen={Boolean(openMenu)}
+              sidebarCollapsed={
+                sidebarCollapsed
+              }
+              isOpen={
+                openMenu === item.name
+              }
+              isAnyMenuOpen={
+                Boolean(openMenu)
+              }
               onToggle={() =>
                 toggleMenu(item.name)
               }
-              onNavigate={handleNavigation}
+              onNavigate={
+                handleNavigation
+              }
             />
 
           ))}
@@ -1225,7 +1251,7 @@ export const Layout = ({ children }) => {
 
 
       {/* =================================================
-         USER PANEL
+          USER PANEL
       ================================================= */}
 
       <div
@@ -1235,12 +1261,11 @@ export const Layout = ({ children }) => {
           shrink-0
           border-t
           border-white/[0.06]
-          transition-all
-          duration-300
+
           ${
             sidebarCollapsed
               ? 'p-2.5'
-              : 'p-3.5'
+              : 'p-3'
           }
         `}
       >
@@ -1249,145 +1274,130 @@ export const Layout = ({ children }) => {
 
           <button
             onClick={handleLogoutClick}
-            title={`Logout ${admin?.email || ''}`}
+            title={`Logout ${
+              admin?.email || ''
+            }`}
             className="
               group
-              relative
-              w-full
-              h-11
               flex
+              h-11
+              w-full
               items-center
               justify-center
               rounded-2xl
-              text-slate-500
               bg-white/[0.025]
-              hover:text-rose-400
-              hover:bg-rose-500/10
+              text-slate-500
               transition-all
               duration-300
+              hover:bg-rose-500/10
+              hover:text-rose-400
             "
           >
-
             <LogOut
               className="
-                w-[18px]
                 h-[18px]
+                w-[18px]
                 transition-transform
                 duration-300
                 group-hover:translate-x-0.5
               "
             />
-
           </button>
 
         ) : (
 
           <div
             className="
-              p-3
               rounded-2xl
-              bg-white/[0.035]
               border
               border-white/[0.06]
-              backdrop-blur-sm
+              bg-white/[0.035]
+              p-3
             "
           >
 
-            <div className="
-              flex
-              items-center
-              gap-3
-            ">
-
-
-              {/* USER AVATAR */}
+            <div className="flex items-center gap-3">
 
               <div
                 className="
-                  w-10
-                  h-10
-                  shrink-0
-                  rounded-xl
                   flex
+                  h-10
+                  w-10
+                  shrink-0
                   items-center
                   justify-center
-                  bg-gradient-to-br
-                  from-blue-500/20
-                  to-violet-500/20
+                  rounded-xl
                   border
-                  border-white/[0.06]
+                  border-blue-400/10
+                  bg-blue-500/10
                 "
               >
-
                 <CircleUserRound
                   className="
-                    w-[19px]
                     h-[19px]
+                    w-[19px]
                     text-blue-300
                   "
                 />
-
               </div>
-
 
               <div className="min-w-0 flex-1">
 
-                <p className="
-                  text-[9px]
-                  uppercase
-                  tracking-wider
-                  font-black
-                  text-slate-600
-                ">
+                <p
+                  className="
+                    text-[9px]
+                    font-black
+                    uppercase
+                    tracking-wider
+                    text-slate-600
+                  "
+                >
                   Logged in as
                 </p>
 
-
-                <p className="
-                  text-xs
-                  font-bold
-                  text-slate-300
-                  truncate
-                  mt-0.5
-                ">
-                  {admin?.email || 'Administrator'}
+                <p
+                  className="
+                    mt-0.5
+                    truncate
+                    text-xs
+                    font-bold
+                    text-slate-300
+                  "
+                >
+                  {admin?.email ||
+                    'Administrator'}
                 </p>
 
               </div>
-
-
-              {/* LOGOUT */}
 
               <button
                 onClick={handleLogoutClick}
                 title="Logout"
                 className="
                   group
-                  w-9
-                  h-9
-                  shrink-0
-                  rounded-xl
                   flex
+                  h-9
+                  w-9
+                  shrink-0
                   items-center
                   justify-center
+                  rounded-xl
                   text-slate-500
-                  hover:text-rose-400
-                  hover:bg-rose-500/10
                   transition-all
                   duration-300
+                  hover:bg-rose-500/10
+                  hover:text-rose-400
                 "
               >
-
                 <LogOut
                   className="
-                    w-4
                     h-4
+                    w-4
                     transition-transform
                     duration-300
                     group-hover:translate-x-0.5
                   "
                 />
-
               </button>
 
             </div>
@@ -1399,12 +1409,11 @@ export const Layout = ({ children }) => {
       </div>
 
     </div>
-
   );
 
 
   /* =====================================================
-     RETURN
+     MAIN LAYOUT
   ===================================================== */
 
   return (
@@ -1412,29 +1421,31 @@ export const Layout = ({ children }) => {
     <div
       className="
         relative
-        h-screen
         flex
+        h-screen
         overflow-hidden
         bg-[#f5f7fb]
       "
     >
 
-
       {/* =================================================
-         DESKTOP SIDEBAR
+          DESKTOP SIDEBAR
       ================================================= */}
 
       <aside
         className={`
           hidden
-          lg:flex
-          flex-col
-          shrink-0
           h-full
-          z-20
+          shrink-0
+          flex-col
+          lg:flex
+          z-30
+          border-r
+          border-slate-200/10
           transition-[width]
           duration-500
           ease-[cubic-bezier(0.16,1,0.3,1)]
+
           ${
             sidebarCollapsed
               ? 'w-[78px]'
@@ -1442,14 +1453,12 @@ export const Layout = ({ children }) => {
           }
         `}
       >
-
         {sidebarContent}
-
       </aside>
 
 
       {/* =================================================
-         MOBILE DRAWER
+          MOBILE DRAWER
       ================================================= */}
 
       <div
@@ -1461,23 +1470,14 @@ export const Layout = ({ children }) => {
           lg:hidden
           transition-all
           duration-300
+
           ${
             mobileOpen
-              ? `
-                opacity-100
-                visible
-              `
-              : `
-                opacity-0
-                invisible
-                pointer-events-none
-              `
+              ? 'visible opacity-100'
+              : 'invisible pointer-events-none opacity-0'
           }
         `}
       >
-
-
-        {/* BACKDROP */}
 
         <div
           onClick={() =>
@@ -1491,22 +1491,20 @@ export const Layout = ({ children }) => {
           "
         />
 
-
-        {/* DRAWER */}
-
         <div
           className={`
             relative
             flex
-            flex-col
+            h-full
             w-[300px]
             max-w-[88vw]
-            h-full
+            flex-col
             shadow-2xl
             shadow-black/60
             transition-transform
             duration-500
             ease-[cubic-bezier(0.16,1,0.3,1)]
+
             ${
               mobileOpen
                 ? 'translate-x-0'
@@ -1515,41 +1513,35 @@ export const Layout = ({ children }) => {
           `}
         >
 
-
-          {/* CLOSE */}
-
           <button
             onClick={() =>
               setMobileOpen(false)
             }
             className="
               absolute
-              top-4
               right-4
+              top-4
               z-50
-              w-9
-              h-9
-              rounded-xl
               flex
+              h-9
+              w-9
               items-center
               justify-center
-              text-slate-400
-              bg-white/[0.06]
+              rounded-xl
               border
               border-white/[0.08]
-              hover:text-white
-              hover:bg-white/[0.1]
-              hover:rotate-90
+              bg-white/[0.06]
+              text-slate-400
               transition-all
               duration-300
+              hover:rotate-90
+              hover:bg-white/[0.1]
+              hover:text-white
             "
             aria-label="Close menu"
           >
-
-            <X className="w-4 h-4" />
-
+            <X className="h-4 w-4" />
           </button>
-
 
           {sidebarContent}
 
@@ -1559,32 +1551,31 @@ export const Layout = ({ children }) => {
 
 
       {/* =================================================
-         MAIN CONTENT
+          MAIN CONTENT
       ================================================= */}
 
       <div
         className="
           relative
-          flex-1
           flex
-          flex-col
-          min-w-0
           h-screen
+          min-w-0
+          flex-1
+          flex-col
           overflow-y-auto
         "
       >
 
-
-        {/* BACKGROUND BLOBS */}
+        {/* AMBIENT BACKGROUND */}
 
         <div
           className="
             pointer-events-none
             fixed
-            top-0
             right-0
-            w-[500px]
+            top-0
             h-[500px]
+            w-[500px]
             rounded-full
             bg-blue-500/[0.035]
             blur-3xl
@@ -1597,8 +1588,8 @@ export const Layout = ({ children }) => {
             fixed
             bottom-0
             left-1/3
-            w-[400px]
             h-[400px]
+            w-[400px]
             rounded-full
             bg-violet-500/[0.025]
             blur-3xl
@@ -1606,7 +1597,9 @@ export const Layout = ({ children }) => {
         />
 
 
-        {/* LOGOUT MODAL */}
+        {/* =================================================
+            LOGOUT MODAL
+        ================================================= */}
 
         <ConfirmModal
           isOpen={logoutModalOpen}
@@ -1619,100 +1612,99 @@ export const Layout = ({ children }) => {
         />
 
 
-       <header
-  className="
-    relative
-    z-30
-    shrink-0
-    flex
-    items-center
-    justify-between
-    px-4
-    sm:px-6
-    py-4
-    bg-white
-    border-b
-    border-slate-200/70
-  "
->
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <header
+          className="
+            relative
+            z-30
+            flex
+            shrink-0
+            items-center
+            justify-between
+            border-b
+            border-slate-200/70
+            bg-white/95
+            px-4
+            py-3.5
+            backdrop-blur-xl
+            sm:px-6
+          "
+        >
+
           {/* LEFT */}
 
-          <div className="
-            flex
-            items-center
-            gap-3
-            min-w-0
-          ">
+          <div className="flex min-w-0 items-center gap-3">
 
-
-            {/* MOBILE BUTTON */}
+            {/* MOBILE */}
 
             <button
               onClick={() =>
                 setMobileOpen(true)
               }
               className="
-                lg:hidden
-                w-10
-                h-10
-                shrink-0
-                rounded-xl
                 flex
+                h-10
+                w-10
+                shrink-0
                 items-center
                 justify-center
-                text-slate-600
-                bg-white
+                rounded-xl
                 border
                 border-slate-200
+                bg-white
+                text-slate-600
                 shadow-sm
-                hover:text-blue-600
-                hover:border-blue-200
-                hover:shadow-md
-                hover:scale-[1.03]
-                active:scale-95
                 transition-all
                 duration-300
+                hover:border-blue-200
+                hover:text-blue-600
+                hover:shadow-md
+                active:scale-95
+                lg:hidden
               "
               aria-label="Open menu"
             >
-
-              <Menu className="w-5 h-5" />
-
+              <Menu className="h-5 w-5" />
             </button>
 
 
-            {/* SIDEBAR BUTTON */}
+            {/* DESKTOP COLLAPSE */}
 
             <button
               onClick={() => {
+
                 setSidebarCollapsed(
-                  (previous) => !previous
+                  (previous) =>
+                    !previous
                 );
 
                 setOpenMenu(null);
+
               }}
               className="
                 hidden
-                lg:flex
-                w-10
                 h-10
+                w-10
                 shrink-0
-                rounded-xl
                 items-center
                 justify-center
-                text-slate-500
-                bg-white
+                rounded-xl
                 border
                 border-slate-200
+                bg-white
+                text-slate-500
                 shadow-sm
-                hover:text-blue-600
-                hover:border-blue-200
-                hover:bg-blue-50
-                hover:shadow-md
-                hover:scale-[1.03]
-                active:scale-95
                 transition-all
                 duration-300
+                hover:border-blue-200
+                hover:bg-blue-50
+                hover:text-blue-600
+                hover:shadow-md
+                active:scale-95
+                lg:flex
               "
               title={
                 sidebarCollapsed
@@ -1722,9 +1714,13 @@ export const Layout = ({ children }) => {
             >
 
               {sidebarCollapsed ? (
-                <PanelLeftOpen className="w-5 h-5" />
+                <PanelLeftOpen
+                  className="h-5 w-5"
+                />
               ) : (
-                <PanelLeftClose className="w-5 h-5" />
+                <PanelLeftClose
+                  className="h-5 w-5"
+                />
               )}
 
             </button>
@@ -1734,46 +1730,32 @@ export const Layout = ({ children }) => {
 
             <div className="min-w-0">
 
-              <div className="
-                flex
-                items-center
-                gap-2
-              ">
-
-                <span className="
-                  hidden
-                  sm:block
-                  w-1.5
-                  h-1.5
-                  rounded-full
-                  bg-blue-500
-                  animate-pulse
-                " />
-
-                <p className="
+              <p
+                className="
                   text-[9px]
-                  sm:text-[10px]
+                  font-black
                   uppercase
                   tracking-[0.16em]
-                  font-black
                   text-slate-400
-                ">
-                  Management System
-                </p>
+                  sm:text-[10px]
+                "
+              >
+                Management System
+              </p>
 
-              </div>
-
-
-              <h1 className="
-                mt-0.5
-                text-base
-                sm:text-xl
-                font-black
-                tracking-tight
-                text-slate-800
-                truncate
-              ">
-                {settings?.shopName || 'Electronics Shop'}
+              <h1
+                className="
+                  mt-0.5
+                  truncate
+                  text-base
+                  font-black
+                  tracking-tight
+                  text-slate-800
+                  sm:text-xl
+                "
+              >
+                {settings?.shopName ||
+                  'Electronics Shop'}
               </h1>
 
             </div>
@@ -1781,54 +1763,87 @@ export const Layout = ({ children }) => {
           </div>
 
 
-          {/* CURRENCY CARD */}
+          {/* =================================================
+              RIGHT SIDE
+          ================================================= */}
 
-          <div
-            className="
-              group
-              flex
-              items-center
-              gap-2
-              px-3
-              sm:px-4
-              py-2.5
-              rounded-xl
-              bg-white
-              border
-              border-slate-200
-              shadow-sm
-              hover:border-blue-200
-              hover:shadow-md
-              transition-all
-              duration-300
-            "
-          >
+          <div className="flex items-center gap-2">
 
-            <span className="
-              hidden
-              sm:inline
-              text-[10px]
-              uppercase
-              tracking-wider
-              font-black
-              text-slate-400
-            ">
-              Currency
-            </span>
+            {/* CURRENCY */}
 
+            <div
+              className="
+                group
+                flex
+                items-center
+                gap-2
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                px-3
+                py-2.5
+                shadow-sm
+                transition-all
+                duration-300
+                hover:border-blue-200
+                hover:shadow-md
+                sm:px-4
+              "
+            >
 
-            <span className="
-              text-xs
-              sm:text-sm
-              font-black
-              bg-gradient-to-r
-              from-blue-600
-              to-violet-600
-              bg-clip-text
-              text-transparent
-            ">
-              {settings?.currency || 'PKR'}
-            </span>
+              <div
+                className="
+                  hidden
+                  h-7
+                  w-7
+                  items-center
+                  justify-center
+                  rounded-lg
+                  bg-blue-50
+                  sm:flex
+                "
+              >
+                <Wallet
+                  className="
+                    h-3.5
+                    w-3.5
+                    text-blue-600
+                  "
+                />
+              </div>
+
+              <span
+                className="
+                  hidden
+                  text-[10px]
+                  font-black
+                  uppercase
+                  tracking-wider
+                  text-slate-400
+                  sm:inline
+                "
+              >
+                Currency
+              </span>
+
+              <span
+                className="
+                  bg-gradient-to-r
+                  from-blue-600
+                  to-violet-600
+                  bg-clip-text
+                  text-xs
+                  font-black
+                  text-transparent
+                  sm:text-sm
+                "
+              >
+                {settings?.currency ||
+                  'PKR'}
+              </span>
+
+            </div>
 
           </div>
 
@@ -1836,13 +1851,14 @@ export const Layout = ({ children }) => {
 
 
         {/* =================================================
-           PAGE CONTENT
+            PAGE CONTENT
         ================================================= */}
 
         <main
           className="
             relative
             z-10
+            min-h-0
             flex-1
             p-4
             sm:p-5
@@ -1857,34 +1873,46 @@ export const Layout = ({ children }) => {
 
 
       {/* =================================================
-         CUSTOM CSS ANIMATIONS
+          ANIMATIONS
       ================================================= */}
 
       <style>{`
 
         @keyframes menuPop {
+
           from {
             opacity: 0;
-            transform: translateX(-8px) scale(0.97);
+            transform:
+              translateX(-8px)
+              scale(0.97);
           }
 
           to {
             opacity: 1;
-            transform: translateX(0) scale(1);
+            transform:
+              translateX(0)
+              scale(1);
           }
+
         }
+
 
         @keyframes pageEnter {
+
           from {
             opacity: 0;
-            transform: translateY(8px);
+            transform:
+              translateY(8px);
           }
 
           to {
             opacity: 1;
-            transform: translateY(0);
+            transform:
+              translateY(0);
           }
+
         }
+
 
         nav::-webkit-scrollbar {
           width: 5px;
@@ -1895,12 +1923,14 @@ export const Layout = ({ children }) => {
         }
 
         nav::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.15);
+          background:
+            rgba(148, 163, 184, 0.14);
           border-radius: 999px;
         }
 
         nav::-webkit-scrollbar-thumb:hover {
-          background: rgba(96, 165, 250, 0.35);
+          background:
+            rgba(96, 165, 250, 0.35);
         }
 
       `}</style>
@@ -1908,3 +1938,6 @@ export const Layout = ({ children }) => {
     </div>
   );
 };
+
+
+export default Layout;

@@ -2,6 +2,8 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const aiRoutes =
+  require('./routes/aiRoutes');
 
 const connectDB = require('./config/db');
 
@@ -441,6 +443,15 @@ app.use(
 app.use(
   '/api/super-admin',
   superAdminRoutes
+);
+
+// =====================================================
+// AI / SHOP ASSISTANT ROUTES
+// =====================================================
+
+app.use(
+  '/api/ai',
+  require('./routes/aiRoutes')
 );
 
 

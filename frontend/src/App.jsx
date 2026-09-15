@@ -19,6 +19,7 @@ const Login = lazy(() => import('./pages/Login'));
 const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AiAssistant = lazy(() => import('./pages/AiAssistant')); // <-- NAYA ASSISTANT PAGE IMPORT
 const SettingsPage = lazy(() => import('./pages/Settings'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const AddEditProduct = lazy(() => import('./pages/AddEditProduct'));
@@ -104,6 +105,22 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <Dashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+
+            {/* =====================================================
+                SHOP ASSISTANT ROUTING (✨ NAYA ROUTE)
+                ===================================================== */}
+
+            <Route
+              path="/assistant"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AiAssistant />
                   </Layout>
                 </ProtectedRoute>
               }

@@ -9,6 +9,8 @@ import {
   Users,
   Settings,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const API_URL = (
@@ -49,6 +51,7 @@ const SuperAdminDashboard = () => {
   const [adminEmail, setAdminEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [createPlan, setCreatePlan] = useState('Free Trial');
   const [createCompleteMonths, setCreateCompleteMonths] = useState(1);
   const [monthlyCharge, setMonthlyCharge] = useState('');
@@ -78,6 +81,7 @@ const SuperAdminDashboard = () => {
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
 
   // =====================================================
   // RESET PASSWORD MODAL
@@ -85,6 +89,8 @@ const SuperAdminDashboard = () => {
   const [passwordModal, setPasswordModal] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // =====================================================
   // CONFIRMATION MODAL
@@ -1015,13 +1021,18 @@ const SuperAdminDashboard = () => {
 
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">Admin Password *</label>
+                <div className="relative">
                 <input
-                  type="password"
+                  type={showAdminPassword ? 'text' : 'password'}
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
                 />
+                <button type="button" onClick={() => setShowAdminPassword((visible) => !visible)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-400 hover:text-blue-600" aria-label={showAdminPassword ? 'Hide password' : 'Show password'} title={showAdminPassword ? 'Hide password' : 'Show password'}>
+                  {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1295,24 +1306,34 @@ const SuperAdminDashboard = () => {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">New Password</label>
+                <div className="relative">
                 <input
-                  type="password"
+                  type={showNewPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-bold bg-slate-50 focus:bg-white"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-bold bg-slate-50 focus:bg-white"
                 />
+                <button type="button" onClick={() => setShowNewPassword((visible) => !visible)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-400 hover:text-blue-600" aria-label={showNewPassword ? 'Hide password' : 'Show password'} title={showNewPassword ? 'Hide password' : 'Show password'}>
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">Confirm Password</label>
+                <div className="relative">
                 <input
-                  type="password"
+                  type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repeat password"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-bold bg-slate-50 focus:bg-white"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-bold bg-slate-50 focus:bg-white"
                 />
+                <button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-400 hover:text-blue-600" aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} title={showConfirmPassword ? 'Hide password' : 'Show password'}>
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
               </div>
             </div>
 
@@ -1372,13 +1393,18 @@ const SuperAdminDashboard = () => {
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
                   Super Admin Password *
                 </label>
+                <div className="relative">
                 <input
-                  type="password"
+                  type={showDeletePassword ? 'text' : 'password'}
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder="Enter super admin password"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-bold bg-slate-50"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-bold bg-slate-50"
                 />
+                <button type="button" onClick={() => setShowDeletePassword((visible) => !visible)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-400 hover:text-rose-600" aria-label={showDeletePassword ? 'Hide password' : 'Show password'} title={showDeletePassword ? 'Hide password' : 'Show password'}>
+                  {showDeletePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
               </div>
             </div>
 

@@ -17,6 +17,8 @@ import {
   Building2,
   Calculator,
   ShieldCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const SettingsPage = () => {
@@ -34,6 +36,7 @@ const SettingsPage = () => {
   // Password Modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -544,15 +547,26 @@ const SettingsPage = () => {
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Security Password <span className="text-rose-500">*</span>
                 </label>
+                <div className="relative">
                 <input
-                  type="password"
+                  type={showAdminPassword ? 'text' : 'password'}
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-black bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-slate-900"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs sm:text-sm font-black bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-slate-900"
                   required
                   autoFocus
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassword((visible) => !visible)}
+                  className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-400 hover:text-blue-600"
+                  aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                  title={showAdminPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
               </div>
             </div>
 

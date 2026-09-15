@@ -1107,9 +1107,18 @@ const getDashboardStats = async (
       // Revenue
       // ------------------------------------------------------
 
-      totalRevenue +=
-        sale.finalTotal ||
-        0;
+      // Cash sales use finalTotal. For installment sales, totalWithMarkup is
+      // the signed customer agreement amount and already includes markup once.
+      // Falling back to finalTotal + markupAmount preserves older documents.
+      const baseSaleAmount = Number(sale.finalTotal || 0);
+      const markupAmount = Number(sale.markupAmount || 0);
+      const installmentAgreementAmount = Number(sale.totalWithMarkup || 0);
+
+      totalRevenue += sale.paymentType === 'Installment'
+        ? (installmentAgreementAmount > 0
+          ? installmentAgreementAmount
+          : baseSaleAmount + markupAmount)
+        : baseSaleAmount;
 
 
       // ------------------------------------------------------

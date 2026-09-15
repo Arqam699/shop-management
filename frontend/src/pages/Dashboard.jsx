@@ -629,32 +629,25 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       const purchasePrice = Number(sale.product?.purchasePrice || 0);
       const originalCost = quantity * purchasePrice;
 
-      // Base retail price
-      const baseCashPrice =
-        (Number(sale.product?.sellingPrice || 0) * quantity) ||
-        Number(sale.finalTotal || 0);
+      // Use the immutable values saved at the time of sale. Rebuilding these
+      // from the current product price or a duration-based markup can inflate
+      // old installment sales after product prices/settings are changed.
+      const baseCashPrice = Number(sale.finalTotal || 0);
 
       const downPayment = Number(sale.downPayment || 0);
-      const duration = Number(sale.installmentDuration || 0);
-
-      // Markup % based on duration
-      let markupPercent = 0;
-      if (duration === 3) markupPercent = 15;
-      else if (duration === 6) markupPercent = 25;
-      else if (duration === 12) markupPercent = 50;
-      else if (duration <= 3) markupPercent = 15;
-      else if (duration <= 6) markupPercent = 25;
-      else markupPercent = 50;
-
-      // Markup Amount on remaining principal
-      const remainingPrincipal = Math.max(0, baseCashPrice - downPayment);
-      const markupAmount = Math.round(remainingPrincipal * (markupPercent / 100));
-
-      // Customer Total Agreement Payable
-      const totalCustomerPayable = Math.max(
-        Number(sale.finalTotal || 0),
-        baseCashPrice + markupAmount
+      const duration = Number(
+        sale.selectedInstallmentDuration || sale.installmentDuration || 0
       );
+      const markupPercent = Number(sale.markupPercentage || 0);
+      const markupAmount = Number(sale.markupAmount || 0);
+      const storedTotalWithMarkup = Number(sale.totalWithMarkup || 0);
+
+      // Older records may not have totalWithMarkup; only then use the saved
+      // base amount + saved markup. Never calculate markup a second time.
+      const totalCustomerPayable =
+        storedTotalWithMarkup > 0
+          ? storedTotalWithMarkup
+          : baseCashPrice + markupAmount;
 
       // Payments against this sale
       const customerPayments = filteredPaymentsList.filter((payment) => {
@@ -679,7 +672,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       const remainingAmount = Math.max(0, totalCustomerPayable - totalReceived);
 
       // 1. Base Product Margin
-      const productBaseProfit = Math.max(0, baseCashPrice - originalCost);
+      const productBaseProfit = baseCashPrice - originalCost;
 
       // 2. Financing Markup Profit
       const markupProfit = markupAmount;
