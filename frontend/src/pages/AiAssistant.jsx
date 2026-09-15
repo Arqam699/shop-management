@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import api from '../utils/api';
 
 import {
   Bot,
@@ -144,77 +145,84 @@ export default function AiAssistant() {
     });
   }, [messages, loading]);
 
-  const handleSend = async (textToSend) => {
-    const query = (textToSend || input).trim();
+ const handleSend = async (textToSend) => {
+  const query = (textToSend || input).trim();
 
-    if (!query || loading) return;
+  if (!query || loading) return;
 
-    const userMessage = {
-      id: Date.now(),
-      sender: 'user',
-      text: query,
-    };
+  const userMessage = {
+    id: Date.now(),
+    sender: 'user',
+    text: query,
+  };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
-    setMobileMenu(false);
+  setMessages((prev) => [...prev, userMessage]);
+  setInput('');
+  setLoading(true);
+  setMobileMenu(false);
 
-    try {
-      const token = localStorage.getItem('token');
+  try {
+    const token = localStorage.getItem('token');
 
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
+    const response = await api.post(
+      '/api/ai/chat',
+      {
+        message: query,
+      },
+      {
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          message: query,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            sender: 'assistant',
-            text: data.answer,
-          },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            sender: 'assistant',
-            text:
-              data.message ||
-              'Data fetch nahi ho saka. Please dobara try karein.',
-          },
-        ]);
       }
-    } catch (error) {
+    );
+
+    const data = response.data;
+
+    if (data.success) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          sender: 'assistant',
+          text: data.answer,
+        },
+      ]);
+    } else {
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
           sender: 'assistant',
           text:
-            'Assistant server se connection nahi ho saka. Please network check karein.',
+            data.message ||
+            'Data fetch nahi ho saka. Please dobara try karein.',
         },
       ]);
-    } finally {
-      setLoading(false);
-
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
     }
-  };
+  } catch (error) {
+    console.error('AI Assistant Error:', error);
+
+    const serverMessage =
+      error?.response?.data?.message;
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now() + 1,
+        sender: 'assistant',
+        text:
+          serverMessage ||
+          'Assistant server se connection nahi ho saka. Please network check karein.',
+      },
+    ]);
+  } finally {
+    setLoading(false);
+
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  }
+};
 
   return (
     <>
