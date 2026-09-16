@@ -1161,6 +1161,24 @@ if (paymentHistoryIntent) {
     plan.action = 'report';
   }
 
+  /* ---------------- LOW STOCK ---------------- */
+
+  const lowStockIntent =
+    hasAny(text, [
+      'low stock',
+      'low-stock',
+      'kam stock',
+      'kam quantity',
+      'out of stock',
+      'out-of-stock',
+      'khatam stock',
+    ]);
+
+  if (lowStockIntent) {
+    plan.target = 'lowStock';
+    plan.action = 'report';
+  }
+
   /* ---------------- STOCK ---------------- */
 
   const stockIntent =
@@ -1853,6 +1871,26 @@ const buildCustomerInstallmentSchedule = async (
       })
       .lean();
 
+  const payments = await Payment.find({
+    shopId: shopObjId,
+    installmentPlan: { $in: planIds },
+    isArchived: { $ne: true },
+  })
+    .select('installmentPlan carryForwardAmount')
+    .lean();
+
+  const extraPaidByPlan = new Map();
+
+  payments.forEach((payment) => {
+    const planKey = String(payment.installmentPlan);
+
+    extraPaidByPlan.set(
+      planKey,
+      (extraPaidByPlan.get(planKey) || 0) +
+        safeNumber(payment.carryForwardAmount)
+    );
+  });
+
   let filtered = installments;
 
   if (dateRange) {
@@ -1897,6 +1935,16 @@ const buildCustomerInstallmentSchedule = async (
           String(plan._id)
       );
 
+    const extraPaid = extraPaidByPlan.get(
+      String(plan._id)
+    ) || 0;
+
+    if (extraPaid > 0) {
+      lines.push(
+        `Extra Paid: ${money(extraPaid)} (next installments mein adjust kiya gaya)`
+      );
+    }
+
     if (
       dateRange &&
       !planInstallments.length
@@ -1938,19 +1986,18 @@ const buildCustomerInstallmentSchedule = async (
           inst.dueDate
         );
 
-        const amount =
-          safeNumber(inst.amount);
+        const amount = safeNumber(
+          inst.originalAmount || inst.amount
+        );
 
         const remaining =
           safeNumber(
             inst.remainingAmount
           );
 
-        const paid =
-          Math.max(
-            0,
-            amount - remaining
-          );
+        const paid = safeNumber(
+          inst.paidAmount
+        ) || Math.max(0, amount - remaining);
 
         let status;
 
@@ -1999,6 +2046,28 @@ const buildCustomerInstallmentSchedule = async (
           `  🔴 Remaining: ${money(
             remaining
           )}`
+        );
+
+        let paymentSummary = 'Not paid yet';
+
+        if (paid > amount) {
+          paymentSummary = `Extra Paid: ${money(
+            paid - amount
+          )}`;
+        } else if (paid > 0 && remaining > 0) {
+          paymentSummary = `Short Paid: ${money(
+            remaining
+          )} remaining`;
+        } else if (paid > 0 && due > today) {
+          paymentSummary = `Paid in Advance: ${money(
+            paid
+          )}`;
+        } else if (remaining <= 0) {
+          paymentSummary = 'Fully Paid';
+        }
+
+        lines.push(
+          `  Payment: ${paymentSummary}`
         );
 
         lines.push(
@@ -2117,6 +2186,14 @@ const buildShopInstallmentSchedule = async (
         inst.installmentPlan
           ?.product;
 
+      const scheduledAmount = safeNumber(
+        inst.originalAmount || inst.amount
+      );
+      const paidAmount = safeNumber(inst.paidAmount);
+      const remainingAmount = safeNumber(
+        inst.remainingAmount
+      );
+
       lines.push(
         `${index + 1}. 👤 ${getCustomerName(
           customer
@@ -2143,9 +2220,23 @@ const buildShopInstallmentSchedule = async (
 
       lines.push(
         `   💰 Collect: ${money(
-          inst.remainingAmount
+          remainingAmount
         )}`
       );
+
+      lines.push(
+        `   Scheduled: ${money(scheduledAmount)} | Paid: ${money(paidAmount)}`
+      );
+
+      if (paidAmount > scheduledAmount) {
+        lines.push(
+          `   Extra Paid: ${money(paidAmount - scheduledAmount)}`
+        );
+      } else if (paidAmount > 0 && remainingAmount > 0) {
+        lines.push(
+          `   Short Paid: ${money(remainingAmount)} remaining`
+        );
+      }
 
       lines.push(
         `   📋 Installment #${
@@ -2761,9 +2852,7 @@ const buildInventoryReport = async (
     products.filter(
       (p) =>
         safeNumber(p.quantity) <=
-        safeNumber(
-          p.minStockLevel || 2
-        )
+        safeNumber(p.minStockLevel)
     );
 
   const outOfStock =
@@ -2808,9 +2897,7 @@ const buildInventoryReport = async (
         status = '❌';
       } else if (
         qty <=
-        safeNumber(
-          p.minStockLevel || 2
-        )
+        safeNumber(p.minStockLevel)
       ) {
         status = '⚠️';
       }
@@ -2838,6 +2925,66 @@ const buildInventoryReport = async (
       lines.push('');
     }
   );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   14. PRODUCT 360
+============================================================================ */
+
+const buildLowStockReport = async (shopId) => {
+  const shopObjId = toObjectId(shopId);
+
+  const products = await Product.find({
+    shopId: shopObjId,
+  })
+    .select(
+      'name title brand model sku quantity minStockLevel salePrice updatedAt'
+    )
+    .lean();
+
+  const lowStockProducts = products
+    .filter(
+      (product) =>
+        safeNumber(product.quantity) <=
+        safeNumber(product.minStockLevel)
+    )
+    .sort(
+      (first, second) =>
+        safeNumber(first.quantity) -
+        safeNumber(second.quantity)
+    );
+
+  if (!lowStockProducts.length) {
+    return [
+      '📦 LOW STOCK REPORT',
+      '✅ Every product is above its configured minimum stock level.',
+    ].join('\n');
+  }
+
+  const lines = [
+    '📦 LOW STOCK REPORT',
+    `⚠️ Products needing attention: ${lowStockProducts.length}`,
+    '',
+  ];
+
+  lowStockProducts.forEach((product, index) => {
+    const quantity = safeNumber(product.quantity);
+    const minimum = safeNumber(product.minStockLevel);
+    const status = quantity <= 0 ? 'OUT OF STOCK' : 'LOW STOCK';
+
+    lines.push(
+      `${index + 1}. ${getProductName(product)} — ${status}`
+    );
+    lines.push(
+      `   Stock: ${quantity} | Minimum: ${minimum} | Short by: ${Math.max(0, minimum - quantity)}`
+    );
+    lines.push(
+      `   SKU: ${product.sku || 'N/A'} | Sale Price: ${money(product.salePrice)}`
+    );
+    lines.push('');
+  });
 
   return lines.join('\n');
 };
@@ -2909,9 +3056,7 @@ const buildProduct360 = async (
 
   const lowStock =
     quantity <=
-    safeNumber(
-      product.minStockLevel || 2
-    );
+    safeNumber(product.minStockLevel);
 
   const lines = [
     `📱 PRODUCT 360°`,
@@ -4270,6 +4415,15 @@ if (
     /*
      * INVENTORY
      */
+    if (
+      plan.target ===
+      'lowStock'
+    ) {
+      return await buildLowStockReport(
+        shopObjId
+      );
+    }
+
     if (
       plan.target ===
       'inventory'

@@ -33,10 +33,10 @@ const handleAiChat = async (req, res) => {
     // SHOP ID
     // ========================================================
 
-    const shopId =
-      req.shopId ||
-      req.admin?.shopId ||
-      req.user?.shopId;
+    // `protect` sets this from the verified JWT admin record.
+    // Never accept a shop identifier from request data or another
+    // unverified request property for an Assistant query.
+    const shopId = req.shopId;
 
     if (!shopId) {
       return res.status(403).json({
@@ -132,10 +132,8 @@ const handleAiChat = async (req, res) => {
 
 const getAiHistory = async (req, res) => {
   try {
-    const shopId =
-      req.shopId ||
-      req.admin?.shopId ||
-      req.user?.shopId;
+    // History must use the exact same verified shop context as chat.
+    const shopId = req.shopId;
 
     if (!shopId) {
       return res.status(403).json({

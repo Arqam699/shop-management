@@ -844,7 +844,7 @@ export const Layout = ({ children }) => {
     },
 
     {
-      name: 'Shop Assistant',
+      name: ' AI Shop Assistant',
       path: '/assistant',
       icon: Bot,
     },
