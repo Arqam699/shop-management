@@ -48,6 +48,7 @@ const protect = async (req, res, next) => {
 
     req.shopId = req.admin.shopId;
 
+
     if (!req.shopId) {
       return res.status(403).json({
         success: false,

@@ -1,3 +1,19 @@
+/**
+ * ============================================================================
+ * NEXT-LEVEL SHOP AI BUSINESS INTELLIGENCE ASSISTANT
+ * ============================================================================
+ *
+ * Database-first
+ * Read-only
+ * Natural Roman Urdu / Urdu / English
+ * Customer / Product / Sale / Payment / Installment / Expense / Return
+ * Past / Present / Future date intelligence
+ * Query planner based routing
+ *
+ * IMPORTANT:
+ * This service only READS data. It does not create/update/delete anything.
+ */
+
 const mongoose = require('mongoose');
 
 const Customer = require('../models/Customer');
@@ -7,460 +23,548 @@ const Payment = require('../models/Payment');
 const Installment = require('../models/Installment');
 const InstallmentPlan = require('../models/InstallmentPlan');
 const Expense = require('../models/Expense');
+const Return = require('../models/Return');
 
-const aiTools = require('./aiTools');
+/* ============================================================================
+   1. BASIC UTILITIES
+============================================================================ */
 
-// =====================================================
-// AI TOOLS
-// =====================================================
+const extractShopId = (value) => {
+  if (!value) return null;
 
-const {
-  searchCustomers,
-  searchProducts,
-
-  getCustomerDetails,
-  getCustomerSales,
-  getCustomerInstallmentPlans,
-  getCustomerPayments,
-  getCustomerHistory,
-
-  getSalesSummary,
-  getPaymentSummary,
-
-  getOverdueInstallments,
-
-  getInventorySummary,
-  getLowStockProducts,
-
-  getProfitReport,
-} = aiTools;
-
-
-// =====================================================
-// SAFE HELPERS
-// =====================================================
-
-const toObjectId = (id) => {
-  if (!id) return null;
-
-  if (id instanceof mongoose.Types.ObjectId) {
-    return id;
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value;
   }
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return null;
+  if (
+    typeof value === 'string' &&
+    mongoose.Types.ObjectId.isValid(value.trim())
+  ) {
+    return new mongoose.Types.ObjectId(value.trim());
   }
 
-  return new mongoose.Types.ObjectId(id);
+  if (typeof value === 'object') {
+    const candidates = [
+      value.shopId,
+      value._id,
+      value.id,
+      value.shop,
+      value.shop?._id,
+      value.shop?.id,
+    ];
+
+    for (const item of candidates) {
+      const result = extractShopId(item);
+      if (result) return result;
+    }
+  }
+
+  return null;
 };
 
+const toObjectId = extractShopId;
+
+const clean = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+const normalize = (value) =>
+  clean(value)
+    .toLowerCase()
+    .replace(/[’']/g, "'");
 
 const safeNumber = (value) => {
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 };
 
-
-const money = (value) => {
-  return `Rs. ${safeNumber(value).toLocaleString('en-PK')}`;
-};
-
+const money = (value) =>
+  `Rs. ${safeNumber(value).toLocaleString('en-PK')}`;
 
 const formatDate = (value) => {
   if (!value) return 'N/A';
 
-  const date = new Date(value);
+  const d = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (Number.isNaN(d.getTime())) {
     return 'N/A';
   }
 
-  return date.toLocaleDateString('en-GB', {
+  return d.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
 };
 
+const getCustomerName = (customer) => {
+  if (!customer) return 'Walk-in Customer';
 
-// =====================================================
-// BASIC HELPERS
-// =====================================================
-
-const clean = (value) => {
-  return String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ');
-};
-
-
-const normalize = (value) => {
-  return clean(value).toLowerCase();
-};
-
-
-const uniqueById = (items = []) => {
-  const map = new Map();
-
-  for (const item of items) {
-    const id =
-      item?._id?.toString?.() ||
-      item?.id?.toString?.();
-
-    if (!id) continue;
-
-    if (!map.has(id)) {
-      map.set(id, item);
-    }
+  if (typeof customer === 'string') {
+    return customer;
   }
 
-  return Array.from(map.values());
+  return (
+    customer.fullName ||
+    customer.name ||
+    customer.customerName ||
+    [customer.firstName, customer.lastName]
+      .filter(Boolean)
+      .join(' ') ||
+    customer.customerId ||
+    'Customer'
+  );
 };
 
+const getCustomerPhone = (customer) => {
+  if (!customer || typeof customer === 'string') {
+    return 'N/A';
+  }
 
-// =====================================================
-// DATE HELPERS
-// =====================================================
+  return (
+    customer.mobileNumber ||
+    customer.phone ||
+    customer.mobile ||
+    customer.contact ||
+    customer.phoneNumber ||
+    'N/A'
+  );
+};
+
+const getProductName = (product) => {
+  if (!product) return 'Product';
+
+  if (typeof product === 'string') {
+    return product;
+  }
+
+  return (
+    product.name ||
+    product.title ||
+    product.productName ||
+    [product.brand, product.model]
+      .filter(Boolean)
+      .join(' ') ||
+    'Product'
+  );
+};
+
+const getSaleAmount = (sale) =>
+  safeNumber(
+    sale?.finalTotal ??
+      sale?.totalWithMarkup ??
+      sale?.totalAmount ??
+      sale?.grandTotal ??
+      sale?.amount
+  );
+
+const isInstallmentSale = (sale) =>
+  /install/i.test(
+    String(
+      sale?.paymentType ||
+        sale?.saleType ||
+        sale?.paymentMethod ||
+        ''
+    )
+  );
+
+const isArchivedPayment = (payment) =>
+  payment?.isArchived === true;
+
+/* ============================================================================
+   2. DATE ENGINE
+============================================================================ */
 
 const startOfDay = (date = new Date()) => {
   const d = new Date(date);
-
   d.setHours(0, 0, 0, 0);
-
   return d;
 };
-
 
 const endOfDay = (date = new Date()) => {
   const d = new Date(date);
-
   d.setHours(23, 59, 59, 999);
-
   return d;
 };
 
+const addDays = (date, amount) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + Number(amount));
+  return d;
+};
 
-const getDateRange = (query) => {
-  const text = normalize(query);
+const MONTHS = {
+  january: 0,
+  jan: 0,
+  february: 1,
+  feb: 1,
+  march: 2,
+  mar: 2,
+  april: 3,
+  apr: 3,
+  may: 4,
+  june: 5,
+  jun: 5,
+  july: 6,
+  jul: 6,
+  august: 7,
+  aug: 7,
+  september: 8,
+  sep: 8,
+  sept: 8,
+  october: 9,
+  oct: 9,
+  november: 10,
+  nov: 10,
+  december: 11,
+  dec: 11,
+};
 
+const buildRange = (start, end, label, extra = {}) => ({
+  startDate: startOfDay(start),
+  endDate: endOfDay(end),
+  label,
+  ...extra,
+});
+
+const resolveDateRange = (queryText) => {
+  const text = normalize(queryText);
   const now = new Date();
 
-  // TODAY
-  if (
-    text.includes('today') ||
-    text.includes('aaj')
-  ) {
-    return {
-      startDate: startOfDay(now),
-      endDate: endOfDay(now),
-      label: 'Today',
-    };
+  /* Explicit date: 16/09/2026, 16-09-2026, 16.09.2026 */
+  const explicit = text.match(
+    /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](20\d{2})\b/
+  );
+
+  if (explicit) {
+    const day = Number(explicit[1]);
+    const month = Number(explicit[2]) - 1;
+    const year = Number(explicit[3]);
+
+    const date = new Date(year, month, day);
+
+    if (!Number.isNaN(date.getTime())) {
+      return buildRange(
+        date,
+        date,
+        formatDate(date),
+        { isSpecificDate: true }
+      );
+    }
   }
 
-  // YESTERDAY
-  if (
-    text.includes('yesterday') ||
-    text.includes('kal')
-  ) {
-    const date = new Date(now);
+  /* ISO date */
+  const iso = text.match(
+    /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/
+  );
 
-    date.setDate(
-      date.getDate() - 1
+  if (iso) {
+    const date = new Date(
+      Number(iso[1]),
+      Number(iso[2]) - 1,
+      Number(iso[3])
     );
 
-    return {
-      startDate: startOfDay(date),
-      endDate: endOfDay(date),
-      label: 'Yesterday',
-    };
+    return buildRange(
+      date,
+      date,
+      formatDate(date),
+      { isSpecificDate: true }
+    );
   }
 
-  // THIS WEEK
+  /* Today */
   if (
-    text.includes('this week') ||
-    text.includes('is week') ||
-    text.includes('iss week') ||
-    text.includes('is haftay') ||
-    text.includes('iss haftay')
+    /\b(today|aaj|aj|aaj ka|aaj ki|aaj ke|current day|aaj wala din)\b/i.test(
+      text
+    )
+  ) {
+    return buildRange(
+      now,
+      now,
+      'Today (Aaj)',
+      { isToday: true }
+    );
+  }
+
+ /* Tomorrow / Kal */
+if (
+  /\b(kal|tomorrow|agla kal|agle kal|aane wala kal|next day)\b/i.test(text)
+) {
+  const d = addDays(now, 1);
+
+  return buildRange(
+    d,
+    d,
+    'Tomorrow (Kal)',
+    {
+      isTomorrow: true,
+      isFuture: true,
+    }
+  );
+}
+
+
+if (
+  /\b(yesterday|guzishta kal|pichla kal|guzra kal)\b/i.test(text)
+) {
+  const d = addDays(now, -1);
+
+  return buildRange(
+    d,
+    d,
+    'Yesterday (Guzishta Kal)',
+    {
+      isYesterday: true,
+      isPast: true,
+    }
+  );
+}
+
+
+  /* This week */
+  if (
+    /\b(this week|is week|iss week|is haftay|iss haftay|ye hafta)\b/i.test(
+      text
+    )
   ) {
     const start = new Date(now);
-
     const day = start.getDay();
 
-    start.setDate(
-      start.getDate() - day
+    start.setDate(start.getDate() - day);
+
+    return buildRange(
+      start,
+      now,
+      'This Week'
+    );
+  }
+
+  /* Last week */
+  if (
+    /\b(last week|pichlay haftay|pichle haftay|guzishta hafta)\b/i.test(
+      text
+    )
+  ) {
+    const currentStart = new Date(now);
+    currentStart.setDate(
+      currentStart.getDate() - currentStart.getDay()
     );
 
-    return {
-      startDate: startOfDay(start),
-      endDate: endOfDay(now),
-      label: 'This Week',
-    };
+    const start = addDays(currentStart, -7);
+    const end = addDays(start, 6);
+
+    return buildRange(
+      start,
+      end,
+      'Last Week',
+      { isPast: true }
+    );
   }
 
-  // THIS MONTH
+  /* Next week */
   if (
-    text.includes('this month') ||
-    text.includes('is month') ||
-    text.includes('iss month') ||
-    text.includes('this mahina') ||
-    text.includes('is mahine') ||
-    text.includes('iss mahine') ||
-    text.includes('month ki') ||
-    text.includes('mahine ki')
+    /\b(next week|agla hafta|agle haftay|aane wala hafta)\b/i.test(
+      text
+    )
   ) {
-    return {
-      startDate: new Date(
-        now.getFullYear(),
-        now.getMonth(),
+    const currentStart = new Date(now);
+
+    currentStart.setDate(
+      currentStart.getDate() -
+        currentStart.getDay() +
+        7
+    );
+
+    const end = addDays(currentStart, 6);
+
+    return buildRange(
+      currentStart,
+      end,
+      'Next Week',
+      { isFuture: true }
+    );
+  }
+
+  /* This month */
+  if (
+    /\b(this month|is month|iss month|is mahine|iss mahine|ye mahina)\b/i.test(
+      text
+    )
+  ) {
+    const start = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1
+    );
+
+    return buildRange(
+      start,
+      now,
+      now.toLocaleString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      })
+    );
+  }
+
+  /* Last month */
+  if (
+    /\b(last month|pichlay mahine|pichle mahine|guzishta mahina)\b/i.test(
+      text
+    )
+  ) {
+    const start = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      1
+    );
+
+    const end = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0
+    );
+
+    return buildRange(
+      start,
+      end,
+      'Last Month',
+      { isPast: true }
+    );
+  }
+
+  /* Next month */
+  if (
+    /\b(next month|agla mahina|agle mahine|aane wala mahina)\b/i.test(
+      text
+    )
+  ) {
+    const start = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      1
+    );
+
+    const end = new Date(
+      now.getFullYear(),
+      now.getMonth() + 2,
+      0
+    );
+
+    return buildRange(
+      start,
+      end,
+      'Next Month',
+      { isFuture: true }
+    );
+  }
+
+  /* Last N days */
+  const lastDays = text.match(
+    /\b(last|past|pichlay|pichle|guzishta)\s+(\d{1,3})\s*(days|day|din)?\b/i
+  );
+
+  if (lastDays) {
+    const days = Math.min(
+      Number(lastDays[2]),
+      365
+    );
+
+    return buildRange(
+      addDays(now, -days),
+      now,
+      `Last ${days} Days`,
+      { isPast: true }
+    );
+  }
+
+  /* Next N days */
+  const nextDays = text.match(
+    /\b(next|upcoming|aglay|agle|aane wale)\s+(\d{1,3})\s*(days|day|din)?\b/i
+  );
+
+  if (nextDays) {
+    const days = Math.min(
+      Number(nextDays[2]),
+      180
+    );
+
+    return buildRange(
+      addDays(now, 1),
+      addDays(now, days),
+      `Next ${days} Days`,
+      { isFuture: true }
+    );
+  }
+
+  /* Month names */
+  for (const [name, index] of Object.entries(MONTHS)) {
+    const regex = new RegExp(
+      `\\b${name}\\b(?:\\s+(20\\d{2}))?`,
+      'i'
+    );
+
+    const match = text.match(regex);
+
+    if (match) {
+      const year = match[1]
+        ? Number(match[1])
+        : now.getFullYear();
+
+      const start = new Date(
+        year,
+        index,
         1
-      ),
-      endDate: endOfDay(now),
-      label: now.toLocaleString(
-        'en-US',
-        {
+      );
+
+      const end = new Date(
+        year,
+        index + 1,
+        0
+      );
+
+      return buildRange(
+        start,
+        end,
+        start.toLocaleString('en-US', {
           month: 'long',
           year: 'numeric',
-        }
-      ),
-    };
-  }
-
-  // THIS YEAR
-  if (
-    text.includes('this year') ||
-    text.includes('is year') ||
-    text.includes('iss year') ||
-    text.includes('is saal') ||
-    text.includes('iss saal')
-  ) {
-    return {
-      startDate: new Date(
-        now.getFullYear(),
-        0,
-        1
-      ),
-      endDate: new Date(
-        now.getFullYear() + 1,
-        0,
-        1
-      ),
-      label: String(
-        now.getFullYear()
-      ),
-    };
-  }
-
-  // EXPLICIT YEAR
-  const yearMatch =
-    text.match(/\b(20\d{2})\b/);
-
-  if (yearMatch) {
-    const year =
-      Number(yearMatch[1]);
-
-    return {
-      startDate: new Date(
-        year,
-        0,
-        1
-      ),
-      endDate: new Date(
-        year + 1,
-        0,
-        1
-      ),
-      label: String(year),
-    };
+        })
+      );
+    }
   }
 
   return null;
 };
 
+/* ============================================================================
+   3. DATE FIELD BUILDERS
+============================================================================ */
 
-// =====================================================
-// KEYWORD HELPERS
-// =====================================================
+const dateOrQuery = (
+  fields,
+  range
+) => ({
+  $or: fields.map((field) => ({
+    [field]: {
+      $gte: range.startDate,
+      $lte: range.endDate,
+    },
+  })),
+});
 
-const hasAny = (
-  text,
-  words = []
-) => {
-  return words.some((word) =>
-    text.includes(word)
+const defaultTodayRange = () =>
+  buildRange(
+    new Date(),
+    new Date(),
+    'Today (Aaj)'
   );
-};
 
-
-const isBalanceQuery = (text) =>
-  hasAny(text, [
-    'balance',
-    'remaining',
-    'remain',
-    'baki',
-    'baqi',
-    'outstanding',
-    'payable',
-    'due amount',
-    'amount due',
-    'kitna baki',
-    'kitni baki',
-  ]);
-
-
-const isSalesQuery = (text) =>
-  hasAny(text, [
-    'sale',
-    'sales',
-    'sold',
-    'selling',
-    'revenue',
-    'purchase',
-    'purchases',
-    'bought',
-    'buy',
-    'khareeda',
-    'khareedi',
-    'becha',
-    'bika',
-    'sales hui',
-    'total sale',
-  ]);
-
-
-const isPaymentQuery = (text) =>
-  hasAny(text, [
-    'payment',
-    'payments',
-    'paid',
-    'pay',
-    'received',
-    'receive',
-    'jama',
-    'diya',
-    'deposit',
-    'collection',
-  ]);
-
-
-const isInstallmentQuery = (text) =>
-  hasAny(text, [
-    'installment',
-    'installments',
-    'qist',
-    'qistain',
-    'kist',
-    'kistein',
-    'installment plan',
-    'installment plans',
-    'due date',
-    'due dates',
-    'schedule',
-    'monthly',
-    'mahina',
-    'mahine',
-  ]);
-
-
-const isStockQuery = (text) =>
-  hasAny(text, [
-    'stock',
-    'inventory',
-    'quantity',
-    'available',
-    'available hai',
-    'low stock',
-    'out of stock',
-    'kitne pieces',
-    'kitni quantity',
-  ]);
-
-
-const isOverdueQuery = (text) =>
-  hasAny(text, [
-    'overdue',
-    'over due',
-    'late',
-    'late payment',
-    'default',
-    'pending due',
-    'nahi diya',
-  ]);
-
-
-const isProfitQuery = (text) =>
-  hasAny(text, [
-    'profit',
-    'profit hua',
-    'profit kitna',
-    'munafa',
-    'munafa kitna',
-    'earning',
-    'kamai',
-  ]);
-
-
-const isExpenseQuery = (text) =>
-  hasAny(text, [
-    'expense',
-    'expenses',
-    'kharcha',
-    'kharchay',
-    'kharch',
-    'rent',
-    'bijli',
-    'electricity',
-    'salary',
-    'salaries',
-  ]);
-
-
-const isUpcomingDueQuery = (text) =>
-  hasAny(text, [
-    'upcoming due',
-    'upcoming dues',
-    'due today',
-    'due tomorrow',
-    'next 7 days',
-    'next week due',
-    'aglay 7 din',
-    'agle 7 din',
-    'ane wali qist',
-    'aane wali qist',
-    'ane wali installment',
-    'aane wali installment',
-    'kal ki qist',
-    'kal ki installment',
-  ]);
-
-
-const isCustomerInfoQuery = (text) =>
-  hasAny(text, [
-    'customer',
-    'customer details',
-    'customer information',
-    'customer info',
-    'client',
-    'mobile',
-    'phone',
-    'number',
-    'cnic',
-    'address',
-    'pata',
-    'father',
-    'walid',
-    'guarantor',
-    'zamanti',
-    'customer id',
-  ]);
-
-
-// =====================================================
-// SEARCH PHRASE
-// =====================================================
+/* ============================================================================
+   4. ENTITY SEARCH
+============================================================================ */
 
 const STOP_WORDS = new Set([
   'the',
@@ -475,6 +579,7 @@ const STOP_WORDS = new Set([
   'who',
   'where',
   'when',
+  'why',
   'how',
   'much',
   'many',
@@ -488,9 +593,9 @@ const STOP_WORDS = new Set([
   'please',
   'my',
   'shop',
-  'shop mein',
   'mein',
   'mai',
+  'main',
   'ki',
   'ka',
   'ke',
@@ -505,3037 +610,3878 @@ const STOP_WORDS = new Set([
   'hain',
   'tha',
   'thi',
-  'ye',
-  'woh',
-  'wo',
+  'the',
   'kya',
   'kon',
-  'kaun',
   'kab',
   'kahan',
   'kitna',
   'kitni',
-  'kis',
   'total',
   'batao',
   'btao',
   'dikhao',
+  'dikhaye',
+  'dekhao',
   'mujhe',
   'mere',
   'meri',
   'mera',
-  'has',
-  'have',
-  'had',
-  'for',
-  'in',
-  'on',
-  'of',
-  'and',
-  'to',
-  'from',
-  'this',
-  'that',
-  'year',
-  'month',
-  'today',
-  'yesterday',
-  'week',
-  'aaj',
-  'kal',
-  'saal',
-  'mahina',
-  'mahine',
-  'iss',
-  'is',
-  'kaise',
-  'kase',
+  'record',
+  'details',
+  'hisab',
+  'hisaab',
+  'status',
+  'please',
+  'kindly',
+  'customer',
+  'customers',
+  'product',
+  'products',
+  'sale',
+  'sales',
+  'payment',
+  'payments',
+  'installment',
+  'installments',
+  'expense',
+  'expenses',
+  'stock',
+  'inventory',
 ]);
 
+const extractSearchTokens = (query) =>
+  clean(query)
+    .split(/[\s,/:;!?()[\]{}"']+/)
+    .map((x) => x.trim().toLowerCase())
+    .filter(
+      (x) =>
+        x.length >= 2 &&
+        !STOP_WORDS.has(x) &&
+        !/^\d{1,2}$/.test(x)
+    );
 
-const getSearchPhrase = (query) => {
-  const text =
-    normalize(query);
+const escapeRegex = (value) =>
+  String(value).replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&'
+  );
 
-  const words =
-    text
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter((word) => {
-        if (
-          STOP_WORDS.has(word)
-        ) {
-          return false;
-        }
+const resolveCustomer = async (
+  queryText,
+  shopId
+) => {
+  const shopObjId = toObjectId(shopId);
 
-        if (
-          /^\d{4}$/.test(word)
-        ) {
-          return false;
-        }
+  if (!shopObjId) return [];
 
-        return true;
-      });
+  const raw = clean(queryText);
 
-  return words.join(' ').trim();
-};
+  /*
+   * ------------------------------------------------------------
+   * 1. EXACT PHONE / CNIC / CUSTOMER ID
+   * ------------------------------------------------------------
+   */
 
+  const numericMatches =
+    raw.match(/\b\d{7,15}\b/g) || [];
 
-// =====================================================
-// UNIVERSAL CUSTOMER SEARCH
-// =====================================================
+  if (numericMatches.length) {
+    for (const number of numericMatches) {
+      const exact =
+        await Customer.findOne({
+          shopId: shopObjId,
+          $or: [
+            { mobileNumber: number },
+            { phone: number },
+            { mobile: number },
+            { contact: number },
+            { phoneNumber: number },
+            { cnic: number },
+            { customerId: number },
+          ],
+        }).lean();
 
-const universalCustomerSearch =
-  async (
-    message,
-    shopId
-  ) => {
-    try {
-      const phrase =
-        getSearchPhrase(
-          message
-        );
-
-      if (!phrase) {
-        return [];
+      if (exact) {
+        return [exact];
       }
-
-      let customers =
-        await searchCustomers({
-          shopId,
-          query: phrase,
-          limit: 20,
-        });
-
-      if (!customers.length) {
-        const tokens =
-          phrase
-            .split(/\s+/)
-            .filter(
-              (token) =>
-                token.length >= 2
-            )
-            .slice(0, 6);
-
-        for (
-          const token of tokens
-        ) {
-          const found =
-            await searchCustomers({
-              shopId,
-              query: token,
-              limit: 20,
-            });
-
-          customers.push(
-            ...found
-          );
-        }
-      }
-
-      return uniqueById(
-        customers
-      ).slice(0, 10);
-
-    } catch (error) {
-      console.error(
-        'Universal customer search error:',
-        error
-      );
-
-      return [];
     }
-  };
+  }
 
+  /*
+   * ------------------------------------------------------------
+   * 2. SEARCH TOKENS
+   * ------------------------------------------------------------
+   */
 
-// =====================================================
-// UNIVERSAL PRODUCT SEARCH
-// =====================================================
+  const tokens =
+    extractSearchTokens(raw);
 
-const universalProductSearch =
-  async (
-    message,
-    shopId
-  ) => {
-    try {
-      const phrase =
-        getSearchPhrase(
-          message
-        );
+  if (!tokens.length) {
+    return [];
+  }
 
-      if (!phrase) {
-        return [];
-      }
+  /*
+   * ------------------------------------------------------------
+   * 3. BUILD SEARCH REGEX
+   * ------------------------------------------------------------
+   */
 
-      let products =
-        await searchProducts({
-          shopId,
-          query: phrase,
-          limit: 20,
-        });
-
-      if (!products.length) {
-        const tokens =
-          phrase
-            .split(/\s+/)
-            .filter(
-              (token) =>
-                token.length >= 2
-            )
-            .slice(0, 6);
-
-        for (
-          const token of tokens
-        ) {
-          const found =
-            await searchProducts({
-              shopId,
-              query: token,
-              limit: 20,
-            });
-
-          products.push(
-            ...found
-          );
-        }
-      }
-
-      return uniqueById(
-        products
-      ).slice(0, 10);
-
-    } catch (error) {
-      console.error(
-        'Universal product search error:',
-        error
-      );
-
-      return [];
-    }
-  };
-
-
-// =====================================================
-// CUSTOMER SALES
-// =====================================================
-
-const getSalesForCustomer =
-  async (
-    shopId,
-    customerId,
-    dateRange = null
-  ) => {
-
-    const shopObjectId =
-      toObjectId(shopId);
-
-    const customerObjectId =
-      toObjectId(customerId);
-
-    if (
-      !shopObjectId ||
-      !customerObjectId
-    ) {
-      return [];
-    }
-
-    const query = {
-      shopId: shopObjectId,
-      customer:
-        customerObjectId,
-    };
-
-    if (dateRange) {
-      query.saleDate = {
-        $gte:
-          dateRange.startDate,
-        $lt:
-          dateRange.endDate,
-      };
-    }
-
-    return Sale.find(query)
-      .sort({
-        saleDate: -1,
-      })
-      .limit(30)
-
-      // IMPORTANT:
-      // Full product details
-      .populate(
-        'product',
-        'name brand model category sku serialNumber imei chassisNumber purchasePrice salePrice quantity minStockLevel status supplier warrantyPeriod description'
-      )
-
-      .lean();
-  };
-
-
-// =====================================================
-// CUSTOMER PAYMENTS
-// =====================================================
-
-const getPaymentsForCustomer =
-  async (
-    shopId,
-    customerId,
-    dateRange = null
-  ) => {
-
-    const shopObjectId =
-      toObjectId(shopId);
-
-    const customerObjectId =
-      toObjectId(customerId);
-
-    if (
-      !shopObjectId ||
-      !customerObjectId
-    ) {
-      return [];
-    }
-
-    const query = {
-      shopId: shopObjectId,
-      customer:
-        customerObjectId,
-      isArchived: {
-        $ne: true,
-      },
-    };
-
-    if (dateRange) {
-      query.paymentDate = {
-        $gte:
-          dateRange.startDate,
-        $lt:
-          dateRange.endDate,
-      };
-    }
-
-    return Payment.find(query)
-      .sort({
-        paymentDate: -1,
-      })
-      .limit(30)
-
-      .populate(
-        'installment',
-        'installmentNumber amount paidAmount remainingAmount dueDate status'
-      )
-
-      .populate(
-        'sale',
-        'saleId finalTotal totalWithMarkup remainingBalance paymentType product'
-      )
-
-      .lean();
-  };
-
-
-// =====================================================
-// CUSTOMER INSTALLMENTS
-// =====================================================
-
-const getInstallmentsForCustomer =
-  async (
-    shopId,
-    customerId
-  ) => {
-
-    const shopObjectId =
-      toObjectId(shopId);
-
-    const customerObjectId =
-      toObjectId(customerId);
-
-    if (
-      !shopObjectId ||
-      !customerObjectId
-    ) {
-      return [];
-    }
-
-    // Get plans directly so we can GUARANTEE
-    // product details are included.
-    const plans =
-      await InstallmentPlan.find({
-        shopId: shopObjectId,
-        customer:
-          customerObjectId,
-      })
-        .sort({
-          createdAt: -1,
-        })
-        .lean();
-
-    if (!plans.length) {
-      return [];
-    }
-
-    const planIds =
-      plans.map(
-        (plan) => plan._id
-      );
-
-    const installments =
-      await Installment.find({
-        shopId: shopObjectId,
-        installmentPlan: {
-          $in: planIds,
-        },
-      })
-        .sort({
-          installmentNumber: 1,
-        })
-        .lean();
-
-    // Get product IDs from plans
-    const productIds =
-      plans
-        .map((plan) =>
-          toObjectId(
-            plan.product
-          )
+  const regexes =
+    tokens.map(
+      (token) =>
+        new RegExp(
+          escapeRegex(token),
+          'i'
         )
-        .filter(Boolean);
+    );
 
-    const products =
-      productIds.length
-        ? await Product.find({
-            shopId: shopObjectId,
-            _id: {
-              $in: productIds,
-            },
-          })
-            .select(
-              'name brand model category sku serialNumber imei chassisNumber purchasePrice salePrice quantity minStockLevel status supplier warrantyPeriod description'
-            )
-            .lean()
-        : [];
+  /*
+   * ------------------------------------------------------------
+   * 4. GET CANDIDATES
+   * ------------------------------------------------------------
+   */
 
-    const productMap =
-      new Map(
-        products.map(
-          (product) => [
-            String(
-              product._id
-            ),
-            product,
+  const candidates =
+    await Customer.find({
+      shopId: shopObjId,
+      $or: regexes.flatMap(
+        (regex) => [
+          { fullName: regex },
+          { name: regex },
+          { customerName: regex },
+          { customerId: regex },
+          { mobileNumber: regex },
+          { phone: regex },
+          { mobile: regex },
+          { cnic: regex },
+        ]
+      ),
+    })
+      .limit(50)
+      .lean();
+
+  if (!candidates.length) {
+    return [];
+  }
+
+  /*
+   * ------------------------------------------------------------
+   * 5. SCORE EACH CUSTOMER
+   * ------------------------------------------------------------
+   *
+   * Exact token matches get higher score.
+   * This prevents random customers from winning.
+   */
+
+  const scored =
+    candidates.map(
+      (customer) => {
+        const searchable = normalize(
+          [
+            customer.fullName,
+            customer.name,
+            customer.customerName,
+            customer.customerId,
+            customer.mobileNumber,
+            customer.phone,
+            customer.mobile,
+            customer.cnic,
           ]
-        )
-      );
-
-    const installmentMap =
-      new Map();
-
-    for (const installment of installments) {
-      const key =
-        String(
-          installment.installmentPlan
+            .filter(Boolean)
+            .join(' ')
         );
 
-      if (
-        !installmentMap.has(key)
-      ) {
-        installmentMap.set(
-          key,
-          []
-        );
-      }
+        const fullName =
+          normalize(
+            customer.fullName ||
+              customer.name ||
+              customer.customerName ||
+              ''
+          );
 
-      installmentMap
-        .get(key)
-        .push({
-          ...installment,
-          id:
-            installment._id,
-        });
-    }
+        let score = 0;
 
-    return plans.map(
-      (plan) => {
+        for (const token of tokens) {
+          if (!token) continue;
 
-        const product =
-          productMap.get(
-            String(
-              plan.product
+          /*
+           * Exact full-name token
+           */
+          if (
+            fullName
+              .split(/\s+/)
+              .includes(token)
+          ) {
+            score += 20;
+          }
+
+          /*
+           * Full name contains token
+           */
+          if (
+            fullName.includes(token)
+          ) {
+            score += 10;
+          }
+
+          /*
+           * Any customer field contains token
+           */
+          if (
+            searchable.includes(token)
+          ) {
+            score += 5;
+          }
+        }
+
+        /*
+         * Exact complete name query
+         */
+        const rawName =
+          normalize(raw);
+
+        if (
+          fullName &&
+          (
+            rawName.includes(
+              fullName
+            ) ||
+            fullName.includes(
+              rawName
             )
-          ) || null;
+          )
+        ) {
+          score += 50;
+        }
 
         return {
-          ...plan,
-
-          id: plan._id,
-
-          // IMPORTANT:
-          // Product object is included
-          product,
-
-          installments:
-            installmentMap.get(
-              String(plan._id)
-            ) || [],
+          customer,
+          score,
         };
       }
     );
+
+  /*
+   * ------------------------------------------------------------
+   * 6. SORT BEST MATCH FIRST
+   * ------------------------------------------------------------
+   */
+
+  scored.sort(
+    (a, b) =>
+      b.score - a.score
+  );
+
+  /*
+   * ------------------------------------------------------------
+   * 7. REMOVE VERY WEAK MATCHES
+   * ------------------------------------------------------------
+   */
+
+  const strongMatches =
+    scored.filter(
+      (item) =>
+        item.score >= 10
+    );
+
+  return strongMatches
+    .slice(0, 15)
+    .map(
+      (item) =>
+        item.customer
+    );
+};
+/* ============================================================================
+   5. INTENT / QUERY PLANNER
+============================================================================ */
+
+const hasAny = (text, words) =>
+  words.some((word) =>
+    text.includes(word)
+  );
+
+const buildQueryPlan = (rawText) => {
+  const text = normalize(rawText);
+
+  const plan = {
+    target: 'shop',
+    action: 'overview',
+    dateRange: resolveDateRange(rawText),
+    wantsDetails: false,
+    wantsTotal: false,
+    wantsList: false,
+    wantsFuture: false,
+    wantsPast: false,
+    wantsToday: false,
+    wantsCustomer: false,
+    wantsProduct: false,
   };
 
+  /* ---------------- CUSTOMER ---------------- */
 
-// =====================================================
-// PRODUCT SALES
-// =====================================================
+  if (
+    hasAny(text, [
+      'customer',
+      'customer ka',
+      'customer ki',
+      'customer ke',
+      'grahak',
+      'client',
+      'buyer',
+    ])
+  ) {
+    plan.wantsCustomer = true;
+  }
 
-const getSalesForProduct =
-  async (
-    shopId,
-    productId,
-    dateRange = null
-  ) => {
+  /* ---------------- PRODUCT ---------------- */
 
-    const shopObjectId =
-      toObjectId(shopId);
+  if (
+    hasAny(text, [
+      'product',
+      'product ka',
+      'product ki',
+      'item',
+      'maal',
+      'model',
+      'sku',
+    ])
+  ) {
+    plan.wantsProduct = true;
+  }
 
-    const productObjectId =
-      toObjectId(productId);
+  /* ---------------- INSTALLMENTS ---------------- */
 
-    if (
-      !shopObjectId ||
-      !productObjectId
-    ) {
-      return [];
-    }
+  const installmentIntent =
+    hasAny(text, [
+      'installment',
+      'installments',
+      'installment schedule',
+      'qist',
+      'qistain',
+      'qiston',
+      'kist',
+      'kistain',
+      'kiston',
+      'installment due',
+      'due installment',
+      'qist kab',
+      'agli qist',
+      'next installment',
+      'monthly payment',
+      'monthly payments',
+    ]);
 
-    const query = {
-      shopId:
-        shopObjectId,
+  if (installmentIntent) {
+    plan.target = 'installment';
+    plan.action = 'schedule';
+  }
 
-      product:
-        productObjectId,
-    };
+  /* ---------------- PAYMENT HISTORY ---------------- */
+/* ---------------- PAYMENTS / COLLECTIONS ---------------- */
 
-    if (dateRange) {
-      query.saleDate = {
-        $gte:
-          dateRange.startDate,
-        $lt:
-          dateRange.endDate,
-      };
-    }
+const paymentHistoryIntent =
+  hasAny(text, [
+    'payment history',
+    'payments history',
+    'payment record',
+    'payments record',
+    'payment detail',
+    'payment details',
+    'payment dikhao',
+    'payments dikhao',
+    'payment show',
+    'payments show',
+    'payment list',
+    'payments list',
+    'payment kab kab',
+    'payments kab kab',
+    'kitna pay kiya',
+    'kitna paid kiya',
+    'kitne payments',
+    'kitni payments',
+    'payment receive',
+    'payments receive',
+    'payment received',
+    'payments received',
+    'receive hui',
+    'receive hua',
+    'receive huay',
+    'receive hue',
+    'received',
+    'jama kitna',
+    'jama kiya',
+    'jama hua',
+    'jama hui',
+    'kitna jama',
+    'kitni payment',
+    'paisa aya',
+    'paisa aaya',
+    'payment ayi',
+    'payment aayi',
+    'payments ayi',
+    'payments aayi',
+    'collection',
+    'collections',
+    'payment collection',
+    'total collection',
+    'total payments',
+    'payment details',
+    'paid history',
+  ]);
 
-    return Sale.find(query)
-      .sort({
-        saleDate: -1,
-      })
-      .limit(30)
+if (paymentHistoryIntent) {
+  plan.target = 'payment';
+  plan.action = 'history';
+}
 
-      .populate(
-        'customer',
-        'customerId fullName mobileNumber'
-      )
+  /* ---------------- SALES ---------------- */
 
-      .lean();
+  const salesIntent =
+    hasAny(text, [
+      'sale',
+      'sales',
+      'sold',
+      'selling',
+      'bikri',
+      'bika',
+      'biki',
+      'becha',
+      'bechi',
+      'revenue',
+      'sale record',
+      'sales record',
+      'sales detail',
+      'cash sale',
+      'cash sales',
+      'installment sale',
+      'installment sales',
+    ]);
+
+  if (salesIntent) {
+    plan.target = 'sales';
+    plan.action = 'report';
+  }
+
+  /* ---------------- EXPENSES ---------------- */
+
+  const expenseIntent =
+    hasAny(text, [
+      'expense',
+      'expenses',
+      'expence',
+      'expences',
+      'kharcha',
+      'kharchay',
+      'kharch',
+      'kharche',
+      'rent',
+      'bijli',
+      'electricity',
+      'salary',
+      'petrol',
+      'bill',
+      'bills',
+    ]);
+
+  if (expenseIntent) {
+    plan.target = 'expense';
+    plan.action = 'report';
+  }
+
+  /* ---------------- OVERDUE ---------------- */
+
+  const overdueIntent =
+    hasAny(text, [
+      'overdue',
+      'over due',
+      'late',
+      'late payment',
+      'defaulter',
+      'defaulters',
+      'pending due',
+      'arrears',
+      'baki qist',
+      'qist baki',
+      'nahi di',
+      'late customer',
+      'kon late',
+      'kaun late',
+    ]);
+
+  if (overdueIntent) {
+    plan.target = 'overdue';
+    plan.action = 'report';
+  }
+
+  /* ---------------- RECEIVABLES ---------------- */
+
+  const receivableIntent =
+    hasAny(text, [
+      'receivable',
+      'receivables',
+      'market balance',
+      'market se kitna lena',
+      'kis kis se lena',
+      'total udhar',
+      'total udhaar',
+      'udhar kitna',
+      'customer se kitna lena',
+      'customers se kitna lena',
+      'outstanding',
+      'outstanding balance',
+      'remaining balance',
+      'baqi balance',
+      'baqi paisa',
+    ]);
+
+  if (receivableIntent) {
+    plan.target = 'receivable';
+    plan.action = 'report';
+  }
+
+  /* ---------------- INVENTORY ---------------- */
+
+  const inventoryIntent =
+    hasAny(text, [
+      'inventory',
+      'complete inventory',
+      'sari inventory',
+      'puri inventory',
+      'all stock',
+      'tamam stock',
+      'total stock',
+      'stock report',
+      'stock ki report',
+      'stock list',
+    ]);
+
+  if (inventoryIntent) {
+    plan.target = 'inventory';
+    plan.action = 'report';
+  }
+
+  /* ---------------- STOCK ---------------- */
+
+  const stockIntent =
+    hasAny(text, [
+      'stock',
+      'quantity',
+      'qty',
+      'kitne pieces',
+      'kitne hain',
+      'available',
+      'available stock',
+      'maal kitna',
+    ]);
+
+  if (
+    stockIntent &&
+    plan.target === 'shop'
+  ) {
+    plan.target = 'stock';
+    plan.action = 'report';
+  }
+
+  /* ---------------- TOP SELLING ---------------- */
+
+  const topSellingIntent =
+    hasAny(text, [
+      'top selling',
+      'top sellers',
+      'best seller',
+      'best selling',
+      'sab se zyada bika',
+      'zyada bika',
+      'most sold',
+      'popular products',
+      'high demand',
+      'demand wali',
+      'demand products',
+    ]);
+
+  if (topSellingIntent) {
+    plan.target = 'topSelling';
+    plan.action = 'report';
+  }
+
+  /* ---------------- RETURNS / REFUNDS ---------------- */
+
+  const returnIntent =
+    hasAny(text, [
+      'return',
+      'returns',
+      'returned',
+      'refund',
+      'refunds',
+      'wapas maal',
+      'maal wapas',
+      'customer refund',
+      'refund kitna',
+    ]);
+
+  if (returnIntent) {
+    plan.target = 'returns';
+    plan.action = 'report';
+  }
+
+  /* ---------------- CASH FLOW ---------------- */
+
+  const cashFlowIntent =
+    hasAny(text, [
+      'cash flow',
+      'money in',
+      'money out',
+      'paisa aya',
+      'paisa gaya',
+      'kitna paisa aya',
+      'kitna paisa gaya',
+      'kitna aya aur kitna gaya',
+      'cash aya',
+      'cash gaya',
+    ]);
+
+  if (cashFlowIntent) {
+    plan.target = 'cashflow';
+    plan.action = 'report';
+  }
+
+  /* ---------------- PROFIT ---------------- */
+
+  const profitIntent =
+    hasAny(text, [
+      'profit',
+      'profit kitna',
+      'munafa',
+      'faida',
+      'earning',
+      'kamai',
+      'margin',
+      'net profit',
+      'gross profit',
+    ]);
+
+  if (profitIntent) {
+    plan.target = 'profit';
+    plan.action = 'report';
+  }
+
+  /* ---------------- DAILY / BUSINESS SUMMARY ---------------- */
+
+  const briefingIntent =
+    hasAny(text, [
+      'aaj kya hua',
+      'aj kya hua',
+      'today summary',
+      'today briefing',
+      'daily briefing',
+      'daily summary',
+      'aaj ka hisab',
+      'aaj ki report',
+      'aaj ka business',
+      'kal kya hua',
+      'kal ka hisab',
+      'business summary',
+      'shop summary',
+      'shop overview',
+      'overall shop',
+      'complete hisaab',
+      'complete hisab',
+      'dukan ka hisab',
+    ]);
+
+  if (briefingIntent) {
+    plan.target = 'briefing';
+    plan.action = 'report';
+  }
+
+  /* ---------------- GENERIC QUESTIONS ---------------- */
+
+  if (
+    /\b(total|kitna|kitni|how much|how many|record|details|list|show|dikhao|batao)\b/i.test(
+      text
+    )
+  ) {
+    plan.wantsDetails = true;
+  }
+
+  if (
+    /\b(total|kitna|kitni|how much|sum|jama)\b/i.test(
+      text
+    )
+  ) {
+    plan.wantsTotal = true;
+  }
+
+  if (
+    /\b(list|details|detail|record|history|schedule|dikhao|show)\b/i.test(
+      text
+    )
+  ) {
+    plan.wantsList = true;
+  }
+
+  if (
+    plan.dateRange?.isFuture
+  ) {
+    plan.wantsFuture = true;
+  }
+
+  if (
+    plan.dateRange?.isPast ||
+    plan.dateRange?.isYesterday
+  ) {
+    plan.wantsPast = true;
+  }
+
+  if (
+    plan.dateRange?.isToday
+  ) {
+    plan.wantsToday = true;
+  }
+
+  return plan;
+};
+
+/* ============================================================================
+   6. CUSTOMER PAYMENT HISTORY
+============================================================================ */
+
+const buildCustomerPaymentHistory = async (
+  customer,
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const query = {
+    shopId: shopObjId,
+    customer: customer._id,
+    isArchived: { $ne: true },
   };
 
-
-// =====================================================
-// SHOP SALES
-// =====================================================
-
-const getShopSales =
-  async (
-    shopId,
-    dateRange = null
-  ) => {
-
-    const shopObjectId =
-      toObjectId(shopId);
-
-    if (!shopObjectId) {
-      return [];
-    }
-
-    const query = {
-      shopId:
-        shopObjectId,
-    };
-
-    if (dateRange) {
-      query.saleDate = {
-        $gte:
-          dateRange.startDate,
-        $lt:
-          dateRange.endDate,
-      };
-    }
-
-    return Sale.find(query)
-      .sort({
-        saleDate: -1,
-      })
-      .limit(50)
-
-      .populate(
-        'customer',
-        'customerId fullName mobileNumber'
+  if (dateRange) {
+    Object.assign(
+      query,
+      dateOrQuery(
+        ['paymentDate', 'date', 'createdAt'],
+        dateRange
       )
+    );
+  }
 
-      .populate(
-        'product',
-        'name brand model category sku serialNumber imei chassisNumber purchasePrice salePrice quantity status supplier warrantyPeriod'
-      )
+  const payments = await Payment.find(query)
+    .sort({
+      paymentDate: -1,
+      createdAt: -1,
+    })
+    .lean();
 
-      .lean();
-  };
-
-
-// =====================================================
-// SHOP PAYMENTS
-// =====================================================
-
-const getShopPayments =
-  async (
-    shopId,
-    dateRange = null
-  ) => {
-
-    const shopObjectId =
-      toObjectId(shopId);
-
-    if (!shopObjectId) {
-      return [];
-    }
-
-    const query = {
-      shopId:
-        shopObjectId,
-
-      isArchived: {
-        $ne: true,
-      },
-    };
-
-    if (dateRange) {
-      query.paymentDate = {
-        $gte:
-          dateRange.startDate,
-        $lt:
-          dateRange.endDate,
-      };
-    }
-
-    return Payment.find(query)
-      .sort({
-        paymentDate: -1,
-      })
-      .limit(50)
-
-      .populate(
-        'customer',
-        'customerId fullName mobileNumber'
-      )
-
-      .populate(
-        'installment',
-        'installmentNumber amount paidAmount remainingAmount dueDate status'
-      )
-
-      .populate(
-        'sale',
-        'saleId finalTotal totalWithMarkup remainingBalance paymentType product'
-      )
-
-      .lean();
-  };
-
-
-// =====================================================
-// CUSTOMER HEADER
-// =====================================================
-
-const formatCustomerHeader =
-  (
-    customer,
-    balance = {}
-  ) => {
-
-    const total =
-      safeNumber(
-        balance.totalPurchases
-      );
-
-    const paid =
-      safeNumber(
-        balance.totalPaid
-      );
-
-    const remaining =
-      safeNumber(
-        balance.remainingBalance
-      );
-
+  if (!payments.length) {
     return [
-      `👤 Customer: ${
-        customer.fullName ||
-        customer.name ||
-        'N/A'
-      }`,
-
-      customer.customerId
-        ? `🆔 Customer ID: ${customer.customerId}`
+      `💳 PAYMENT HISTORY`,
+      `👤 ${getCustomerName(customer)}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `❌ Is period mein koi payment record nahi mila.`,
+      dateRange
+        ? `📅 Period: ${dateRange.label}`
         : null,
-
-      customer.mobileNumber
-        ? `📱 Mobile: ${customer.mobileNumber}`
-        : null,
-
-      customer.cnic
-        ? `🪪 CNIC: ${customer.cnic}`
-        : null,
-
-      customer.city
-        ? `🏙️ City: ${customer.city}`
-        : null,
-
-      `💰 Total Purchases: ${money(
-        total
-      )}`,
-
-      `💵 Paid: ${money(
-        paid
-      )}`,
-
-      `📌 Remaining: ${money(
-        remaining
-      )}`,
     ]
       .filter(Boolean)
       .join('\n');
-  };
+  }
 
+  const total = payments.reduce(
+    (sum, p) =>
+      sum + safeNumber(p.amount),
+    0
+  );
 
-// =====================================================
-// PRODUCT DETAILS FOR CUSTOMER HISTORY
-// =====================================================
+  const lines = [
+    `💳 PAYMENT HISTORY`,
+    `👤 Customer: ${getCustomerName(customer)}`,
+    `📱 ${getCustomerPhone(customer)}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    dateRange
+      ? `📅 Period: ${dateRange.label}`
+      : `📅 Period: All Available Records`,
+    `💰 Total Paid: ${money(total)}`,
+    `🧾 Payment Entries: ${payments.length}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `Payment Details:`,
+    '',
+  ];
 
-const formatPurchasedProduct =
-  (
-    product,
-    sale = null
-  ) => {
-
-    if (!product) {
-      return [
-        '📦 Product: Product details not available',
-      ].join('\n');
-    }
-
-    const lines = [
-      '🛍️ Product Purchased',
-    ];
+  payments.forEach((payment, index) => {
+    const date =
+      payment.paymentDate ||
+      payment.date ||
+      payment.createdAt;
 
     lines.push(
-      `📦 Product: ${
-        product.name ||
-        product.model ||
-        'N/A'
-      }`
+      `${index + 1}. ${money(payment.amount)} — ${formatDate(date)}`
     );
 
-    if (product.brand) {
+    if (payment.paymentMethod) {
       lines.push(
-        `🏷️ Brand: ${product.brand}`
+        `   Method: ${payment.paymentMethod}`
       );
     }
 
-    if (product.model) {
+    if (payment.installmentNumber) {
       lines.push(
-        `🔖 Model: ${product.model}`
+        `   Installment: #${payment.installmentNumber}`
       );
     }
 
-    if (product.category) {
+    if (payment.note) {
       lines.push(
-        `📂 Category: ${product.category}`
+        `   Note: ${payment.note}`
       );
     }
+  });
 
-    if (product.sku) {
-      lines.push(
-        `🆔 SKU: ${product.sku}`
-      );
+  return lines.join('\n');
+};
+
+
+/* ============================================================================
+   SHOP-WIDE PAYMENT REPORT
+   Shows:
+   - Customer
+   - Amount
+   - Payment type / method
+   - Installment number if available
+   - Date
+   - Note
+   - Total
+============================================================================ */
+
+const getPaymentType = (payment) => {
+  /*
+   * Database mein agar payment type directly stored hai
+   * to usko priority dein.
+   */
+  const directType =
+    payment?.paymentType ||
+    payment?.type ||
+    payment?.transactionType ||
+    payment?.paymentFor ||
+    payment?.category;
+
+  if (directType) {
+    const value = String(directType).trim();
+
+    if (/install/i.test(value)) {
+      return '📆 Installment Payment';
     }
 
-    if (product.imei) {
-      lines.push(
-        `📱 IMEI: ${product.imei}`
-      );
+    if (/advance/i.test(value)) {
+      return '💵 Advance Payment';
     }
 
-    if (product.serialNumber) {
-      lines.push(
-        `🔢 Serial Number: ${product.serialNumber}`
-      );
+    if (/down.?payment/i.test(value)) {
+      return '💰 Down Payment';
     }
 
-    if (product.chassisNumber) {
-      lines.push(
-        `🔧 Chassis Number: ${product.chassisNumber}`
-      );
+    if (/cash/i.test(value)) {
+      return '💵 Cash Payment';
     }
 
-    if (product.salePrice !== undefined) {
-      lines.push(
-        `💰 Current Sale Price: ${money(
-          product.salePrice
-        )}`
-      );
+    if (/refund/i.test(value)) {
+      return '↩️ Refund';
     }
 
-    if (product.purchasePrice !== undefined) {
-      lines.push(
-        `💵 Purchase Price: ${money(
-          product.purchasePrice
-        )}`
-      );
-    }
-
-    if (sale) {
-      lines.push(
-        `📦 Quantity Bought: ${safeNumber(
-          sale.quantity
-        )}`
-      );
-    }
-
-    if (product.warrantyPeriod) {
-      lines.push(
-        `🛡️ Warranty: ${product.warrantyPeriod}`
-      );
-    }
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// CUSTOMER SALES FORMAT
-// =====================================================
-
-const formatCustomerSales =
-  (sales = []) => {
-
-    if (!sales.length) {
-      return '🛒 No sales found.';
-    }
-
-    const lines = [
-      `🛒 Purchase History: ${sales.length}`,
-    ];
-
-    sales
-      .slice(0, 15)
-      .forEach(
-        (sale, index) => {
-
-          const product =
-            sale.product;
-
-          lines.push('');
-          lines.push(
-            `━━━━━━━━━━━━━━━━━━━━`
-          );
-
-          lines.push(
-            `🧾 Sale #${index + 1}`
-          );
-
-          // PRODUCT DETAILS
-          lines.push(
-            formatPurchasedProduct(
-              product,
-              sale
-            )
-          );
-
-          // SALE DETAILS
-          lines.push('');
-
-          lines.push(
-            `💳 Payment Type: ${
-              sale.paymentType ||
-              'N/A'
-            }`
-          );
-
-          lines.push(
-            `💰 Sale Amount: ${money(
-              sale.totalWithMarkup ||
-                sale.finalTotal
-            )}`
-          );
-
-          if (
-            sale.downPayment !==
-            undefined
-          ) {
-            lines.push(
-              `💵 Down Payment: ${money(
-                sale.downPayment
-              )}`
-            );
-          }
-
-          if (
-            sale.remainingBalance !==
-            undefined
-          ) {
-            lines.push(
-              `📌 Remaining Balance: ${money(
-                sale.remainingBalance
-              )}`
-            );
-          }
-
-          if (
-            sale.selectedInstallmentDuration
-          ) {
-            lines.push(
-              `⏳ Installment Duration: ${
-                sale.selectedInstallmentDuration
-              } Months`
-            );
-          }
-
-          if (
-            sale.installmentDuration &&
-            !sale.selectedInstallmentDuration
-          ) {
-            lines.push(
-              `⏳ Installment Duration: ${
-                sale.installmentDuration
-              } Months`
-            );
-          }
-
-          lines.push(
-            `📅 Sale Date: ${formatDate(
-              sale.saleDate
-            )}`
-          );
-        }
-      );
-
-    if (sales.length > 15) {
-      lines.push(
-        `...and ${
-          sales.length - 15
-        } more sales.`
-      );
-    }
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// CUSTOMER PAYMENTS FORMAT
-// =====================================================
-
-const formatCustomerPayments =
-  (payments = []) => {
-
-    if (!payments.length) {
-      return '💳 No payments found.';
-    }
-
-    const total =
-      payments.reduce(
-        (sum, payment) =>
-          sum +
-          safeNumber(
-            payment.amount
-          ),
-        0
-      );
-
-    const lines = [
-      `💳 Payments: ${payments.length}`,
-      `💰 Total Paid: ${money(
-        total
-      )}`,
-    ];
-
-    payments
-      .slice(0, 15)
-      .forEach(
-        (payment, index) => {
-
-          lines.push('');
-
-          lines.push(
-            `#${index + 1} — ${money(
-              payment.amount
-            )} — ${
-              payment.paymentMethod ||
-              'Cash'
-            } — ${formatDate(
-              payment.paymentDate
-            )}`
-          );
-
-          if (
-            payment.installment
-          ) {
-            lines.push(
-              `   📆 Installment #${
-                payment.installment
-                  .installmentNumber ||
-                '-'
-              }`
-            );
-
-            lines.push(
-              `   Due: ${formatDate(
-                payment.installment.dueDate
-              )}`
-            );
-
-            lines.push(
-              `   Status: ${
-                payment.installment.status ||
-                'N/A'
-              }`
-            );
-          }
-        }
-      );
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// CUSTOMER INSTALLMENT FORMAT
-// =====================================================
-
-const formatCustomerInstallments =
-  (plans = []) => {
-
-    if (!plans.length) {
-      return '📆 No installment plans found.';
-    }
-
-    const lines = [
-      `📆 Installment Plans: ${plans.length}`,
-    ];
-
-    plans.forEach(
-      (plan, planIndex) => {
-
-        const product =
-          plan.product;
-
-        lines.push('');
-        lines.push(
-          `━━━━━━━━━━━━━━━━━━━━`
-        );
-
-        lines.push(
-          `📋 Installment Plan #${
-            planIndex + 1
-          }`
-        );
-
-        // =========================================
-        // PRODUCT DETAILS
-        // =========================================
-
-        lines.push(
-          formatPurchasedProduct(
-            product
-          )
-        );
-
-        // =========================================
-        // PLAN DETAILS
-        // =========================================
-
-        lines.push('');
-        lines.push(
-          '📆 Installment Plan Details'
-        );
-
-        if (plan.planId) {
-          lines.push(
-            `🆔 Plan ID: ${plan.planId}`
-          );
-        }
-
-        if (plan.status) {
-          lines.push(
-            `📊 Status: ${plan.status}`
-          );
-        }
-
-        if (
-          plan.totalAmount !==
-          undefined
-        ) {
-          lines.push(
-            `💰 Total Amount: ${money(
-              plan.totalAmount
-            )}`
-          );
-        }
-
-        lines.push(
-          `💵 Down Payment: ${money(
-            plan.downPayment
-          )}`
-        );
-
-        lines.push(
-          `📌 Remaining Balance: ${money(
-            plan.remainingBalance
-          )}`
-        );
-
-        const duration =
-          plan.selectedDuration ||
-          plan.duration;
-
-        if (duration) {
-          lines.push(
-            `⏳ Duration: ${duration} Months`
-          );
-        }
-
-        if (
-          plan.treatDownPaymentAsFirstInstallment
-        ) {
-          lines.push(
-            `☑️ Down Payment counted as First Installment`
-          );
-        }
-
-        if (plan.firstDueDate) {
-          lines.push(
-            `📅 First Due Date: ${formatDate(
-              plan.firstDueDate
-            )}`
-          );
-        }
-
-        // =========================================
-        // INSTALLMENT SCHEDULE
-        // =========================================
-
-        const installments =
-          plan.installments || [];
-
-        if (installments.length) {
-
-          lines.push('');
-          lines.push(
-            '🗓️ Installment Schedule'
-          );
-
-          installments
-            .slice(0, 30)
-            .forEach(
-              (installment) => {
-
-                lines.push(
-                  `#${installment.installmentNumber} — ` +
-                  `Amount: ${money(
-                    installment.amount
-                  )} — ` +
-                  `Paid: ${money(
-                    installment.paidAmount
-                  )} — ` +
-                  `Remaining: ${money(
-                    installment.remainingAmount
-                  )} — ` +
-                  `Due: ${formatDate(
-                    installment.dueDate
-                  )} — ` +
-                  `${
-                    installment.status ||
-                    'Pending'
-                  }`
-                );
-              }
-            );
-
-        } else {
-
-          lines.push(
-            '🗓️ No installment schedule found.'
-          );
-        }
-      }
-    );
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// PRODUCT FORMAT
-// =====================================================
-
-const formatProduct =
-  (product) => {
-
-    const lines = [
-      `📦 ${
-        product.name ||
-        'Product'
-      }`,
-    ];
-
-    if (product.brand) {
-      lines.push(
-        `Brand: ${product.brand}`
-      );
-    }
-
-    if (product.model) {
-      lines.push(
-        `Model: ${product.model}`
-      );
-    }
-
-    if (product.category) {
-      lines.push(
-        `Category: ${product.category}`
-      );
-    }
-
-    if (product.sku) {
-      lines.push(
-        `SKU: ${product.sku}`
-      );
-    }
-
-    if (product.imei) {
-      lines.push(
-        `IMEI: ${product.imei}`
-      );
-    }
-
-    if (product.serialNumber) {
-      lines.push(
-        `Serial: ${product.serialNumber}`
-      );
-    }
-
-    if (product.chassisNumber) {
-      lines.push(
-        `Chassis: ${product.chassisNumber}`
-      );
-    }
-
-    lines.push(
-      `Stock: ${safeNumber(
-        product.quantity
-      )}`
-    );
-
-    lines.push(
-      `Sale Price: ${money(
-        product.salePrice
-      )}`
-    );
-
-    lines.push(
-      `Purchase Price: ${money(
-        product.purchasePrice
-      )}`
-    );
-
-    lines.push(
-      `Status: ${
-        product.status ||
-        'N/A'
-      }`
-    );
-
-    if (product.supplier) {
-      lines.push(
-        `Supplier: ${product.supplier}`
-      );
-    }
-
-    if (product.warrantyPeriod) {
-      lines.push(
-        `Warranty: ${product.warrantyPeriod}`
-      );
-    }
-
-    if (product.description) {
-      lines.push(
-        `Description: ${product.description}`
-      );
-    }
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// PRODUCT SALES FORMAT
-// =====================================================
-
-const formatProductSales =
-  (
-    product,
-    sales = []
-  ) => {
-
-    if (!sales.length) {
-      return '';
-    }
-
-    const lines = [
-      `🛍️ Sales of ${
-        product.name ||
-        product.model ||
-        'Product'
-      }: ${sales.length}`,
-    ];
-
-    sales
-      .slice(0, 15)
-      .forEach(
-        (sale, index) => {
-
-          lines.push(
-            `${index + 1}. ${
-              sale.customer?.fullName ||
-              'Unknown Customer'
-            } — Qty ${
-              safeNumber(
-                sale.quantity
-              )
-            } — ${money(
-              sale.totalWithMarkup ||
-                sale.finalTotal
-            )} — ${
-              sale.paymentType ||
-              'N/A'
-            } — ${formatDate(
-              sale.saleDate
-            )}`
-          );
-        }
-      );
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// SHOP SALES FORMAT
-// =====================================================
-
-const formatShopSales =
-  (
-    sales = [],
-    label = 'Sales'
-  ) => {
-
-    if (!sales.length) {
-      return `📊 ${label}: No sales found.`;
-    }
-
-    const total =
-      sales.reduce(
-        (sum, sale) =>
-          sum +
-          safeNumber(
-            sale.totalWithMarkup ||
-              sale.finalTotal
-          ),
-        0
-      );
-
-    const cash =
-      sales
-        .filter(
-          (sale) =>
-            sale.paymentType ===
-            'Cash'
-        )
-        .reduce(
-          (sum, sale) =>
-            sum +
-            safeNumber(
-              sale.finalTotal
-            ),
-          0
-        );
-
-    const installment =
-      sales
-        .filter(
-          (sale) =>
-            sale.paymentType ===
-            'Installment'
-        )
-        .reduce(
-          (sum, sale) =>
-            sum +
-            safeNumber(
-              sale.totalWithMarkup ||
-                sale.finalTotal
-            ),
-          0
-        );
-
-    return [
-      `📊 ${label}`,
-      `🧾 Sales Count: ${sales.length}`,
-      `💰 Total Sales: ${money(
-        total
-      )}`,
-      `💵 Cash Sales: ${money(
-        cash
-      )}`,
-      `📆 Installment Sales: ${money(
-        installment
-      )}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// SHOP PAYMENT FORMAT
-// =====================================================
-
-const formatShopPayments =
-  (
-    payments = [],
-    label = 'Payments'
-  ) => {
-
-    if (!payments.length) {
-      return `💳 ${label}: No payments found.`;
-    }
-
-    const total =
-      payments.reduce(
-        (sum, payment) =>
-          sum +
-          safeNumber(
-            payment.amount
-          ),
-        0
-      );
-
-    return [
-      `💳 ${label}`,
-      `🧾 Payment Count: ${payments.length}`,
-      `💰 Received: ${money(
-        total
-      )}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// OVERDUE FORMAT
-// =====================================================
-
-const formatOverdue =
-  (overdue = []) => {
-
-    if (!overdue.length) {
-      return '✅ No overdue installments found.';
-    }
-
-    const lines = [
-      `⚠️ Overdue Installments: ${overdue.length}`,
-    ];
-
-    overdue
-      .slice(0, 20)
-      .forEach(
-        (item, index) => {
-
-          const installment =
-            item.installment;
-
-          const customer =
-            item.customer?.fullName ||
-            'Unknown Customer';
-
-          const product =
-            item.product;
-
-          lines.push('');
-          lines.push(
-            `━━━━━━━━━━━━━━━━━━━━`
-          );
-
-          lines.push(
-            `${index + 1}. 👤 ${customer}`
-          );
-
-          // PRODUCT DETAILS
-          lines.push(
-            formatPurchasedProduct(
-              product
-            )
-          );
-
-          // INSTALLMENT DETAILS
-          lines.push(
-            `📆 Installment #${
-              installment?.installmentNumber ||
-              '-'
-            }`
-          );
-
-          lines.push(
-            `💰 Original Amount: ${money(
-              installment?.originalAmount ||
-                installment?.amount
-            )}`
-          );
-
-          lines.push(
-            `📌 Remaining: ${money(
-              installment?.remainingAmount
-            )}`
-          );
-
-          lines.push(
-            `📅 Due Date: ${formatDate(
-              installment?.dueDate
-            )}`
-          );
-
-          lines.push(
-            `📊 Status: ${
-              installment?.status ||
-              'Overdue'
-            }`
-          );
-
-          if (item.planId) {
-            lines.push(
-              `🆔 Plan ID: ${item.planId}`
-            );
-          }
-        }
-      );
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// INVENTORY RESULT
-// =====================================================
-
-const buildInventoryResult =
-  async (shopId) => {
-
-    const summary =
-      await getInventorySummary({
-        shopId,
-      });
-
-    if (
-      !summary?.found
-    ) {
-      return '📦 No products found in inventory.';
-    }
-
-    const products =
-      summary.products || [];
-
-    const totalProducts =
-      products.length;
-
-    const totalQuantity =
-      products.reduce(
-        (sum, product) =>
-          sum +
-          safeNumber(
-            product.quantity
-          ),
-        0
-      );
-
-    const inventoryValue =
-      products.reduce(
-        (sum, product) =>
-          sum +
-          safeNumber(
-            product.salePrice
-          ) *
-          safeNumber(
-            product.quantity
-          ),
-        0
-      );
-
-    const lowStockCount =
-      products.filter(
-        (product) =>
-          safeNumber(
-            product.quantity
-          ) <=
-          safeNumber(
-            product.minStockLevel
-          )
-      ).length;
-
-    const outOfStockCount =
-      products.filter(
-        (product) =>
-          safeNumber(
-            product.quantity
-          ) === 0
-      ).length;
-
-    return [
-      '📦 Inventory Summary',
-      `Products: ${totalProducts}`,
-      `Total Quantity: ${totalQuantity}`,
-      `Inventory Value: ${money(
-        inventoryValue
-      )}`,
-      `Low Stock: ${lowStockCount}`,
-      `Out of Stock: ${outOfStockCount}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// LOW STOCK RESULT
-// =====================================================
-
-const buildLowStockResult =
-  async (shopId) => {
-
-    const products =
-      await getLowStockProducts({
-        shopId,
-      });
-
-    if (!products.length) {
-      return '✅ No low-stock products found.';
-    }
-
-    const lines = [
-      `⚠️ Low Stock Products: ${products.length}`,
-    ];
-
-    products
-      .slice(0, 30)
-      .forEach(
-        (product, index) => {
-
-          lines.push('');
-
-          lines.push(
-            `${index + 1}. ${
-              product.name
-            }`
-          );
-
-          lines.push(
-            formatProduct(
-              product
-            )
-          );
-
-          lines.push(
-            `Minimum Stock: ${safeNumber(
-              product.minStockLevel
-            )}`
-          );
-        }
-      );
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// SALES SUMMARY
-// =====================================================
-
-const buildSalesSummaryResult =
-  async ({
-    shopId,
-    dateRange,
-  }) => {
-
-    let range =
-      dateRange;
-
-    if (!range) {
-      const now =
-        new Date();
-
-      range = {
-        startDate:
-          new Date(
-            now.getFullYear(),
-            0,
-            1
-          ),
-
-        endDate:
-          new Date(
-            now.getFullYear() + 1,
-            0,
-            1
-          ),
-
-        label:
-          String(
-            now.getFullYear()
-          ),
-      };
-    }
-
-    const summary =
-      await getSalesSummary({
-        shopId,
-        startDate:
-          range.startDate,
-        endDate:
-          range.endDate,
-      });
-
-    return [
-      `📊 Sales — ${range.label}`,
-
-      `🧾 Sales Count: ${
-        summary.totalSalesCount ??
-        summary.totalSales ??
-        0
-      }`,
-
-      `💰 Total Amount: ${money(
-        summary.totalSalesAmount ??
-          summary.totalAmount ??
-          0
-      )}`,
-
-      `💵 Cash Sales: ${money(
-        summary.cashSales
-      )}`,
-
-      `📆 Installment Sales: ${money(
-        summary.installmentSales
-      )}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// PAYMENT SUMMARY
-// =====================================================
-
-const buildPaymentSummaryResult =
-  async ({
-    shopId,
-    dateRange,
-  }) => {
-
-    let range =
-      dateRange;
-
-    if (!range) {
-      const now =
-        new Date();
-
-      range = {
-        startDate:
-          new Date(
-            now.getFullYear(),
-            0,
-            1
-          ),
-
-        endDate:
-          new Date(
-            now.getFullYear() + 1,
-            0,
-            1
-          ),
-
-        label:
-          String(
-            now.getFullYear()
-          ),
-      };
-    }
-
-    const summary =
-      await getPaymentSummary({
-        shopId,
-        startDate:
-          range.startDate,
-        endDate:
-          range.endDate,
-      });
-
-    return [
-      `💳 Payments — ${range.label}`,
-
-      `🧾 Payment Count: ${
-        summary.totalPayments || 0
-      }`,
-
-      `💰 Received: ${money(
-        summary.totalAmount || 0
-      )}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// OVERDUE RESULT
-// =====================================================
-
-const buildOverdueResult =
-  async (shopId) => {
-
-    const overdue =
-      await getOverdueInstallments({
-        shopId,
-      });
-
-    return formatOverdue(
-      overdue || []
-    );
-  };
-
-
-// =====================================================
-// UPCOMING INSTALLMENTS
-// =====================================================
-
-const buildUpcomingInstallmentsResult =
-  async (shopId) => {
-
-    const now = new Date();
-    const lastDueDate = endOfDay(
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate() + 7
-      )
-    );
-
-    const installments = await Installment.find({
-      shopId,
-      dueDate: {
-        $gte: startOfDay(now),
-        $lte: lastDueDate,
-      },
-      status: {
-        $in: ['Pending', 'Partially Paid', 'Overdue'],
-      },
-      remainingAmount: { $gt: 0 },
+    return `💳 ${value}`;
+  }
+
+  /*
+   * Agar payment mein installment reference/number hai
+   * to usay installment payment samjhein.
+   */
+  if (
+    payment?.installment ||
+    payment?.installmentId ||
+    payment?.installmentPlan ||
+    payment?.installmentNumber
+  ) {
+    return '📆 Installment Payment';
+  }
+
+  /*
+   * Agar down payment ka flag/type available ho.
+   */
+  if (
+    payment?.isDownPayment === true ||
+    payment?.downPayment === true
+  ) {
+    return '💰 Down Payment';
+  }
+
+  /*
+   * Agar method available hai.
+   */
+  if (payment?.paymentMethod) {
+    return `💳 ${payment.paymentMethod}`;
+  }
+
+  return '💳 Payment';
+};
+
+
+const buildShopPaymentReport = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const payments = await Payment.find({
+    shopId: shopObjId,
+    isArchived: {
+      $ne: true,
+    },
+    ...dateOrQuery(
+      [
+        'paymentDate',
+        'date',
+        'createdAt',
+      ],
+      range
+    ),
+  })
+    .populate(
+      'customer',
+      'fullName name customerName mobileNumber phone customerId cnic'
+    )
+    .sort({
+      paymentDate: -1,
+      date: -1,
+      createdAt: -1,
     })
-      .sort({ dueDate: 1, installmentNumber: 1 })
-      .limit(30)
-      .lean();
+    .lean();
 
-    if (!installments.length) {
-      return '📅 Upcoming Installments — Next 7 Days\n\nNo unpaid installments are due in the next 7 days.';
-    }
+  if (!payments.length) {
+    return [
+      `💳 PAYMENT REPORT`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📅 Period: ${range.label}`,
+      ``,
+      `❌ Is period mein koi payment receive nahi hui.`,
+    ].join('\n');
+  }
 
-    const planIds = installments.map(
-      (installment) => installment.installmentPlan
-    );
-
-    const plans = await InstallmentPlan.find({
-      shopId,
-      _id: { $in: planIds },
-    })
-      .populate('customer', 'fullName mobileNumber customerId')
-      .populate('product', 'name brand model')
-      .lean();
-
-    const planMap = new Map(
-      plans.map((plan) => [String(plan._id), plan])
-    );
-
-    const totalDue = installments.reduce(
-      (sum, installment) =>
-        sum + safeNumber(installment.remainingAmount),
+  const totalReceived =
+    payments.reduce(
+      (sum, payment) =>
+        sum + safeNumber(payment.amount),
       0
     );
 
-    const lines = [
-      '📅 Upcoming Installments — Next 7 Days',
-      `📋 Due Count: ${installments.length}`,
-      `💰 Total Due: ${money(totalDue)}`,
-      '',
-    ];
+  /*
+   * Payment types ka summary
+   */
+  const typeMap = new Map();
 
-    installments.forEach((installment, index) => {
-      const plan = planMap.get(
-        String(installment.installmentPlan)
-      );
-      const productLabel = [
-        plan?.product?.name,
-        plan?.product?.brand,
-        plan?.product?.model,
-      ]
-        .filter(Boolean)
-        .join(' ');
+  payments.forEach((payment) => {
+    const type = getPaymentType(payment);
 
-      lines.push(
-        `${index + 1}. ${formatDate(installment.dueDate)} — ${plan?.customer?.fullName || 'Unknown customer'}${plan?.customer?.mobileNumber ? ` (${plan.customer.mobileNumber})` : ''}`
-      );
-      lines.push(
-        `   Installment #${installment.installmentNumber || '-'} — ${money(installment.remainingAmount)}${productLabel ? ` — ${productLabel}` : ''}`
-      );
-    });
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// EXPENSE SUMMARY
-// =====================================================
-
-const buildExpenseSummaryResult =
-  async ({ shopId, dateRange }) => {
-
-    let range = dateRange;
-
-    if (!range) {
-      const now = new Date();
-
-      range = {
-        startDate: new Date(now.getFullYear(), now.getMonth(), 1),
-        endDate: endOfDay(now),
-        label: now.toLocaleString('en-US', {
-          month: 'long',
-          year: 'numeric',
-        }),
-      };
+    if (!typeMap.has(type)) {
+      typeMap.set(type, {
+        count: 0,
+        amount: 0,
+      });
     }
 
-    const expenses = await Expense.find({
-      shopId,
-      expenseDate: {
+    const item = typeMap.get(type);
+
+    item.count += 1;
+    item.amount += safeNumber(
+      payment.amount
+    );
+  });
+
+  const lines = [
+    `💳 PAYMENT REPORT`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 Period: ${range.label}`,
+    `🧾 Payment Entries: ${payments.length}`,
+    `💰 Total Received: ${money(
+      totalReceived
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `📊 PAYMENT TYPE SUMMARY`,
+    ``,
+  ];
+
+  for (const [type, data] of typeMap.entries()) {
+    lines.push(
+      `${type}: ${data.count} — ${money(
+        data.amount
+      )}`
+    );
+  }
+
+  lines.push(
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `💳 PAYMENT DETAILS`,
+    ``
+  );
+
+  payments.forEach(
+    (payment, index) => {
+      const customer =
+        payment.customer;
+
+      const amount =
+        safeNumber(
+          payment.amount
+        );
+
+      const paymentDate =
+        payment.paymentDate ||
+        payment.date ||
+        payment.createdAt;
+
+      const paymentType =
+        getPaymentType(payment);
+
+      lines.push(
+        `${index + 1}. 👤 ${getCustomerName(
+          customer
+        )}`
+      );
+
+      /*
+       * Customer phone
+       */
+      if (customer) {
+        lines.push(
+          `   📱 ${getCustomerPhone(
+            customer
+          )}`
+        );
+      }
+
+      /*
+       * Customer ID
+       */
+      if (
+        customer?.customerId
+      ) {
+        lines.push(
+          `   🪪 Customer ID: ${customer.customerId}`
+        );
+      }
+
+      /*
+       * Amount
+       */
+      lines.push(
+        `   💰 Amount: ${money(
+          amount
+        )}`
+      );
+
+      /*
+       * Payment type
+       */
+      lines.push(
+        `   ${paymentType}`
+      );
+
+      /*
+       * Payment method
+       */
+      if (
+        payment.paymentMethod
+      ) {
+        lines.push(
+          `   💳 Method: ${payment.paymentMethod}`
+        );
+      }
+
+      /*
+       * Installment number
+       */
+      if (
+        payment.installmentNumber !==
+        undefined &&
+        payment.installmentNumber !==
+        null
+      ) {
+        lines.push(
+          `   📆 Installment #${payment.installmentNumber}`
+        );
+      }
+
+      /*
+       * Invoice / Sale reference
+       */
+      if (
+        payment.invoiceNumber ||
+        payment.saleId ||
+        payment.invoiceId
+      ) {
+        lines.push(
+          `   🧾 Reference: ${
+            payment.invoiceNumber ||
+            payment.saleId ||
+            payment.invoiceId
+          }`
+        );
+      }
+
+      /*
+       * Date
+       */
+      lines.push(
+        `   📅 Date: ${formatDate(
+          paymentDate
+        )}`
+      );
+
+      /*
+       * Time if available
+       */
+      const paymentDateObj =
+        paymentDate
+          ? new Date(paymentDate)
+          : null;
+
+      if (
+        paymentDateObj &&
+        !Number.isNaN(
+          paymentDateObj.getTime()
+        )
+      ) {
+        lines.push(
+          `   🕐 Time: ${paymentDateObj.toLocaleTimeString(
+            'en-PK',
+            {
+              hour: '2-digit',
+              minute: '2-digit',
+            }
+          )}`
+        );
+      }
+
+      /*
+       * Note / remarks
+       */
+      if (
+        payment.note ||
+        payment.notes ||
+        payment.description ||
+        payment.remarks
+      ) {
+        lines.push(
+          `   📝 Note: ${
+            payment.note ||
+            payment.notes ||
+            payment.description ||
+            payment.remarks
+          }`
+        );
+      }
+
+      lines.push('');
+    }
+  );
+
+  lines.push(
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `💰 TOTAL RECEIVED: ${money(
+      totalReceived
+    )}`,
+    `🧾 TOTAL PAYMENTS: ${payments.length}`
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   7. CUSTOMER INSTALLMENT SCHEDULE
+============================================================================ */
+
+const buildCustomerInstallmentSchedule = async (
+  customer,
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const plans =
+    await InstallmentPlan.find({
+      shopId: shopObjId,
+      customer: customer._id,
+    })
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+  if (!plans.length) {
+    return [
+      `📆 INSTALLMENT SCHEDULE`,
+      `👤 ${getCustomerName(customer)}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `❌ Is customer ka koi installment plan nahi mila.`,
+    ].join('\n');
+  }
+
+  const planIds = plans.map(
+    (p) => p._id
+  );
+
+  const installments =
+    await Installment.find({
+      shopId: shopObjId,
+      installmentPlan: {
+        $in: planIds,
+      },
+    })
+      .sort({
+        dueDate: 1,
+        installmentNumber: 1,
+      })
+      .lean();
+
+  let filtered = installments;
+
+  if (dateRange) {
+    filtered = installments.filter(
+      (i) => {
+        const date = new Date(
+          i.dueDate
+        );
+
+        return (
+          date >= dateRange.startDate &&
+          date <= dateRange.endDate
+        );
+      }
+    );
+  }
+
+  const today = startOfDay(
+    new Date()
+  );
+
+  const lines = [
+    `📆 INSTALLMENT SCHEDULE`,
+    `👤 Customer: ${getCustomerName(customer)}`,
+    `📱 ${getCustomerPhone(customer)}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+  ];
+
+  if (dateRange) {
+    lines.push(
+      `📅 Filter: ${dateRange.label}`
+    );
+  }
+
+  for (const plan of plans) {
+    const planInstallments =
+      filtered.filter(
+        (i) =>
+          String(
+            i.installmentPlan
+          ) ===
+          String(plan._id)
+      );
+
+    if (
+      dateRange &&
+      !planInstallments.length
+    ) {
+      continue;
+    }
+
+    lines.push(
+      `📦 Product: ${getProductName(
+        plan.product
+      )}`
+    );
+
+    lines.push(
+      `💰 Plan Total: ${money(
+        plan.totalAmount
+      )}`
+    );
+
+    lines.push(
+      `💳 Remaining: ${money(
+        plan.remainingBalance
+      )}`
+    );
+
+    lines.push(
+      `📋 Installments: ${
+        planInstallments.length
+      }`
+    );
+
+    lines.push(
+      `─────────────────────────────────`
+    );
+
+    planInstallments.forEach(
+      (inst) => {
+        const due = startOfDay(
+          inst.dueDate
+        );
+
+        const amount =
+          safeNumber(inst.amount);
+
+        const remaining =
+          safeNumber(
+            inst.remainingAmount
+          );
+
+        const paid =
+          Math.max(
+            0,
+            amount - remaining
+          );
+
+        let status;
+
+        if (
+          remaining <= 0 ||
+          String(
+            inst.status
+          ).toLowerCase() ===
+            'paid'
+        ) {
+          status = '✅ PAID';
+        } else if (
+          due < today
+        ) {
+          status = '⚠️ OVERDUE';
+        } else if (
+          due.getTime() ===
+          today.getTime()
+        ) {
+          status = '⏳ DUE TODAY';
+        } else {
+          status = '📆 UPCOMING';
+        }
+
+        lines.push(
+          `• Inst #${inst.installmentNumber || '-'}`
+        );
+
+        lines.push(
+          `  📅 Due: ${formatDate(
+            inst.dueDate
+          )}`
+        );
+
+        lines.push(
+          `  💰 Amount: ${money(
+            amount
+          )}`
+        );
+
+        lines.push(
+          `  💳 Paid: ${money(paid)}`
+        );
+
+        lines.push(
+          `  🔴 Remaining: ${money(
+            remaining
+          )}`
+        );
+
+        lines.push(
+          `  Status: ${status}`
+        );
+
+        lines.push('');
+      }
+    );
+  }
+
+  if (
+    lines.length <=
+    6
+  ) {
+    lines.push(
+      `❌ Is date range mein koi installment due nahi hai.`
+    );
+  }
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   8. SHOP-WIDE INSTALLMENT SCHEDULE
+============================================================================ */
+
+const buildShopInstallmentSchedule = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const installments =
+    await Installment.find({
+      shopId: shopObjId,
+      dueDate: {
         $gte: range.startDate,
         $lte: range.endDate,
       },
+      remainingAmount: {
+        $gt: 0,
+      },
     })
-      .sort({ expenseDate: -1, createdAt: -1 })
-      .limit(30)
+      .populate({
+        path: 'installmentPlan',
+        populate: [
+          {
+            path: 'customer',
+            select:
+              'fullName name customerName mobileNumber phone',
+          },
+          {
+            path: 'product',
+            select:
+              'name title brand model',
+          },
+        ],
+      })
+      .sort({
+        dueDate: 1,
+      })
       .lean();
 
-    const total = expenses.reduce(
-      (sum, expense) => sum + safeNumber(expense.amount),
+  if (!installments.length) {
+    return [
+      `📆 SHOP INSTALLMENT SCHEDULE`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📅 ${range.label}`,
+      '',
+      `✅ Is period mein koi unpaid installment due nahi hai.`,
+    ].join('\n');
+  }
+
+  const totalDue =
+    installments.reduce(
+      (sum, i) =>
+        sum +
+        safeNumber(
+          i.remainingAmount
+        ),
       0
     );
 
-    const lines = [
-      `🧾 Expenses — ${range.label}`,
-      `📋 Expense Entries: ${expenses.length}`,
-      `💰 Total Expenses: ${money(total)}`,
-    ];
-
-    if (expenses.length) {
-      lines.push('');
-      lines.push('Recent expenses:');
-
-      expenses.slice(0, 10).forEach((expense, index) => {
-        lines.push(
-          `${index + 1}. ${expense.title || 'Expense'}${expense.category ? ` (${expense.category})` : ''} — ${money(expense.amount)} — ${formatDate(expense.expenseDate)}`
-        );
-      });
-    }
-
-    return lines.join('\n');
-  };
-
-
-// =====================================================
-// PROFIT RESULT
-// =====================================================
-
-const buildProfitResult =
-  async ({
-    shopId,
-    dateRange,
-  }) => {
-
-    const report =
-      await getProfitReport({
-        shopId,
-        startDate:
-          dateRange?.startDate,
-        endDate:
-          dateRange?.endDate,
-      });
-
-    return [
-      `📈 Profit Report${
-        dateRange?.label
-          ? ` — ${dateRange.label}`
-          : ''
-      }`,
-
-      `💰 Revenue: ${money(
-        report.totalRevenue || 0
-      )}`,
-
-      `📈 Estimated Profit: ${money(
-        report.totalProfit || 0
-      )}`,
-    ].join('\n');
-  };
-
-
-// =====================================================
-// CUSTOMER RESULT
-// =====================================================
-
-const buildCustomerResult =
-  async ({
-    customer,
-    message,
-    shopId,
-    dateRange,
-  }) => {
-
-    const text =
-      normalize(message);
-
-    const customerId =
-      customer._id ||
-      customer.id;
-
-    if (!customerId) {
-      return 'Customer record ID not found.';
-    }
-
-    const details =
-      await getCustomerDetails({
-        shopId,
-
-        nameOrPhone:
-          customer.customerId ||
-          customer.mobileNumber ||
-          customer.fullName ||
-          customer.name,
-      });
-
-    const actualCustomer =
-      details?.customer ||
-      customer;
-
-    const actualCustomerId =
-      actualCustomer.id ||
-      actualCustomer._id ||
-      customerId;
-
-    const history =
-      await getCustomerHistory({
-        shopId,
-        customerId:
-          actualCustomerId,
-      });
-
-    if (!history) {
-      return 'Customer history could not be loaded.';
-    }
-
-    const balance =
-      history.summary || {};
-
-    const wantsBalance =
-      isBalanceQuery(text);
-
-    const wantsSales =
-      isSalesQuery(text);
-
-    const wantsPayments =
-      isPaymentQuery(text);
-
-    const wantsExpenses =
-      isExpenseQuery(text);
-
-    const wantsUpcomingDues =
-      isUpcomingDueQuery(text);
-
-    const wantsInstallments =
-      isInstallmentQuery(text);
-
-    const wantsInfo =
-      isCustomerInfoQuery(text);
-
-    let sales = [];
-    let payments = [];
-    let plans = [];
-
-    // =================================================
-    // IMPORTANT:
-    // If user asks about history / purchase /
-    // bought / sale, load sales.
-    // =================================================
-
-    if (
-      wantsSales ||
-      (
-        !wantsPayments &&
-        !wantsInstallments &&
-        !wantsBalance &&
-        !wantsInfo
+  const lines = [
+    `📆 SHOP INSTALLMENT SCHEDULE`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 Period: ${range.label}`,
+    `👥 Customers: ${new Set(
+      installments.map(
+        (i) =>
+          String(
+            i.installmentPlan
+              ?.customer?._id
+          )
       )
-    ) {
-      sales =
-        await getSalesForCustomer(
-          shopId,
-          actualCustomerId,
-          dateRange
-        );
-    }
+    ).size}`,
+    `📋 Installments: ${installments.length}`,
+    `💰 Total Collectable: ${money(
+      totalDue
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
 
-    if (wantsPayments) {
-      payments =
-        await getPaymentsForCustomer(
-          shopId,
-          actualCustomerId,
-          dateRange
-        );
-    }
+  installments.forEach(
+    (inst, index) => {
+      const customer =
+        inst.installmentPlan
+          ?.customer;
 
-    if (
-      wantsInstallments ||
-      wantsBalance
-    ) {
-      plans =
-        await getInstallmentsForCustomer(
-          shopId,
-          actualCustomerId
-        );
-    }
+      const product =
+        inst.installmentPlan
+          ?.product;
 
-    // =================================================
-    // IF USER ASKS "COMPLETE HISTORY"
-    // LOAD EVERYTHING
-    // =================================================
-
-    const wantsHistory =
-      hasAny(text, [
-        'history',
-        'complete history',
-        'full history',
-        'record',
-        'records',
-        'pura record',
-        'poora record',
-        'puri history',
-        'poori history',
-        'complete record',
-        'all history',
-        'sab kuch',
-        'kya buy kiya',
-        'kya khareeda',
-        'kya khareedi',
-        'what did',
-        'what bought',
-      ]);
-
-    if (wantsHistory) {
-
-      if (!sales.length) {
-        sales =
-          await getSalesForCustomer(
-            shopId,
-            actualCustomerId,
-            dateRange
-          );
-      }
-
-      if (!payments.length) {
-        payments =
-          await getPaymentsForCustomer(
-            shopId,
-            actualCustomerId,
-            dateRange
-          );
-      }
-
-      if (!plans.length) {
-        plans =
-          await getInstallmentsForCustomer(
-            shopId,
-            actualCustomerId
-          );
-      }
-    }
-
-    // =================================================
-    // CUSTOMER OBJECT
-    // =================================================
-
-    const customerObject = {
-      ...actualCustomer,
-
-      fullName:
-        actualCustomer.fullName ||
-        actualCustomer.name,
-
-      customerId:
-        actualCustomer.customerId ||
-        actualCustomer.code,
-
-      mobileNumber:
-        actualCustomer.mobileNumber ||
-        actualCustomer.phone,
-    };
-
-    const sections = [];
-
-    // HEADER
-    sections.push(
-      formatCustomerHeader(
-        customerObject,
-        balance
-      )
-    );
-
-    // SALES
-    if (
-      wantsSales ||
-      wantsHistory
-    ) {
-      sections.push(
-        formatCustomerSales(
-          sales
-        )
-      );
-    }
-
-    // PAYMENTS
-    if (
-      wantsPayments ||
-      wantsHistory
-    ) {
-      sections.push(
-        formatCustomerPayments(
-          payments
-        )
-      );
-    }
-
-    // INSTALLMENTS
-    if (
-      wantsInstallments ||
-      wantsHistory
-    ) {
-      sections.push(
-        formatCustomerInstallments(
-          plans
-        )
-      );
-    }
-
-    // BALANCE
-    if (
-      wantsBalance &&
-      !wantsInstallments
-    ) {
-      sections.push(
-        `📌 Outstanding Balance: ${money(
-          balance.remainingBalance
+      lines.push(
+        `${index + 1}. 👤 ${getCustomerName(
+          customer
         )}`
       );
-    }
-
-    // SIMPLE CUSTOMER SEARCH
-    if (
-      !wantsBalance &&
-      !wantsSales &&
-      !wantsPayments &&
-      !wantsInstallments &&
-      !wantsInfo &&
-      !wantsHistory
-    ) {
-
-      sections.push(
-        `🧾 Total Sales: ${
-          history.summary.totalSales ||
-          0
-        }`
-      );
-
-      sections.push(
-        `📆 Installment Plans: ${
-          history.summary.totalInstallmentPlans ||
-          0
-        }`
-      );
-
-      sections.push(
-        `💳 Payments: ${
-          history.summary.totalPayments ||
-          0
-        }`
-      );
-    }
-
-    // CUSTOMER INFO
-    if (wantsInfo) {
-
-      const infoLines = [
-        '👤 Customer Information',
-      ];
-
-      if (
-        customerObject.fullName
-      ) {
-        infoLines.push(
-          `Name: ${customerObject.fullName}`
-        );
-      }
-
-      if (
-        customerObject.fatherName
-      ) {
-        infoLines.push(
-          `Father Name: ${customerObject.fatherName}`
-        );
-      }
-
-      if (
-        customerObject.mobileNumber
-      ) {
-        infoLines.push(
-          `Mobile: ${customerObject.mobileNumber}`
-        );
-      }
-
-      if (
-        customerObject.cnic
-      ) {
-        infoLines.push(
-          `CNIC: ${customerObject.cnic}`
-        );
-      }
-
-      if (
-        customerObject.address
-      ) {
-        infoLines.push(
-          `Address: ${customerObject.address}`
-        );
-      }
-
-      if (
-        customerObject.city
-      ) {
-        infoLines.push(
-          `City: ${customerObject.city}`
-        );
-      }
-
-      sections.push(
-        infoLines.join('\n')
-      );
-    }
-
-    return sections
-      .filter(Boolean)
-      .join('\n\n');
-  };
-
-
-// =====================================================
-// PRODUCT RESULT
-// =====================================================
-
-const buildProductResult =
-  async ({
-    product,
-    message,
-    shopId,
-    dateRange,
-  }) => {
-
-    const text =
-      normalize(message);
-
-    const sections = [
-      formatProduct(product),
-    ];
-
-    if (
-      isSalesQuery(text)
-    ) {
-
-      const sales =
-        await getSalesForProduct(
-          shopId,
-          product._id,
-          dateRange
-        );
-
-      const salesText =
-        formatProductSales(
-          product,
-          sales
-        );
-
-      if (salesText) {
-        sections.push(
-          salesText
-        );
-      }
-    }
-
-    return sections.join(
-      '\n\n'
-    );
-  };
-
-
-// =====================================================
-// FALLBACK
-// =====================================================
-
-const universalFallback =
-  async ({
-    message,
-    shopId,
-    customers,
-    products,
-    dateRange,
-  }) => {
-
-    const sections = [];
-
-    // CUSTOMERS
-    if (customers.length) {
-
-      sections.push(
-        `👥 Matching Customers: ${customers.length}`
-      );
-
-      customers
-        .slice(0, 10)
-        .forEach(
-          (
-            customer,
-            index
-          ) => {
-
-            sections.push(
-              `${index + 1}. ${
-                customer.fullName
-              }${
-                customer.mobileNumber
-                  ? ` — ${customer.mobileNumber}`
-                  : ''
-              }${
-                customer.customerId
-                  ? ` — ${customer.customerId}`
-                  : ''
-              }`
-            );
-          }
-        );
-    }
-
-    // PRODUCTS
-    if (products.length) {
-
-      sections.push(
-        `📦 Matching Products: ${products.length}`
-      );
-
-      products
-        .slice(0, 10)
-        .forEach(
-          (
-            product,
-            index
-          ) => {
-
-            sections.push(
-              `${index + 1}. ${
-                product.name
-              }${
-                product.brand
-                  ? ` ${product.brand}`
-                  : ''
-              }${
-                product.model
-                  ? ` ${product.model}`
-                  : ''
-              } — Stock: ${
-                safeNumber(
-                  product.quantity
-                )
-              } — ${money(
-                product.salePrice
-              )}`
-            );
-          }
-        );
-    }
-
-    // ONE CUSTOMER
-    if (
-      customers.length === 1 &&
-      !products.length
-    ) {
-
-      sections.push(
-        await buildCustomerResult({
-          customer:
-            customers[0],
-
-          message,
-          shopId,
-          dateRange,
-        })
-      );
-    }
-
-    // ONE PRODUCT
-    if (
-      products.length === 1 &&
-      !customers.length
-    ) {
-
-      sections.push(
-        await buildProductResult({
-          product:
-            products[0],
-
-          message,
-          shopId,
-          dateRange,
-        })
-      );
-    }
-
-    if (!sections.length) {
-
-      return [
-        `❌ No matching shop data found for "${clean(
-          message
-        )}".`,
-
-        '',
-
-        'Try a customer name, mobile, CNIC, customer ID, product/model, stock, price, sale, payment, balance, installment, overdue, profit, or date.',
-      ].join('\n');
-    }
-
-    return sections.join(
-      '\n\n'
-    );
-  };
-
-
-// =====================================================
-// MAIN UNIVERSAL SEARCH
-// =====================================================
-
-const processLocalQuery =
-  async ({
-    message,
-    shopId,
-  }) => {
-
-    const query =
-      clean(message);
-
-    if (!query) {
-      return 'Please enter a search query.';
-    }
-
-    if (!shopId) {
-      throw new Error(
-        'Shop ID is required.'
-      );
-    }
-
-    // =================================================
-    // FIX:
-    // toObjectId is now LOCAL
-    // =================================================
-
-    const objectShopId =
-      toObjectId(shopId);
-
-    if (!objectShopId) {
-      throw new Error(
-        'Invalid shop ID.'
-      );
-    }
-
-    const text =
-      normalize(query);
-
-    const dateRange =
-      getDateRange(query);
-
-    // =================================================
-    // INTENTS
-    // =================================================
-
-    const wantsInventory =
-      isStockQuery(text) ||
-      hasAny(text, [
-        'all products',
-        'product list',
-        'products list',
-        'shop products',
-        'shop mein products',
-        'shop me products',
-      ]);
-
-    const wantsLowStock =
-      hasAny(text, [
-        'low stock',
-        'low-stock',
-        'kam stock',
-        'kam quantity',
-      ]);
-
-    const wantsOverdue =
-      isOverdueQuery(text);
-
-    const wantsProfit =
-      isProfitQuery(text);
-
-    const wantsSales =
-      isSalesQuery(text);
-
-    const wantsPayments =
-      isPaymentQuery(text);
-
-    const wantsExpenses =
-      isExpenseQuery(text);
-
-    const wantsUpcomingDues =
-      isUpcomingDueQuery(text);
-
-    // =================================================
-    // SEARCH ENTITIES
-    // =================================================
-
-    const [
-      customers,
-      products,
-    ] = await Promise.all([
-      universalCustomerSearch(
-        query,
-        objectShopId
-      ),
-
-      universalProductSearch(
-        query,
-        objectShopId
-      ),
-    ]);
-
-    // =================================================
-    // SHOP LEVEL REPORTS
-    // =================================================
-
-    if (
-      wantsProfit &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildProfitResult({
-        shopId:
-          objectShopId,
-        dateRange,
-      });
-    }
-
-    if (
-      wantsOverdue &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildOverdueResult(
-        objectShopId
-      );
-    }
-
-    if (
-      wantsUpcomingDues &&
-      !wantsOverdue &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildUpcomingInstallmentsResult(
-        objectShopId
-      );
-    }
-
-    if (
-      wantsExpenses &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildExpenseSummaryResult({
-        shopId: objectShopId,
-        dateRange,
-      });
-    }
-
-    if (
-      wantsLowStock &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildLowStockResult(
-        objectShopId
-      );
-    }
-
-    if (
-      wantsInventory &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildInventoryResult(
-        objectShopId
-      );
-    }
-
-    if (
-      wantsSales &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildSalesSummaryResult({
-        shopId:
-          objectShopId,
-        dateRange,
-      });
-    }
-
-    if (
-      wantsPayments &&
-      !customers.length &&
-      !products.length
-    ) {
-      return buildPaymentSummaryResult({
-        shopId:
-          objectShopId,
-        dateRange,
-      });
-    }
-
-    // =================================================
-    // ONE CUSTOMER
-    // =================================================
-
-    if (
-      customers.length === 1
-    ) {
-
-      return buildCustomerResult({
-        customer:
-          customers[0],
-
-        message:
-          query,
-
-        shopId:
-          objectShopId,
-
-        dateRange,
-      });
-    }
-
-    // =================================================
-    // MULTIPLE CUSTOMERS
-    // =================================================
-
-    if (
-      customers.length > 1 &&
-      !products.length
-    ) {
-
-      const lines = [
-        `👥 ${customers.length} customers matched your search:`,
-      ];
-
-      customers
-        .slice(0, 10)
-        .forEach(
-          (
-            customer,
-            index
-          ) => {
-
-            lines.push(
-              `${index + 1}. ${
-                customer.fullName
-              } — ${
-                customer.mobileNumber ||
-                'No mobile'
-              } — ${
-                customer.customerId ||
-                'No ID'
-              }`
-            );
-          }
-        );
 
       lines.push(
-        '',
-        'Please search with the customer name, mobile number, CNIC, or customer ID for exact details.'
+        `   📱 ${getCustomerPhone(
+          customer
+        )}`
       );
-
-      return lines.join(
-        '\n'
-      );
-    }
-
-    // =================================================
-    // ONE PRODUCT
-    // =================================================
-
-    if (
-      products.length === 1 &&
-      !customers.length
-    ) {
-
-      return buildProductResult({
-        product:
-          products[0],
-
-        message:
-          query,
-
-        shopId:
-          objectShopId,
-
-        dateRange,
-      });
-    }
-
-    // =================================================
-    // MULTIPLE PRODUCTS
-    // =================================================
-
-    if (
-      products.length > 1 &&
-      !customers.length
-    ) {
-
-      const lines = [
-        `📦 ${products.length} products matched your search:`,
-      ];
-
-      products
-        .slice(0, 10)
-        .forEach(
-          (
-            product,
-            index
-          ) => {
-
-            lines.push(
-              `${index + 1}. ${
-                product.name
-              }${
-                product.brand
-                  ? ` ${product.brand}`
-                  : ''
-              }${
-                product.model
-                  ? ` ${product.model}`
-                  : ''
-              } — Stock: ${
-                safeNumber(
-                  product.quantity
-                )
-              } — ${money(
-                product.salePrice
-              )}`
-            );
-          }
-        );
 
       lines.push(
-        '',
-        'Search with a more specific product name, model, brand, SKU, IMEI, or serial number for exact details.'
+        `   📦 ${getProductName(
+          product
+        )}`
       );
 
-      return lines.join(
-        '\n'
+      lines.push(
+        `   📅 Due: ${formatDate(
+          inst.dueDate
+        )}`
       );
+
+      lines.push(
+        `   💰 Collect: ${money(
+          inst.remainingAmount
+        )}`
+      );
+
+      lines.push(
+        `   📋 Installment #${
+          inst.installmentNumber ||
+          '-'
+        }`
+      );
+
+      lines.push('');
     }
+  );
 
-    // =================================================
-    // CUSTOMER + PRODUCT
-    // =================================================
+  return lines.join('\n');
+};
 
-    if (
-      customers.length &&
-      products.length
-    ) {
+/* ============================================================================
+   9. SALES REPORT
+============================================================================ */
 
-      const sections = [];
+const buildSalesReport = async (
+  shopId,
+  customer = null,
+  product = null,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
 
+  const range =
+    dateRange || defaultTodayRange();
+
+  const query = {
+    shopId: shopObjId,
+    ...dateOrQuery(
+      [
+        'saleDate',
+        'date',
+        'createdAt',
+      ],
+      range
+    ),
+  };
+
+  if (customer) {
+    query.customer =
+      customer._id;
+  }
+
+  if (product) {
+    query.product =
+      product._id;
+  }
+
+  const sales = await Sale.find(query)
+    .populate(
+      'customer',
+      'fullName name customerName mobileNumber phone'
+    )
+    .populate(
+      'product',
+      'name title brand model'
+    )
+    .sort({
+      saleDate: -1,
+      createdAt: -1,
+    })
+    .lean();
+
+  if (!sales.length) {
+    return [
+      `🛒 SALES REPORT`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📅 ${range.label}`,
+      `❌ Is period mein koi sale record nahi mila.`,
+    ].join('\n');
+  }
+
+  const total =
+    sales.reduce(
+      (sum, s) =>
+        sum + getSaleAmount(s),
+      0
+    );
+
+  const cashSales =
+    sales.filter(
+      (s) => !isInstallmentSale(s)
+    );
+
+  const installmentSales =
+    sales.filter(
+      (s) => isInstallmentSale(s)
+    );
+
+  const cashTotal =
+    cashSales.reduce(
+      (sum, s) =>
+        sum + getSaleAmount(s),
+      0
+    );
+
+  const installmentTotal =
+    installmentSales.reduce(
+      (sum, s) =>
+        sum + getSaleAmount(s),
+      0
+    );
+
+  const lines = [
+    `🛒 SALES REPORT`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 Period: ${range.label}`,
+    `📊 Total Sales: ${sales.length}`,
+    `💰 Total Sale Value: ${money(
+      total
+    )}`,
+    `💵 Cash Sales: ${
+      cashSales.length
+    } (${money(cashTotal)})`,
+    `📆 Installment Sales: ${
+      installmentSales.length
+    } (${money(
+      installmentTotal
+    )})`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
+
+  sales.forEach(
+    (sale, index) => {
+      const tag =
+        isInstallmentSale(sale)
+          ? '📆 INSTALLMENT'
+          : '💵 CASH';
+
+      lines.push(
+        `${index + 1}. ${tag} — ${getProductName(
+          sale.product
+        )}`
+      );
+
+      lines.push(
+        `   💰 ${money(
+          getSaleAmount(sale)
+        )}`
+      );
+
+      if (!customer) {
+        lines.push(
+          `   👤 ${getCustomerName(
+            sale.customer
+          )}`
+        );
+      }
+
+      lines.push(
+        `   🧾 ${
+          sale.saleId ||
+          sale.invoiceNumber ||
+          'N/A'
+        }`
+      );
+
+      lines.push(
+        `   📅 ${formatDate(
+          sale.saleDate ||
+            sale.date ||
+            sale.createdAt
+        )}`
+      );
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   10. EXPENSE REPORT
+============================================================================ */
+
+const buildExpenseReport = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const expenses =
+    await Expense.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'date',
+          'expenseDate',
+          'createdAt',
+        ],
+        range
+      ),
+    })
+      .sort({
+        date: -1,
+        createdAt: -1,
+      })
+      .lean();
+
+  if (!expenses.length) {
+    return [
+      `🧾 EXPENSE REPORT`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📅 ${range.label}`,
+      `✅ Is period mein koi expense nahi mila.`,
+    ].join('\n');
+  }
+
+  const total =
+    expenses.reduce(
+      (sum, e) =>
+        sum + safeNumber(e.amount),
+      0
+    );
+
+  const lines = [
+    `🧾 EXPENSE REPORT`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 Period: ${range.label}`,
+    `🧾 Entries: ${expenses.length}`,
+    `💰 Total Expense: ${money(
+      total
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
+
+  expenses.forEach(
+    (expense, index) => {
+      const title =
+        expense.title ||
+        expense.category ||
+        expense.description ||
+        expense.name ||
+        'Expense';
+
+      const date =
+        expense.date ||
+        expense.expenseDate ||
+        expense.createdAt;
+
+      lines.push(
+        `${index + 1}. ${title}`
+      );
+
+      lines.push(
+        `   💰 ${money(
+          expense.amount
+        )}`
+      );
+
+      lines.push(
+        `   📅 ${formatDate(date)}`
+      );
+
+      if (
+        expense.description &&
+        expense.description !== title
+      ) {
+        lines.push(
+          `   📝 ${expense.description}`
+        );
+      }
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   11. OVERDUE REPORT
+============================================================================ */
+
+const buildOverdueReport = async (
+  shopId,
+  customer = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const overdue =
+    await Installment.find({
+      shopId: shopObjId,
+      dueDate: {
+        $lt: startOfDay(
+          new Date()
+        ),
+      },
+      remainingAmount: {
+        $gt: 0,
+      },
+    })
+      .populate({
+        path: 'installmentPlan',
+        populate: [
+          {
+            path: 'customer',
+            select:
+              'fullName name customerName mobileNumber phone',
+          },
+          {
+            path: 'product',
+            select:
+              'name title brand model',
+          },
+        ],
+      })
+      .sort({
+        dueDate: 1,
+      })
+      .lean();
+
+  const filtered = customer
+    ? overdue.filter(
+        (i) =>
+          String(
+            i.installmentPlan
+              ?.customer?._id
+          ) ===
+          String(customer._id)
+      )
+    : overdue;
+
+  if (!filtered.length) {
+    return customer
+      ? `✅ ${getCustomerName(
+          customer
+        )} ki koi overdue installment nahi hai.`
+      : `✅ Shop par koi overdue installment nahi hai.`;
+  }
+
+  const total =
+    filtered.reduce(
+      (sum, i) =>
+        sum +
+        safeNumber(
+          i.remainingAmount
+        ),
+      0
+    );
+
+  const today = startOfDay(
+    new Date()
+  );
+
+  const lines = [
+    `⚠️ OVERDUE REPORT`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `👥 Records: ${filtered.length}`,
+    `💰 Total Overdue: ${money(
+      total
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
+
+  filtered
+    .slice(0, 50)
+    .forEach((item, index) => {
       const customer =
-        customers[0];
+        item.installmentPlan
+          ?.customer;
 
-      sections.push(
-        await buildCustomerResult({
-          customer,
+      const product =
+        item.installmentPlan
+          ?.product;
 
-          message:
-            query,
-
-          shopId:
-            objectShopId,
-
-          dateRange,
-        })
-      );
-
-      // EXACT ONE PRODUCT
-      if (
-        products.length === 1
-      ) {
-
-        const product =
-          products[0];
-
-        sections.push(
-          await buildProductResult({
-            product,
-
-            message:
-              query,
-
-            shopId:
-              objectShopId,
-
-            dateRange,
-          })
+      const dueDate =
+        startOfDay(
+          item.dueDate
         );
 
-        const productSales =
-          await getSalesForProduct(
-            objectShopId,
-            product._id,
-            dateRange
+      const lateDays = Math.max(
+        0,
+        Math.floor(
+          (
+            today.getTime() -
+            dueDate.getTime()
+          ) /
+            86400000
+        )
+      );
+
+      lines.push(
+        `${index + 1}. 👤 ${getCustomerName(
+          customer
+        )}`
+      );
+
+      lines.push(
+        `   📱 ${getCustomerPhone(
+          customer
+        )}`
+      );
+
+      lines.push(
+        `   📦 ${getProductName(
+          product
+        )}`
+      );
+
+      lines.push(
+        `   📅 Due: ${formatDate(
+          item.dueDate
+        )} — ${lateDays} days late`
+      );
+
+      lines.push(
+        `   💰 Remaining: ${money(
+          item.remainingAmount
+        )}`
+      );
+
+      lines.push('');
+    });
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   12. RECEIVABLES
+============================================================================ */
+
+const buildReceivablesReport = async (
+  shopId
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const installments =
+    await Installment.find({
+      shopId: shopObjId,
+      remainingAmount: {
+        $gt: 0,
+      },
+    })
+      .populate({
+        path: 'installmentPlan',
+        populate: {
+          path: 'customer',
+          select:
+            'fullName name customerName mobileNumber phone',
+        },
+      })
+      .lean();
+
+  const customerMap =
+    new Map();
+
+  installments.forEach(
+    (item) => {
+      const customer =
+        item.installmentPlan
+          ?.customer;
+
+      if (!customer?._id) return;
+
+      const id =
+        String(customer._id);
+
+      if (!customerMap.has(id)) {
+        customerMap.set(id, {
+          customer,
+          amount: 0,
+          installments: 0,
+        });
+      }
+
+      const record =
+        customerMap.get(id);
+
+      record.amount +=
+        safeNumber(
+          item.remainingAmount
+        );
+
+      record.installments++;
+    }
+  );
+
+  const records =
+    Array.from(
+      customerMap.values()
+    ).sort(
+      (a, b) =>
+        b.amount - a.amount
+    );
+
+  const total =
+    records.reduce(
+      (sum, item) =>
+        sum + item.amount,
+      0
+    );
+
+  if (!records.length) {
+    return [
+      `💰 RECEIVABLES`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `✅ Kisi customer se koi outstanding amount nahi lena.`,
+    ].join('\n');
+  }
+
+  const lines = [
+    `💰 CUSTOMER RECEIVABLES`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `👥 Customers with Balance: ${records.length}`,
+    `💰 Total Outstanding: ${money(
+      total
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
+
+  records.forEach(
+    (item, index) => {
+      lines.push(
+        `${index + 1}. 👤 ${getCustomerName(
+          item.customer
+        )}`
+      );
+
+      lines.push(
+        `   📱 ${getCustomerPhone(
+          item.customer
+        )}`
+      );
+
+      lines.push(
+        `   💰 Lena Hai: ${money(
+          item.amount
+        )}`
+      );
+
+      lines.push(
+        `   📋 Unpaid Installments: ${item.installments}`
+      );
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   13. INVENTORY
+============================================================================ */
+
+const buildInventoryReport = async (
+  shopId
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const products =
+    await Product.find({
+      shopId: shopObjId,
+    })
+      .select(
+        'name title brand model sku category quantity purchasePrice salePrice minStockLevel'
+      )
+      .sort({
+        name: 1,
+      })
+      .lean();
+
+  if (!products.length) {
+    return `📦 Inventory mein koi product nahi mila.`;
+  }
+
+  const totalProducts =
+    products.length;
+
+  const totalQty =
+    products.reduce(
+      (sum, p) =>
+        sum + safeNumber(p.quantity),
+      0
+    );
+
+  const costValue =
+    products.reduce(
+      (sum, p) =>
+        sum +
+        safeNumber(p.quantity) *
+          safeNumber(
+            p.purchasePrice
+          ),
+      0
+    );
+
+  const retailValue =
+    products.reduce(
+      (sum, p) =>
+        sum +
+        safeNumber(p.quantity) *
+          safeNumber(
+            p.salePrice
+          ),
+      0
+    );
+
+  const lowStock =
+    products.filter(
+      (p) =>
+        safeNumber(p.quantity) <=
+        safeNumber(
+          p.minStockLevel || 2
+        )
+    );
+
+  const outOfStock =
+    products.filter(
+      (p) =>
+        safeNumber(p.quantity) <=
+        0
+    );
+
+  const lines = [
+    `📦 COMPLETE INVENTORY`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📦 Products: ${totalProducts}`,
+    `🔢 Total Pieces: ${totalQty}`,
+    `💰 Purchase Value: ${money(
+      costValue
+    )}`,
+    `🏷️ Retail Value: ${money(
+      retailValue
+    )}`,
+    `📈 Potential Stock Margin: ${money(
+      retailValue - costValue
+    )}`,
+    `⚠️ Low Stock: ${lowStock.length}`,
+    `❌ Out of Stock: ${outOfStock.length}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+    `Product List:`,
+    '',
+  ];
+
+  products.forEach(
+    (p, index) => {
+      const qty =
+        safeNumber(
+          p.quantity
+        );
+
+      let status = '✅';
+
+      if (qty <= 0) {
+        status = '❌';
+      } else if (
+        qty <=
+        safeNumber(
+          p.minStockLevel || 2
+        )
+      ) {
+        status = '⚠️';
+      }
+
+      lines.push(
+        `${index + 1}. ${status} ${getProductName(
+          p
+        )}`
+      );
+
+      lines.push(
+        `   SKU: ${p.sku || 'N/A'}`
+      );
+
+      lines.push(
+        `   Stock: ${qty}`
+      );
+
+      lines.push(
+        `   Sale: ${money(
+          p.salePrice
+        )}`
+      );
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   14. PRODUCT 360
+============================================================================ */
+
+const buildProduct360 = async (
+  product,
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const query = {
+    shopId: shopObjId,
+    product: product._id,
+  };
+
+  if (dateRange) {
+    Object.assign(
+      query,
+      dateOrQuery(
+        [
+          'saleDate',
+          'date',
+          'createdAt',
+        ],
+        dateRange
+      )
+    );
+  }
+
+  const sales =
+    await Sale.find(query)
+      .populate(
+        'customer',
+        'fullName name customerName mobileNumber phone'
+      )
+      .sort({
+        saleDate: -1,
+        createdAt: -1,
+      })
+      .lean();
+
+  const quantity =
+    safeNumber(
+      product.quantity
+    );
+
+  const totalSold =
+    sales.reduce(
+      (sum, s) =>
+        sum +
+        safeNumber(
+          s.quantity || 1
+        ),
+      0
+    );
+
+  const revenue =
+    sales.reduce(
+      (sum, s) =>
+        sum +
+        getSaleAmount(s),
+      0
+    );
+
+  const lowStock =
+    quantity <=
+    safeNumber(
+      product.minStockLevel || 2
+    );
+
+  const lines = [
+    `📱 PRODUCT 360°`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📦 Product: ${getProductName(
+      product
+    )}`,
+    product.brand
+      ? `🏷️ Brand: ${product.brand}`
+      : null,
+    product.model
+      ? `🔖 Model: ${product.model}`
+      : null,
+    product.sku
+      ? `🔢 SKU: ${product.sku}`
+      : null,
+    `📦 Current Stock: ${quantity}`,
+    `🏷️ Sale Price: ${money(
+      product.salePrice
+    )}`,
+    `💵 Purchase Price: ${money(
+      product.purchasePrice
+    )}`,
+    `📊 Sales Count: ${sales.length}`,
+    `🔢 Units Sold: ${totalSold}`,
+    `💰 Revenue: ${money(
+      revenue
+    )}`,
+    `📦 Stock Status: ${
+      quantity <= 0
+        ? '❌ OUT OF STOCK'
+        : lowStock
+        ? '⚠️ LOW STOCK'
+        : '✅ IN STOCK'
+    }`,
+  ].filter(Boolean);
+
+  if (sales.length) {
+    lines.push(
+      '',
+      'Recent Sales:',
+      ''
+    );
+
+    sales
+      .slice(0, 10)
+      .forEach(
+        (sale, index) => {
+          lines.push(
+            `${index + 1}. ${
+              isInstallmentSale(
+                sale
+              )
+                ? '📆 Installment'
+                : '💵 Cash'
+            }`
           );
 
-        const customerId =
-          customer._id ||
-          customer.id;
-
-        const customerProductSales =
-          productSales.filter(
-            (sale) => {
-
-              const saleCustomerId =
-                sale.customer?._id ||
-                sale.customer?.id;
-
-              return (
-                String(
-                  saleCustomerId
-                ) ===
-                String(
-                  customerId
-                )
-              );
-            }
+          lines.push(
+            `   👤 ${getCustomerName(
+              sale.customer
+            )}`
           );
 
-        if (
-          customerProductSales.length
-        ) {
+          lines.push(
+            `   💰 ${money(
+              getSaleAmount(
+                sale
+              )
+            )}`
+          );
 
-          sections.push(
-            [
-              `🔗 ${
-                customer.fullName
-              } + ${
-                product.name
-              }`,
+          lines.push(
+            `   📅 ${formatDate(
+              sale.saleDate ||
+                sale.date ||
+                sale.createdAt
+            )}`
+          );
 
-              `Sales Found: ${
-                customerProductSales.length
-              }`,
+          lines.push('');
+        }
+      );
+  }
 
-              ...customerProductSales.map(
-                (
-                  sale,
-                  index
-                ) =>
-                  `${index + 1}. ${money(
-                    sale.totalWithMarkup ||
-                      sale.finalTotal
-                  )} — ${
-                    sale.paymentType
-                  } — ${formatDate(
-                    sale.saleDate
-                  )}`
-              ),
-            ].join('\n')
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   15. TOP SELLING
+============================================================================ */
+
+const buildTopSelling = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const query = {
+    shopId: shopObjId,
+  };
+
+  if (dateRange) {
+    Object.assign(
+      query,
+      dateOrQuery(
+        [
+          'saleDate',
+          'date',
+          'createdAt',
+        ],
+        dateRange
+      )
+    );
+  }
+
+  const sales =
+    await Sale.find(query)
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .lean();
+
+  if (!sales.length) {
+    return `📊 Is period mein koi sale record nahi mila.`;
+  }
+
+  const map =
+    new Map();
+
+  sales.forEach(
+    (sale) => {
+      const name =
+        getProductName(
+          sale.product
+        );
+
+      if (!map.has(name)) {
+        map.set(name, {
+          units: 0,
+          revenue: 0,
+        });
+      }
+
+      const item =
+        map.get(name);
+
+      item.units +=
+        safeNumber(
+          sale.quantity || 1
+        );
+
+      item.revenue +=
+        getSaleAmount(sale);
+    }
+  );
+
+  const sorted =
+    Array.from(
+      map.entries()
+    )
+      .sort(
+        (a, b) =>
+          b[1].units -
+          a[1].units
+      )
+      .slice(0, 15);
+
+  const lines = [
+    `🔥 TOP SELLING PRODUCTS`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 ${
+      dateRange?.label ||
+      'All Available Records'
+    }`,
+    '',
+  ];
+
+  sorted.forEach(
+    ([name, data], index) => {
+      lines.push(
+        `${index + 1}. ${name}`
+      );
+
+      lines.push(
+        `   🔢 Units Sold: ${data.units}`
+      );
+
+      lines.push(
+        `   💰 Revenue: ${money(
+          data.revenue
+        )}`
+      );
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   16. RETURNS / REFUNDS
+============================================================================ */
+
+const buildReturnsReport = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const returns =
+    await Return.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'returnDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    })
+      .populate(
+        'customer',
+        'fullName name customerName mobileNumber phone'
+      )
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .sort({
+        returnDate: -1,
+        createdAt: -1,
+      })
+      .lean();
+
+  if (!returns.length) {
+    return [
+      `↩️ RETURNS / REFUNDS`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📅 ${range.label}`,
+      `✅ Is period mein koi return/refund nahi mila.`,
+    ].join('\n');
+  }
+
+  const totalRefund =
+    returns.reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.refundAmount
+        ),
+      0
+    );
+
+  const lines = [
+    `↩️ RETURNS / REFUNDS`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 ${range.label}`,
+    `↩️ Returns: ${returns.length}`,
+    `💰 Total Refund: ${money(
+      totalRefund
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    '',
+  ];
+
+  returns.forEach(
+    (item, index) => {
+      lines.push(
+        `${index + 1}. ${getProductName(
+          item.product
+        )}`
+      );
+
+      lines.push(
+        `   👤 ${getCustomerName(
+          item.customer
+        )}`
+      );
+
+      lines.push(
+        `   💰 Refund: ${money(
+          item.refundAmount
+        )}`
+      );
+
+      lines.push(
+        `   📅 ${formatDate(
+          item.returnDate ||
+            item.date ||
+            item.createdAt
+        )}`
+      );
+
+      lines.push('');
+    }
+  );
+
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   17. CASH FLOW
+============================================================================ */
+
+const buildCashFlow = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange ||
+    buildRange(
+      new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1
+      ),
+      new Date(),
+      'This Month'
+    );
+
+  const [
+    payments,
+    expenses,
+    returns,
+  ] = await Promise.all([
+    Payment.find({
+      shopId: shopObjId,
+      isArchived: {
+        $ne: true,
+      },
+      ...dateOrQuery(
+        [
+          'paymentDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    }).lean(),
+
+    Expense.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'date',
+          'expenseDate',
+          'createdAt',
+        ],
+        range
+      ),
+    }).lean(),
+
+    Return.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'returnDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    }).lean(),
+  ]);
+
+  const moneyIn =
+    payments.reduce(
+      (sum, p) =>
+        sum + safeNumber(p.amount),
+      0
+    );
+
+  const expensesTotal =
+    expenses.reduce(
+      (sum, e) =>
+        sum + safeNumber(e.amount),
+      0
+    );
+
+  const refunds =
+    returns.reduce(
+      (sum, r) =>
+        sum +
+        safeNumber(
+          r.refundAmount
+        ),
+      0
+    );
+
+  const moneyOut =
+    expensesTotal +
+    refunds;
+
+  const net =
+    moneyIn - moneyOut;
+
+  return [
+    `💵 CASH FLOW`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 ${range.label}`,
+    `📥 Money In: ${money(
+      moneyIn
+    )}`,
+    `   • Payments: ${payments.length}`,
+    `📤 Money Out: ${money(
+      moneyOut
+    )}`,
+    `   • Expenses: ${money(
+      expensesTotal
+    )}`,
+    `   • Refunds: ${money(
+      refunds
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `${net >= 0 ? '🟢' : '🔴'} Net Cash Flow: ${money(
+      net
+    )}`,
+  ].join('\n');
+};
+
+/* ============================================================================
+   18. CUSTOMER 360
+============================================================================ */
+
+const buildCustomer360 = async (
+  customer,
+  shopId
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const [
+    sales,
+    plans,
+    payments,
+  ] = await Promise.all([
+    Sale.find({
+      shopId: shopObjId,
+      customer: customer._id,
+    })
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .sort({
+        saleDate: -1,
+      })
+      .lean(),
+
+    InstallmentPlan.find({
+      shopId: shopObjId,
+      customer: customer._id,
+    })
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .lean(),
+
+    Payment.find({
+      shopId: shopObjId,
+      customer: customer._id,
+      isArchived: {
+        $ne: true,
+      },
+    })
+      .sort({
+        paymentDate: -1,
+      })
+      .lean(),
+  ]);
+
+  const planIds =
+    plans.map(
+      (p) => p._id
+    );
+
+  const installments =
+    planIds.length
+      ? await Installment.find({
+          shopId: shopObjId,
+          installmentPlan: {
+            $in: planIds,
+          },
+        })
+          .sort({
+            dueDate: 1,
+          })
+          .lean()
+      : [];
+
+  const totalSales =
+    sales.reduce(
+      (sum, sale) =>
+        sum +
+        getSaleAmount(sale),
+      0
+    );
+
+  const totalPaid =
+    payments.reduce(
+      (sum, payment) =>
+        sum +
+        safeNumber(
+          payment.amount
+        ),
+      0
+    );
+
+  const outstanding =
+    plans.reduce(
+      (sum, plan) =>
+        sum +
+        safeNumber(
+          plan.remainingBalance
+        ),
+      0
+    );
+
+  const today =
+    startOfDay(new Date());
+
+  const overdue =
+    installments.filter(
+      (i) =>
+        startOfDay(
+          i.dueDate
+        ) < today &&
+        safeNumber(
+          i.remainingAmount
+        ) > 0
+    );
+
+  const overdueAmount =
+    overdue.reduce(
+      (sum, i) =>
+        sum +
+        safeNumber(
+          i.remainingAmount
+        ),
+      0
+    );
+
+  const nextDue =
+    installments.find(
+      (i) =>
+        startOfDay(
+          i.dueDate
+        ) >= today &&
+        safeNumber(
+          i.remainingAmount
+        ) > 0
+    );
+
+  const lines = [
+    `👤 CUSTOMER 360°`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `👤 ${getCustomerName(
+      customer
+    )}`,
+    `📱 ${getCustomerPhone(
+      customer
+    )}`,
+    `🪪 CNIC: ${
+      customer.cnic ||
+      'N/A'
+    }`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `🛒 Total Sales: ${money(
+      totalSales
+    )}`,
+    `🧾 Sales Count: ${sales.length}`,
+    `💳 Total Payments: ${money(
+      totalPaid
+    )}`,
+    `💰 Outstanding: ${money(
+      outstanding
+    )}`,
+    `⚠️ Overdue: ${money(
+      overdueAmount
+    )}`,
+    `📆 Installment Plans: ${plans.length}`,
+  ];
+
+  if (nextDue) {
+    lines.push(
+      `📅 Next Due: ${formatDate(
+        nextDue.dueDate
+      )} — ${money(
+        nextDue.remainingAmount
+      )}`
+    );
+  }
+
+  if (sales.length) {
+    lines.push(
+      '',
+      '🛒 Recent Purchases:',
+      ''
+    );
+
+    sales
+      .slice(0, 10)
+      .forEach(
+        (sale, index) => {
+          lines.push(
+            `${index + 1}. ${getProductName(
+              sale.product
+            )}`
+          );
+
+          lines.push(
+            `   ${
+              isInstallmentSale(
+                sale
+              )
+                ? '📆 Installment'
+                : '💵 Cash'
+            } — ${money(
+              getSaleAmount(
+                sale
+              )
+            )}`
+          );
+
+          lines.push(
+            `   📅 ${formatDate(
+              sale.saleDate ||
+                sale.date ||
+                sale.createdAt
+            )}`
           );
         }
-      }
+      );
+  }
 
-      return sections.join(
-        '\n\n'
+  return lines.join('\n');
+};
+
+/* ============================================================================
+   19. DAY / BUSINESS BRIEFING
+============================================================================ */
+
+const buildBusinessBriefing = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const [
+    sales,
+    payments,
+    expenses,
+    dueInstallments,
+  ] = await Promise.all([
+    Sale.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'saleDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    })
+      .populate(
+        'customer',
+        'fullName name customerName mobileNumber'
+      )
+      .populate(
+        'product',
+        'name title brand model'
+      )
+      .lean(),
+
+    Payment.find({
+      shopId: shopObjId,
+      isArchived: {
+        $ne: true,
+      },
+      ...dateOrQuery(
+        [
+          'paymentDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    }).lean(),
+
+    Expense.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'date',
+          'expenseDate',
+          'createdAt',
+        ],
+        range
+      ),
+    }).lean(),
+
+    Installment.find({
+      shopId: shopObjId,
+      dueDate: {
+        $gte: range.startDate,
+        $lte: range.endDate,
+      },
+      remainingAmount: {
+        $gt: 0,
+      },
+    }).lean(),
+  ]);
+
+  const saleValue =
+    sales.reduce(
+      (sum, s) =>
+        sum + getSaleAmount(s),
+      0
+    );
+
+  const collected =
+    payments.reduce(
+      (sum, p) =>
+        sum + safeNumber(p.amount),
+      0
+    );
+
+  const expenseTotal =
+    expenses.reduce(
+      (sum, e) =>
+        sum + safeNumber(e.amount),
+      0
+    );
+
+  const dueAmount =
+    dueInstallments.reduce(
+      (sum, i) =>
+        sum +
+        safeNumber(
+          i.remainingAmount
+        ),
+      0
+    );
+
+  const cashSales =
+    sales.filter(
+      (s) =>
+        !isInstallmentSale(s)
+    );
+
+  const installmentSales =
+    sales.filter(
+      (s) =>
+        isInstallmentSale(s)
+    );
+
+  return [
+    `📊 BUSINESS BRIEFING`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 ${range.label}`,
+    '',
+    `🛒 SALES`,
+    `• Transactions: ${sales.length}`,
+    `• Total Sales Value: ${money(
+      saleValue
+    )}`,
+    `• 💵 Cash Sales: ${cashSales.length}`,
+    `• 📆 Installment Sales: ${installmentSales.length}`,
+    '',
+    `💰 COLLECTIONS`,
+    `• Collected: ${money(
+      collected
+    )}`,
+    `• Payment Entries: ${payments.length}`,
+    '',
+    `🧾 EXPENSES`,
+    `• Expenses: ${money(
+      expenseTotal
+    )}`,
+    `• Entries: ${expenses.length}`,
+    '',
+    `📆 INSTALLMENTS`,
+    `• Due Installments: ${dueInstallments.length}`,
+    `• Due Amount: ${money(
+      dueAmount
+    )}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `💵 Approx Cash Movement: ${money(
+      collected -
+        expenseTotal
+    )}`,
+  ].join('\n');
+};
+
+/* ============================================================================
+   20. PROFIT / MARGIN
+============================================================================ */
+
+const buildProfitReport = async (
+  shopId,
+  dateRange = null
+) => {
+  const shopObjId = toObjectId(shopId);
+
+  const range =
+    dateRange || defaultTodayRange();
+
+  const sales =
+    await Sale.find({
+      shopId: shopObjId,
+      ...dateOrQuery(
+        [
+          'saleDate',
+          'date',
+          'createdAt',
+        ],
+        range
+      ),
+    })
+      .populate(
+        'product',
+        'name title purchasePrice'
+      )
+      .lean();
+
+  let revenue = 0;
+  let estimatedCost = 0;
+
+  sales.forEach(
+    (sale) => {
+      const amount =
+        getSaleAmount(sale);
+
+      const quantity =
+        safeNumber(
+          sale.quantity || 1
+        );
+
+      const purchasePrice =
+        safeNumber(
+          sale.product
+            ?.purchasePrice
+        );
+
+      revenue += amount;
+
+      estimatedCost +=
+        purchasePrice *
+        quantity;
+    }
+  );
+
+  const grossMargin =
+    revenue -
+    estimatedCost;
+
+  return [
+    `📈 SALES MARGIN REPORT`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `📅 ${range.label}`,
+    `💰 Sales Revenue: ${money(
+      revenue
+    )}`,
+    `📦 Estimated Product Cost: ${money(
+      estimatedCost
+    )}`,
+    `📈 Estimated Gross Margin: ${money(
+      grossMargin
+    )}`,
+    '',
+    `⚠️ Note: Yeh estimated gross margin hai. Actual net profit mein expenses, refunds aur doosri accounting adjustments alag se affect kar sakti hain.`,
+  ].join('\n');
+};
+
+
+const resolveProduct = async (rawText, shopObjId) => {
+  try {
+    if (!rawText || !shopObjId) {
+      return [];
+    }
+
+    const text = String(rawText).trim();
+
+    if (!text) {
+      return [];
+    }
+
+    // Search ko safe regex banayein
+    const escapedText = text.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&'
+    );
+
+    const regex = new RegExp(
+      escapedText,
+      'i'
+    );
+
+    const products = await Product.find({
+      shopId: shopObjId,
+      $or: [
+        { name: regex },
+        { productName: regex },
+        { model: regex },
+        { sku: regex },
+        { code: regex },
+        { productCode: regex },
+        { category: regex },
+        { brand: regex },
+      ],
+    })
+      .limit(30)
+      .lean();
+
+    return products || [];
+  } catch (error) {
+    console.error(
+      'resolveProduct Error:',
+      error
+    );
+
+    return [];
+  }
+};
+/* ============================================================================
+   21. MASTER QUERY PROCESSOR
+============================================================================ */
+
+const processLocalQuery = async ({
+  message,
+  shopId,
+}) => {
+  try {
+    const rawText = clean(message);
+
+    if (!rawText) {
+      return 'Baraye meharbani apna sawal likhein.';
+    }
+const text = normalize(rawText);
+    const shopObjId =
+      toObjectId(shopId);
+
+    if (!shopObjId) {
+      return '❌ Shop ID verify nahi ho saki.';
+    }
+
+    const plan =
+      buildQueryPlan(rawText);
+
+    /*
+     * Entity resolution happens AFTER query planning.
+     * This is important because:
+     *
+     * "Arqam ne kitna pay kiya?"
+     *
+     * should become PAYMENT HISTORY,
+     * not generic Customer 360.
+     */
+
+    /* ---------------- CUSTOMER HISTORY / DETAILS ---------------- */
+
+const customerHistoryIntent =
+  hasAny(text, [
+    'history',
+    'histor',
+    'details',
+    'detail',
+    'complete record',
+    'full record',
+    'complete details',
+    'full details',
+    'complete history',
+    'full history',
+    'customer history',
+    'customer details',
+    'customer record',
+    'complete hisaab',
+    'complete hisab',
+    'pura hisaab',
+    'pura hisab',
+    'sara record',
+    'sari details',
+    'history details',
+  ]);
+
+if (customerHistoryIntent) {
+  plan.target = 'customer';
+  plan.action = '360';
+  plan.wantsCustomer = true;
+  plan.wantsDetails = true;
+  plan.wantsList = true;
+}
+
+    const shouldResolveCustomer =
+      plan.wantsCustomer ||
+      plan.target === 'customer' ||
+      plan.target === 'payment' ||
+      plan.target === 'installment' ||
+      plan.target === 'sales' ||
+      plan.target === 'overdue' ||
+      plan.target === 'receivable';
+
+    const shouldResolveProduct =
+      plan.wantsProduct ||
+      plan.target === 'product' ||
+      plan.target === 'sales' ||
+      plan.target === 'topSelling' ||
+      plan.target === 'stock';
+
+    const [
+      matchingCustomers,
+      matchingProducts,
+    ] = await Promise.all([
+      shouldResolveCustomer
+        ? resolveCustomer(
+            rawText,
+            shopObjId
+          )
+        : [],
+      shouldResolveProduct
+        ? resolveProduct(
+            rawText,
+            shopObjId
+          )
+        : [],
+    ]);
+
+    /*
+     * ENTITY DISAMBIGUATION
+     */
+
+    let customer = null;
+    let product = null;
+
+    if (
+      matchingCustomers.length >
+      1
+    ) {
+      /*
+       * If the query is clearly shop-wide,
+       * do not block it because words like
+       * "customer" exist in the query.
+       */
+      const shopWideTargets = [
+        'shop',
+        'expense',
+        'inventory',
+        'cashflow',
+        'topSelling',
+        'briefing',
+        'overdue',
+        'receivable',
+      ];
+
+      if (
+        !shopWideTargets.includes(
+          plan.target
+        )
+      ) {
+        return [
+          `👤 Multiple customers match hue hain:`,
+          '',
+          ...matchingCustomers
+            .slice(0, 8)
+            .map(
+              (c, i) =>
+                `${i + 1}. ${getCustomerName(
+                  c
+                )} — ${getCustomerPhone(
+                  c
+                )}`
+            ),
+          '',
+          `Please exact naam, mobile number ya customer ID dein.`,
+        ].join('\n');
+      }
+    }
+
+    if (
+      matchingCustomers.length ===
+      1
+    ) {
+      customer =
+        matchingCustomers[0];
+    }
+
+    if (
+      matchingProducts.length >
+      1
+    ) {
+      if (
+        plan.target ===
+          'product' ||
+        plan.target ===
+          'stock'
+      ) {
+        return [
+          `📱 Multiple products match hue hain:`,
+          '',
+          ...matchingProducts
+            .slice(0, 8)
+            .map(
+              (p, i) =>
+                `${i + 1}. ${getProductName(
+                  p
+                )} — Stock: ${safeNumber(
+                  p.quantity
+                )} — ${money(
+                  p.salePrice
+                )}`
+            ),
+          '',
+          `Please exact model ya SKU dein.`,
+        ].join('\n');
+      }
+    }
+
+    if (
+      matchingProducts.length ===
+      1
+    ) {
+      product =
+        matchingProducts[0];
+    }
+
+    /* ========================================================================
+       ROUTING
+    ======================================================================== */
+
+    /*
+     * CUSTOMER + PAYMENT
+     */
+    if (
+      customer &&
+      plan.target ===
+        'payment'
+    ) {
+      return await buildCustomerPaymentHistory(
+        customer,
+        shopObjId,
+        plan.dateRange
       );
     }
 
-    // =================================================
-    // FINAL UNIVERSAL FALLBACK
-    // =================================================
 
-    return universalFallback({
-      message:
-        query,
+    /*
+ * SHOP-WIDE PAYMENTS
+ *
+ * Examples:
+ * Kal kitni payments receive hui?
+ * Aaj kis kis ne payment ki?
+ * Yesterday ki payment details
+ * September ki total collections
+ * Kis customer se kitna paisa aya?
+ */
+if (
+  plan.target ===
+  'payment'
+) {
+  return await buildShopPaymentReport(
+    shopObjId,
+    plan.dateRange
+  );
+}
 
-      shopId:
-        objectShopId,
+    /*
+     * CUSTOMER + INSTALLMENT
+     */
+    if (
+      customer &&
+      plan.target ===
+        'installment'
+    ) {
+      return await buildCustomerInstallmentSchedule(
+        customer,
+        shopObjId,
+        plan.dateRange
+      );
+    }
 
-      customers,
-      products,
+    /*
+     * CUSTOMER + SALES
+     */
+    if (
+      customer &&
+      plan.target ===
+        'sales'
+    ) {
+      return await buildSalesReport(
+        shopObjId,
+        customer,
+        product,
+        plan.dateRange
+      );
+    }
 
-      dateRange,
-    });
-  };
+    /*
+     * CUSTOMER + OVERDUE
+     */
+    if (
+      customer &&
+      plan.target ===
+        'overdue'
+    ) {
+      return await buildOverdueReport(
+        shopObjId,
+        customer
+      );
+    }
 
+    /*
+     * CUSTOMER WITHOUT SPECIALIZED INTENT
+     */
+  /*
+ * CUSTOMER 360 / HISTORY / DETAILS
+ *
+ * Examples:
+ * Arqam ka history
+ * Arqam ka history details
+ * Arqam ki details
+ * Arqam ka complete record
+ * Arqam ki complete history
+ * Arqam ka complete hisaab
+ */
+if (
+  customer &&
+  !product &&
+  (
+    plan.target === 'customer' ||
+    plan.target === 'shop'
+  )
+) {
+  return await buildCustomer360(
+    customer,
+    shopObjId
+  );
+}
 
-// =====================================================
-// EXPORTS
-// =====================================================
+    /*
+     * PRODUCT + SALES
+     */
+    if (
+      product &&
+      plan.target ===
+        'sales'
+    ) {
+      return await buildSalesReport(
+        shopObjId,
+        customer,
+        product,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * PRODUCT QUERY
+     */
+    if (
+      product &&
+      (
+        plan.target ===
+          'product' ||
+        plan.target ===
+          'stock'
+      )
+    ) {
+      return await buildProduct360(
+        product,
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * SHOP-WIDE INSTALLMENT SCHEDULE
+     *
+     * "Aaj kis kis ki installment hai?"
+     * "Tomorrow installments?"
+     * "Next month kitna collect hona hai?"
+     */
+    if (
+      plan.target ===
+      'installment'
+    ) {
+      return await buildShopInstallmentSchedule(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * SHOP-WIDE SALES
+     */
+    if (
+      plan.target ===
+      'sales'
+    ) {
+      return await buildSalesReport(
+        shopObjId,
+        null,
+        null,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * EXPENSES
+     */
+    if (
+      plan.target ===
+      'expense'
+    ) {
+      return await buildExpenseReport(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * OVERDUE
+     */
+    if (
+      plan.target ===
+      'overdue'
+    ) {
+      return await buildOverdueReport(
+        shopObjId
+      );
+    }
+
+    /*
+     * RECEIVABLES
+     */
+    if (
+      plan.target ===
+      'receivable'
+    ) {
+      return await buildReceivablesReport(
+        shopObjId
+      );
+    }
+
+    /*
+     * INVENTORY
+     */
+    if (
+      plan.target ===
+      'inventory'
+    ) {
+      return await buildInventoryReport(
+        shopObjId
+      );
+    }
+
+    /*
+     * STOCK
+     */
+    if (
+      plan.target ===
+      'stock'
+    ) {
+      if (product) {
+        return await buildProduct360(
+          product,
+          shopObjId,
+          plan.dateRange
+        );
+      }
+
+      return await buildInventoryReport(
+        shopObjId
+      );
+    }
+
+    /*
+     * TOP SELLING
+     */
+    if (
+      plan.target ===
+      'topSelling'
+    ) {
+      return await buildTopSelling(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * RETURNS
+     */
+    if (
+      plan.target ===
+      'returns'
+    ) {
+      return await buildReturnsReport(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * CASH FLOW
+     */
+    if (
+      plan.target ===
+      'cashflow'
+    ) {
+      return await buildCashFlow(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * PROFIT
+     */
+    if (
+      plan.target ===
+      'profit'
+    ) {
+      return await buildProfitReport(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * BUSINESS BRIEFING
+     */
+    if (
+      plan.target ===
+      'briefing'
+    ) {
+      return await buildBusinessBriefing(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * GENERIC DATE QUERY
+     *
+     * "Kal ka record"
+     * "Aaj kya hua"
+     * "Yesterday business"
+     */
+    if (
+      plan.dateRange
+    ) {
+      return await buildBusinessBriefing(
+        shopObjId,
+        plan.dateRange
+      );
+    }
+
+    /*
+     * GENERIC CUSTOMER FALLBACK
+     */
+    if (customer) {
+      return await buildCustomer360(
+        customer,
+        shopObjId
+      );
+    }
+
+    /*
+     * GENERIC PRODUCT FALLBACK
+     */
+    if (product) {
+      return await buildProduct360(
+        product,
+        shopObjId
+      );
+    }
+
+    /*
+     * FINAL HELP
+     */
+
+    return [
+      `🤖 SHOP AI ASSISTANT`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `Mujhe "${rawText}" ka exact data route nahi mila.`,
+      '',
+      `Aap naturally sawal pooch sakte hain, example:`,
+      '',
+      `👤 CUSTOMER`,
+      `• Arqam ne kitna pay kiya?`,
+      `• Arqam ki payment history dikhao`,
+      `• Arqam ka installment schedule`,
+      `• Arqam ki next installment kab hai?`,
+      `• Arqam kitna baki hai?`,
+      '',
+      `📆 INSTALLMENTS`,
+      `• Aaj kis kis ki installment hai?`,
+      `• Kal kis ki qist hai?`,
+      `• Tomorrow kitna collect hona hai?`,
+      `• Next month ki installment schedule dikhao`,
+      '',
+      `🛒 SALES`,
+      `• Aaj ki sales dikhao`,
+      `• Kal ki cash sales`,
+      `• September ki installment sales`,
+      `• Arqam ne kya khareeda?`,
+      '',
+      `💳 PAYMENTS`,
+      `• Aaj kitna paisa jama hua?`,
+      `• Kal kitni payments aayi?`,
+      `• Arqam ne kab kab payment ki?`,
+      '',
+      `🧾 EXPENSES`,
+      `• Aaj ke expenses`,
+      `• Kal kitna kharcha hua?`,
+      `• September ke expenses dikhao`,
+      '',
+      `📦 INVENTORY`,
+      `• Complete stock dikhao`,
+      `• Kaunsa product low stock hai?`,
+      `• iPhone 16 ka record dikhao`,
+      '',
+      `⚠️ RECOVERY`,
+      `• Kaun overdue hai?`,
+      `• Kis kis se paisa lena hai?`,
+      `• Total outstanding kitna hai?`,
+      '',
+      `📊 BUSINESS`,
+      `• Aaj ka complete hisab`,
+      `• Kal kya hua tha?`,
+      `• This month cash flow`,
+      `• Top selling products`,
+      `• Profit kitna hua?`,
+    ].join('\n');
+  } catch (error) {
+    console.error(
+      'NEXT LEVEL SHOP AI ERROR:',
+      error
+    );
+
+    return [
+      `❌ Query process nahi ho saki.`,
+      '',
+      `Technical error: ${
+        error?.message ||
+        'Unknown error'
+      }`,
+    ].join('\n');
+  }
+};
+
+/* ============================================================================
+   EXPORTS
+============================================================================ */
 
 module.exports = {
   processLocalQuery,
-
   universalSearch:
     processLocalQuery,
-
   default:
     processLocalQuery,
 };

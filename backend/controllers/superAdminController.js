@@ -829,17 +829,17 @@ const renewShopSubscription = async (
     // -----------------------------
 
     if (
-      subscriptionPlan ===
-      'Free Trial'
-    ) {
+  subscriptionPlan ===
+  'Free Trial'
+) {
 
-      newExpiryDate =
-        new Date(
-          baseDate.getTime() +
-          3 * 24 * 60 * 60 * 1000
-        );
+  newExpiryDate =
+    new Date(
+      baseDate.getTime() +
+      7 * 24 * 60 * 60 * 1000
+    );
 
-    }
+}
 
 
     // -----------------------------
