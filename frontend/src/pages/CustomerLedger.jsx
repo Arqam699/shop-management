@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Customers from './Customers';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -1350,7 +1351,7 @@ const getPaymentScore = (customer) => {
     const cnic = getCNIC(safePerson);
     const address = getAddress(safePerson);
     const city = getCity(safePerson);
-    const paymentScore = getPaymentScore(customer);
+    const paymentScore = getPaymentScore(customers);
 
     const relationship = firstValue(
       safePerson.relationship,
