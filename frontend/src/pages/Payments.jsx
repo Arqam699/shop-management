@@ -1283,14 +1283,29 @@ const Payments = () => {
             color: #000000 !important;
           }
 
+          /* Print only the receipt itself; hide the application header,
+             sidebar, page content and receipt-preview controls. */
+          body * {
+            visibility: hidden !important;
+          }
+
+          #printable-receipt-content,
+          #printable-receipt-content * {
+            visibility: visible !important;
+          }
+
           .no-print {
             display: none !important;
           }
 
-          #printable-receipt-modal-container {
+          #printable-receipt-content {
+            position: fixed !important;
+            left: 50% !important;
+            top: 0 !important;
             width: 100% !important;
             max-width: 80mm !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
+            transform: translateX(-50%) !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;

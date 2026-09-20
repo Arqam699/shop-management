@@ -248,6 +248,8 @@ const InvoiceDetails = () => {
   // VALUE PARSING
   // =========================================================
   const saleObj = invoice.sale || invoice;
+  const isInstallmentInvoice =
+    saleObj.paymentType === 'Installment';
   const downPaymentPaid = Number(saleObj.downPayment || 0);
   const totalAmount = Number(
     invoice.plan?.totalAmount ??
@@ -255,7 +257,21 @@ const InvoiceDetails = () => {
       saleObj.totalAmount ??
       0
   );
-  const remainingAmount = Math.max(totalAmount - downPaymentPaid, 0);
+  // A cash invoice is paid in full at checkout. Only an installment
+  // invoice has a down payment and financing balance.
+  const displayedPaymentAmount = isInstallmentInvoice
+    ? downPaymentPaid
+    : totalAmount;
+  const remainingAmount = isInstallmentInvoice
+    ? Math.max(
+        Number(
+          saleObj.remainingBalance ??
+            invoice.plan?.remainingBalance ??
+            totalAmount - downPaymentPaid
+        ),
+        0
+      )
+    : 0;
   const invoiceQuantity = saleObj.quantity || 0;
   const installments = Array.isArray(invoice.installments)
     ? invoice.installments
@@ -460,7 +476,7 @@ const InvoiceDetails = () => {
         )}
 
         {/* URDU INSTALLMENT AGREEMENT (FOR INSTALLMENT DEALS) */}
-        {saleObj.paymentType === 'Installment' && (
+        {isInstallmentInvoice && (
           <div
             dir="rtl"
             className="py-2.5 border-b border-dashed border-slate-300 text-[10px] leading-relaxed text-right bg-slate-50/50 p-2 rounded-xl"
@@ -493,18 +509,24 @@ const InvoiceDetails = () => {
           </div>
 
           <div className="flex justify-between text-emerald-600">
-            <span>Down Payment Paid:</span>
             <span>
-              +{settings?.currency || 'PKR'} {downPaymentPaid.toLocaleString()}
+              {isInstallmentInvoice
+                ? 'Down Payment Paid:'
+                : 'Paid Amount:'}
+            </span>
+            <span>
+              +{settings?.currency || 'PKR'} {displayedPaymentAmount.toLocaleString()}
             </span>
           </div>
 
-          <div className="flex justify-between text-rose-600 font-black text-sm pt-1 border-t border-dotted border-slate-200">
-            <span>Remaining Balance:</span>
-            <span>
-              {settings?.currency || 'PKR'} {remainingAmount.toLocaleString()}
-            </span>
-          </div>
+          {isInstallmentInvoice && (
+            <div className="flex justify-between text-rose-600 font-black text-sm pt-1 border-t border-dotted border-slate-200">
+              <span>Remaining Balance:</span>
+              <span>
+                {settings?.currency || 'PKR'} {remainingAmount.toLocaleString()}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* SIGNATURES BLOCK */}
@@ -742,14 +764,29 @@ const InvoiceDetails = () => {
             color: #000000 !important;
           }
 
+          /* Print only the invoice. The application header, sidebar,
+             page toolbar and every other screen element stay hidden. */
+          body * {
+            visibility: hidden !important;
+          }
+
+          #printable-thermal-invoice,
+          #printable-thermal-invoice * {
+            visibility: visible !important;
+          }
+
           .no-print {
             display: none !important;
           }
 
           #printable-thermal-invoice {
+            position: fixed !important;
+            left: 50% !important;
+            top: 0 !important;
             width: 100% !important;
             max-width: 80mm !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
+            transform: translateX(-50%) !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;
