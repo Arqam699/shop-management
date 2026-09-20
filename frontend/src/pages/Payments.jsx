@@ -433,34 +433,66 @@ const Payments = () => {
       ? `Month #${currentInstallmentNumber}`
       : 'Installment N/A';
 
-  const installmentHistory = Array.isArray(activeReceipt?.installmentHistory)
-    ? activeReceipt.installmentHistory
-    : [];
+  const getRecordId = (record) => {
+    if (!record) return '';
 
-  const previousInstallments = useMemo(() => {
-    if (Array.isArray(activeReceipt?.previousInstallments)) {
-      return [...activeReceipt.previousInstallments].sort(
-        (a, b) =>
-          Number(a.installmentNumber || 0) - Number(b.installmentNumber || 0)
-      );
+    if (typeof record === 'object') {
+      return String(record._id || record.id || '');
     }
 
-    return installmentHistory
-      .filter((installment) => {
-        const number = Number(installment.installmentNumber || 0);
-        const paidAmount = Number(installment.paidAmount || 0);
-        return number < currentInstallmentNumber && paidAmount > 0;
-      })
-      .sort(
-        (a, b) =>
-          Number(a.installmentNumber || 0) - Number(b.installmentNumber || 0)
-      );
-  }, [activeReceipt, installmentHistory, currentInstallmentNumber]);
+    return String(record);
+  };
 
-  const previousInstallmentsPaid = previousInstallments.reduce(
-    (sum, installment) => sum + Number(installment.paidAmount || 0),
-    0
-  );
+  const getPaymentBreakdown = (payment) => {
+    const allocations = Array.isArray(payment?.allocations)
+      ? [...payment.allocations].sort(
+          (a, b) =>
+            Number(a?.installmentNumber || 0) -
+            Number(b?.installmentNumber || 0)
+        )
+      : [];
+
+    const currentAllocation = allocations[0] || null;
+    const installmentNumber = Number(
+      currentAllocation?.installmentNumber ||
+        payment?.installment?.installmentNumber ||
+        0
+    );
+    const savedOriginalInstallmentAmount = Number(
+      payment?.originalInstallmentAmount || 0
+    );
+    const payableAtPayment = Number(
+      currentAllocation?.previousRemaining ??
+        (savedOriginalInstallmentAmount > 0
+          ? savedOriginalInstallmentAmount
+          : null) ??
+        payment?.installment?.originalAmount ??
+        payment?.installment?.amount ??
+        0
+    );
+    const actualPaid = Number(payment?.amount || 0);
+    const paidToCurrentInstallment = Number(
+      currentAllocation?.amount ?? Math.min(actualPaid, payableAtPayment)
+    );
+    const remainingAfterPayment = Number(
+      currentAllocation?.remainingAfterPayment ??
+        Math.max(0, payableAtPayment - paidToCurrentInstallment)
+    );
+    const extraPaid = Math.max(
+      Number(payment?.carryForwardAmount || 0),
+      Math.max(0, actualPaid - paidToCurrentInstallment)
+    );
+
+    return {
+      ...payment,
+      installmentNumber,
+      payableAtPayment,
+      actualPaid,
+      paidToCurrentInstallment,
+      remainingAfterPayment,
+      extraPaid,
+    };
+  };
 
   const paymentsUpToReceipt = useMemo(() => {
     if (!activeReceipt || !activeReceiptDate) {
@@ -469,14 +501,12 @@ const Payments = () => {
 
     return payments.filter((payment) => {
       const samePlan =
-        payment.installmentPlan?._id &&
-        planDoc?._id &&
-        payment.installmentPlan._id === planDoc._id;
+        getRecordId(payment.installmentPlan) ===
+        getRecordId(planDoc);
 
       const sameSale =
-        payment.sale?._id &&
-        activeReceipt.sale?._id &&
-        payment.sale._id === activeReceipt.sale._id;
+        getRecordId(payment.sale) ===
+        getRecordId(activeReceipt.sale);
 
       const sameInvoice = samePlan || sameSale;
       const paymentDate = new Date(payment.paymentDate || payment.createdAt);
@@ -488,6 +518,24 @@ const Payments = () => {
       return sameInvoice && paymentDate <= activeReceiptDate;
     });
   }, [activeReceipt, activeReceiptDate, payments, planDoc]);
+
+  const previousPaymentReceipts = useMemo(() => {
+    const activeReceiptId = getRecordId(activeReceipt);
+
+    return paymentsUpToReceipt
+      .filter((payment) => getRecordId(payment) !== activeReceiptId)
+      .map(getPaymentBreakdown)
+      .sort(
+        (a, b) =>
+          new Date(a.paymentDate || a.createdAt) -
+          new Date(b.paymentDate || b.createdAt)
+      );
+  }, [activeReceipt, paymentsUpToReceipt]);
+
+  const previousPaymentsReceived = previousPaymentReceipts.reduce(
+    (sum, payment) => sum + payment.actualPaid,
+    0
+  );
 
   const paymentAmountUpToReceipt = paymentsUpToReceipt.reduce(
     (sum, payment) => sum + Number(payment.amount || 0),
@@ -521,12 +569,44 @@ const Payments = () => {
     'N/A';
 
   const currentReceiptAmount = Number(activeReceipt?.amount || 0);
+  const currentInstallmentAllocation = Array.isArray(
+    activeReceipt?.allocations
+  )
+    ? activeReceipt.allocations.find(
+        (allocation) =>
+          allocation.allocationType === 'Current Installment'
+      ) || activeReceipt.allocations[0]
+    : null;
   const originalInstallmentAmount = Number(
     activeReceipt?.originalInstallmentAmount ||
       currentInstallment?.originalAmount ||
       currentInstallment?.amount ||
       0
   );
+  const payableAtCurrentPayment = Number(
+    currentInstallmentAllocation?.previousRemaining ??
+      originalInstallmentAmount
+  );
+
+  // Use the saved allocation snapshot for a receipt. This keeps an old
+  // receipt accurate even if the customer later pays the same installment.
+  const paidForCurrentInstallment = Number(
+    currentInstallmentAllocation?.amount ??
+      Math.min(currentReceiptAmount, originalInstallmentAmount)
+  );
+
+  const remainingOnCurrentInstallment = Number(
+    currentInstallmentAllocation?.remainingAfterPayment ??
+      currentInstallment?.remainingAmount ??
+      Math.max(
+        0,
+        originalInstallmentAmount - paidForCurrentInstallment
+      )
+  );
+
+  const isPartialCurrentInstallmentPayment =
+    paidForCurrentInstallment > 0 &&
+    remainingOnCurrentInstallment > 0;
 
   const currentPaidTotal = currentInstallment
     ? Number(currentInstallment.paidAmount ?? currentReceiptAmount)
@@ -1166,38 +1246,109 @@ const Payments = () => {
                   {formatMoney(currentReceiptAmount)}
                 </p>
                 <p className="text-[9px] font-bold text-slate-700">
-                  Settled: <strong>{currentInstallmentLabel}</strong>
+                  {isPartialCurrentInstallmentPayment
+                    ? 'Partial payment for:'
+                    : 'Settled:'}{' '}
+                  <strong>{currentInstallmentLabel}</strong>
                 </p>
               </div>
 
-              {/* PREVIOUS INSTALLMENT HISTORY TABLE */}
-              {previousInstallments.length > 0 && (
+              {/* CURRENT INSTALLMENT PAYMENT BREAKDOWN */}
+              {originalInstallmentAmount > 0 && (
+                <div className="border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">
+                  <div className="flex justify-between text-slate-700">
+                    <span>Scheduled {currentInstallmentLabel}:</span>
+                    <span>{formatMoney(originalInstallmentAmount)}</span>
+                  </div>
+
+                  <div className="flex justify-between text-slate-700">
+                    <span>Payable at payment time:</span>
+                    <span>{formatMoney(payableAtCurrentPayment)}</span>
+                  </div>
+
+                  <div className="flex justify-between text-emerald-700">
+                    <span>Actually received:</span>
+                    <span>+{formatMoney(currentReceiptAmount)}</span>
+                  </div>
+
+                  <div className="flex justify-between text-emerald-700">
+                    <span>Paid for this installment:</span>
+                    <span>+{formatMoney(paidForCurrentInstallment)}</span>
+                  </div>
+
+                  {isPartialCurrentInstallmentPayment && (
+                    <div className="flex justify-between text-rose-700 font-black pt-1 border-t border-dotted border-slate-300">
+                      <span>Remaining on same installment:</span>
+                      <span>{formatMoney(remainingOnCurrentInstallment)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PREVIOUS PAYMENT HISTORY */}
+              {previousPaymentReceipts.length > 0 && (
                 <div className="border-b border-dashed border-slate-300 pb-2 space-y-1">
                   <div className="flex justify-between text-[9px] font-black text-slate-800">
-                    <span>Previous Installments Paid:</span>
-                    <span>+{formatMoney(previousInstallmentsPaid)}</span>
+                    <span>Previous Payments Received:</span>
+                    <span>+{formatMoney(previousPaymentsReceived)}</span>
                   </div>
 
                   <table className="w-full text-[8.5px] border-collapse">
                     <thead>
                       <tr className="bg-slate-100 border border-slate-300 text-slate-600 font-black">
                         <th className="p-1 text-center">#</th>
+                        <th className="p-1 text-right">Payable</th>
                         <th className="p-1 text-right">Paid</th>
-                        <th className="p-1 text-left">Date</th>
-                        <th className="p-1 text-center">Status</th>
+                        <th className="p-1 text-right">Result</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {previousInstallments.map((inst, idx) => (
+                      {previousPaymentReceipts.map((payment, idx) => {
+                        const isExtraPayment = payment.extraPaid > 0;
+                        const isShortPayment =
+                          payment.actualPaid > 0 &&
+                          payment.remainingAfterPayment > 0;
+
+                        return (
                         <tr key={idx} className="border-b border-slate-200">
-                          <td className="p-1 text-center font-bold">Month #{inst.installmentNumber}</td>
-                          <td className="p-1 text-right font-black">{formatMoney(inst.paidAmount || 0)}</td>
-                          <td className="p-1 text-slate-600">{formatDateOnly(inst.paidDate)}</td>
-                          <td className="p-1 text-center font-bold text-emerald-700">{inst.status || 'Paid'}</td>
+                          <td className="p-1 text-center font-bold">
+                            {payment.installmentNumber > 0
+                              ? `M#${payment.installmentNumber}`
+                              : 'N/A'}
+                            <span className="block text-[7px] font-medium text-slate-500">
+                              {formatDateOnly(payment.paymentDate || payment.createdAt)}
+                            </span>
+                          </td>
+                          <td className="p-1 text-right font-bold text-slate-700">
+                            {formatMoney(payment.payableAtPayment)}
+                          </td>
+                          <td className="p-1 text-right font-black text-emerald-700">
+                            {formatMoney(payment.actualPaid)}
+                          </td>
+                          <td
+                            className={`p-1 text-right font-black ${
+                              isExtraPayment
+                                ? 'text-indigo-700'
+                                : isShortPayment
+                                ? 'text-amber-700'
+                                : 'text-emerald-700'
+                            }`}
+                          >
+                            {isExtraPayment
+                              ? `+${formatMoney(payment.extraPaid)}`
+                              : isShortPayment
+                              ? `Due ${formatMoney(payment.remainingAfterPayment)}`
+                              : 'Settled'}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
+
+                  <p className="text-[7.5px] leading-tight font-semibold text-slate-500">
+                    Result shows extra payment adjusted to future installments or the amount still due on the same installment.
+                  </p>
                 </div>
               )}
 

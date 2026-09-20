@@ -704,6 +704,7 @@ const getInstallmentPlanById = async (
         isArchived: false
       })
         .populate('installment')
+        .populate('allocations.installment')
         .sort({
           paymentDate: -1,
           createdAt: -1
@@ -1536,6 +1537,7 @@ const payInstallment = async (
         isArchived: false
       })
         .populate('installment')
+        .populate('allocations.installment')
         .sort({
           paymentDate: -1,
           createdAt: -1

@@ -573,6 +573,83 @@ const InstallmentPlanDetails = () => {
       : scheduleInstallmentCount;
 
   // =========================================================
+  // PAYMENT RECEIPT HISTORY
+  //
+  // Every saved payment keeps an allocation snapshot.  Using the
+  // snapshot (rather than today's installment balance) makes the
+  // history truthful even after later payments are received.
+  // =========================================================
+
+  const paymentHistory = useMemo(() => {
+    return [...payments]
+      .map((payment) => {
+        const allocations = Array.isArray(payment?.allocations)
+          ? [...payment.allocations].sort(
+              (a, b) =>
+                Number(a?.installmentNumber || 0) -
+                Number(b?.installmentNumber || 0)
+            )
+          : [];
+
+        const primaryAllocation =
+          allocations[0] || null;
+
+        const installmentNumber = Number(
+          primaryAllocation?.installmentNumber ||
+            payment?.installment?.installmentNumber ||
+            0
+        );
+
+        const savedOriginalInstallmentAmount = roundMoney(
+          payment?.originalInstallmentAmount
+        );
+
+        const payableAtPayment = roundMoney(
+          primaryAllocation?.previousRemaining ??
+            (savedOriginalInstallmentAmount > 0
+              ? savedOriginalInstallmentAmount
+              : null) ??
+            payment?.installment?.originalAmount ??
+            payment?.installment?.remainingAmount ??
+            payment?.installment?.amount ??
+            0
+        );
+
+        const actualPaid = roundMoney(payment?.amount);
+
+        const paidToCurrentInstallment = roundMoney(
+          primaryAllocation?.amount ??
+            Math.min(actualPaid, payableAtPayment)
+        );
+
+        const extraPaid = roundMoney(
+          payment?.carryForwardAmount ??
+            Math.max(0, actualPaid - paidToCurrentInstallment)
+        );
+
+        const remainingAfterPayment = roundMoney(
+          primaryAllocation?.remainingAfterPayment ??
+            Math.max(0, payableAtPayment - paidToCurrentInstallment)
+        );
+
+        return {
+          ...payment,
+          installmentNumber,
+          payableAtPayment,
+          actualPaid,
+          paidToCurrentInstallment,
+          extraPaid,
+          remainingAfterPayment,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.paymentDate || b.createdAt) -
+          new Date(a.paymentDate || a.createdAt)
+      );
+  }, [payments]);
+
+  // =========================================================
   // SELECTED PAYMENT CALCULATIONS
   // =========================================================
 
@@ -1928,6 +2005,133 @@ Thank you - ${
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      {/* =====================================================
+          PAYMENT RECEIPT HISTORY
+      ====================================================== */}
+
+      <section className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm no-print">
+        <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-black text-slate-900">
+              Payment Receipt History
+            </h2>
+
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">
+              Each receipt shows the amount payable at that time and the amount actually received.
+            </p>
+          </div>
+
+          <span className="text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 self-start sm:self-auto">
+            {paymentHistory.length} receipt{paymentHistory.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {paymentHistory.length === 0 ? (
+          <div className="p-10 text-center text-xs font-semibold text-slate-400">
+            No payment receipt has been recorded for this plan yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {paymentHistory.map((payment) => {
+              const isExtraPayment = payment.extraPaid > 0;
+              const isShortPayment =
+                payment.actualPaid > 0 &&
+                payment.remainingAfterPayment > 0;
+
+              return (
+                <div
+                  key={payment._id}
+                  className="p-4 sm:p-5 hover:bg-slate-50/70 transition-colors"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-900">
+                        {payment.installmentNumber > 0
+                          ? `Month #${payment.installmentNumber}`
+                          : 'Installment payment'}
+                      </p>
+
+                      <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                        Receipt #{payment.paymentId || 'N/A'} • {formatDate(payment.paymentDate || payment.createdAt)}
+                      </p>
+                    </div>
+
+                    <span className="w-fit text-[10px] font-black px-2.5 py-1 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
+                      {payment.paymentMethod || 'Cash'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 block">
+                        Payable at payment time
+                      </span>
+                      <p className="text-sm font-black text-slate-900 mt-1">
+                        {formatMoney(payment.payableAtPayment)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                      <span className="text-[9px] uppercase font-black tracking-wider text-emerald-600 block">
+                        Actually paid
+                      </span>
+                      <p className="text-sm font-black text-emerald-700 mt-1">
+                        {formatMoney(payment.actualPaid)}
+                      </p>
+                    </div>
+
+                    <div
+                      className={`rounded-xl border p-3 ${
+                        isExtraPayment
+                          ? 'border-indigo-200 bg-indigo-50/60'
+                          : isShortPayment
+                          ? 'border-amber-200 bg-amber-50/60'
+                          : 'border-emerald-200 bg-emerald-50/60'
+                      }`}
+                    >
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 block">
+                        {isExtraPayment
+                          ? 'Extra paid'
+                          : isShortPayment
+                          ? 'Still payable'
+                          : 'Payment result'}
+                      </span>
+                      <p
+                        className={`text-sm font-black mt-1 ${
+                          isExtraPayment
+                            ? 'text-indigo-700'
+                            : isShortPayment
+                            ? 'text-amber-700'
+                            : 'text-emerald-700'
+                        }`}
+                      >
+                        {isExtraPayment
+                          ? formatMoney(payment.extraPaid)
+                          : isShortPayment
+                          ? formatMoney(payment.remainingAfterPayment)
+                          : 'Settled'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isExtraPayment && (
+                    <p className="mt-3 text-[11px] font-bold text-indigo-700">
+                      Extra amount was paid and adjusted against future installments.
+                    </p>
+                  )}
+
+                  {isShortPayment && (
+                    <p className="mt-3 text-[11px] font-bold text-amber-700">
+                      This remaining amount stays on the same installment until it is paid.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
