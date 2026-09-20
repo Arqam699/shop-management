@@ -397,8 +397,44 @@ const Payments = () => {
   }, [filteredPayments]);
 
   const handlePrint = () => {
-    window.print();
-  };
+  const receipt = document.getElementById('printable-receipt-content');
+
+  if (receipt) {
+    const MM_TO_PX = 3.779527559;
+
+    // A4 page height = 297mm
+    // 5mm top + 5mm bottom margin
+    const A4_PRINTABLE_HEIGHT_PX = 287 * MM_TO_PX;
+
+    const contentHeight = receipt.scrollHeight;
+
+    // Receipt ko automatically single page mein fit karega
+    const scale = Math.min(
+      1,
+      A4_PRINTABLE_HEIGHT_PX / contentHeight
+    );
+
+    receipt.style.setProperty(
+      '--print-scale',
+      String(scale)
+    );
+
+    receipt.style.setProperty(
+      '--print-height',
+      `${contentHeight * scale}px`
+    );
+  }
+
+  window.print();
+
+  // Print ke baad normal preview restore
+  setTimeout(() => {
+    if (receipt) {
+      receipt.style.removeProperty('--print-scale');
+      receipt.style.removeProperty('--print-height');
+    }
+  }, 500);
+};
 
   // =====================================================
   // CURRENT RECEIPT / PLAN COMPUTATIONS
@@ -1421,56 +1457,192 @@ const Payments = () => {
 
       {/* COMPACT THERMAL & A4 PRINT CSS */}
       <style>{`
-        @media print {
-          @page {
-            size: 80mm auto;
-            margin: 3mm 4mm;
-          }
+      @media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
 
-          html, body {
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-          }
+  html,
+  body {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+  }
 
-          /* Print only the receipt itself; hide the application header,
-             sidebar, page content and receipt-preview controls. */
-          body * {
-            visibility: hidden !important;
-          }
+  /* Application ki baqi cheezen print nahi hongi */
+  body * {
+    visibility: hidden !important;
+  }
 
-          #printable-receipt-content,
-          #printable-receipt-content * {
-            visibility: visible !important;
-          }
+  /* Sirf payment receipt visible */
+  #printable-receipt-wrapper,
+  #printable-receipt-wrapper *,
+  #printable-receipt-modal-container,
+  #printable-receipt-modal-container *,
+  #printable-receipt-content,
+  #printable-receipt-content * {
+    visibility: visible !important;
+  }
 
-          .no-print {
-            display: none !important;
-          }
+  /* Buttons / toolbar print nahi honge */
+  .no-print,
+  #printable-receipt-wrapper .no-print,
+  #printable-receipt-modal-container .no-print {
+    display: none !important;
+  }
 
-          #printable-receipt-content {
-            position: fixed !important;
-            left: 50% !important;
-            top: 0 !important;
-            width: 100% !important;
-            max-width: 80mm !important;
-            margin: 0 !important;
-            transform: translateX(-50%) !important;
-            padding: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            color: #000000 !important;
-            font-size: 8.5px !important;
-          }
+  #printable-receipt-wrapper {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
 
-          img {
-            display: block !important;
-            visibility: visible !important;
-            print-color-adjust: exact !important;
-            -webkit-print-color-adjust: exact !important;
-          }
-        }
+  #printable-receipt-modal-container {
+  position: absolute !important;
+
+  top: 0 !important;
+  left: 0 !important;
+
+  width: 100vw !important;
+  max-width: 100vw !important;
+
+  height: auto !important;
+  min-height: 0 !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  display: flex !important;
+
+  flex-direction: column !important;
+
+  align-items: center !important;
+  justify-content: flex-start !important;
+
+  overflow: visible !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+
+#printable-receipt-content {
+  position: relative !important;
+
+  /* IMPORTANT: left/right ko reset */
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+
+  /* Receipt width */
+  width: 80mm !important;
+  min-width: 80mm !important;
+  max-width: 80mm !important;
+
+  /* IMPORTANT: margin auto */
+  margin-left: auto !important;
+  margin-right: auto !important;
+
+  margin-top: 0 !important;
+
+  padding: 3mm !important;
+
+  box-sizing: border-box !important;
+
+  /* IMPORTANT: transform center se scale hoga */
+  transform-origin: top center !important;
+  transform: scale(var(--print-scale, 1)) !important;
+
+  background: #fff !important;
+
+  box-shadow: none !important;
+  border: 0 !important;
+
+  overflow: visible !important;
+
+  page-break-before: avoid !important;
+  page-break-after: avoid !important;
+  page-break-inside: avoid !important;
+
+  break-before: avoid !important;
+  break-after: avoid !important;
+  break-inside: avoid !important;
+}
+
+  #printable-receipt-content {
+    position: relative !important;
+
+    width: 80mm !important;
+    max-width: 80mm !important;
+    min-width: 80mm !important;
+
+    height: var(--print-height, auto) !important;
+    max-height: 287mm !important;
+
+    margin: 0 auto !important;
+    padding: 3mm !important;
+
+    box-sizing: border-box !important;
+
+    overflow: visible !important;
+
+    /*
+      Receipt agar lambi ho to automatically
+      choti hokar single page mein fit hogi.
+    */
+    transform-origin: top center !important;
+    transform: scale(var(--print-scale, 1)) !important;
+
+    font-size: 8.5px !important;
+    line-height: 1.25 !important;
+
+    background: #fff !important;
+    box-shadow: none !important;
+    border: 0 !important;
+
+    /* Page break prevent */
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+
+    break-before: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Receipt ke andar bhi page break prevent */
+  #printable-receipt-content table,
+  #printable-receipt-content tr,
+  #printable-receipt-content td,
+  #printable-receipt-content th,
+  #printable-receipt-content img,
+  #printable-receipt-content p,
+  #printable-receipt-content h1,
+  #printable-receipt-content h2,
+  #printable-receipt-content h3,
+  #printable-receipt-content h4,
+  #printable-receipt-content h5,
+  #printable-receipt-content h6 {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #printable-receipt-content img {
+    max-width: 100% !important;
+  }
+}
       `}</style>
     </>
   );
