@@ -62,7 +62,6 @@ const shopSchema = new mongoose.Schema(
       default: '',
     },
 
-    // Per-shop amount agreed with the owner for one month of software access.
     monthlyCharge: {
       type: Number,
       min: 0,
@@ -81,8 +80,6 @@ const shopSchema = new mongoose.Schema(
       default: 'Active',
     },
 
-    // Filled whenever access is suspended so Super Admin can explain the
-    // precise reason to the shop owner.
     suspensionReason: {
       type: String,
       trim: true,
@@ -104,27 +101,69 @@ const shopSchema = new mongoose.Schema(
       default: [],
     },
 
-    // At most two browser/device identities are permitted for one shop.
-    // This list is cleared only when Super Admin reactivates a suspended shop.
+    // ====================================================
+    // MAXIMUM 2 AUTHORIZED DEVICES
+    // ====================================================
+
     authorizedDevices: {
       type: [
         {
-          deviceId: { type: String, required: true },
-          firstSeenAt: { type: Date, default: Date.now },
-          lastSeenAt: { type: Date, default: Date.now },
+          deviceId: {
+            type: String,
+            required: true,
+          },
+
+          firstSeenAt: {
+            type: Date,
+            default: Date.now,
+          },
+
+          lastSeenAt: {
+            type: Date,
+            default: Date.now,
+          },
         },
       ],
       default: [],
     },
 
-    // Recent successful admin logins. Kept bounded so this security audit
-    // trail cannot grow without limit.
+    // ====================================================
+    // SESSION REVOCATION VERSION
+    //
+    // Every login JWT contains this value.
+    //
+    // When shop is suspended/activated:
+    // authVersion is incremented.
+    //
+    // All old JWTs then become invalid.
+    // ====================================================
+
+    authVersion: {
+      type: Number,
+      default: 0,
+    },
+
+    // ====================================================
+    // LOGIN IP HISTORY
+    // ====================================================
+
     loginIpHistory: {
       type: [
         {
-          ip: { type: String, required: true },
-          adminEmail: { type: String, default: '' },
-          loggedInAt: { type: Date, default: Date.now },
+          ip: {
+            type: String,
+            required: true,
+          },
+
+          adminEmail: {
+            type: String,
+            default: '',
+          },
+
+          loggedInAt: {
+            type: Date,
+            default: Date.now,
+          },
         },
       ],
       default: [],
@@ -145,4 +184,5 @@ const shopSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model('Shop', shopSchema);
+module.exports =
+  mongoose.model('Shop', shopSchema);

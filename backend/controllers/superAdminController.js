@@ -480,64 +480,58 @@ if (
 // =====================================================
 
 const suspendShop = async (req, res) => {
-
   try {
-
     const { shopId } =
       req.params;
-
-
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        shopId
-      )
-    ) {
-
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid shop ID',
-      });
-    }
-
 
     const shop =
       await Shop.findById(shopId);
 
-
     if (!shop) {
-
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
 
+    const suspensionReason =
+      'Suspended manually by Super Admin.';
 
-    await Shop.updateOne(
-      {
-        _id: shop._id,
-      },
-      {
-        $set: {
-          subscriptionStatus:
-            'Suspended',
-          suspensionReason:
-            'Suspended manually by Super Admin.',
-          suspendedAt:
-            new Date(),
-        },
-      }
-    );
+    // ====================================================
+    // SUSPEND SHOP
+    // ====================================================
 
+    shop.subscriptionStatus =
+      'Suspended';
+
+    shop.suspensionReason =
+      suspensionReason;
+
+    shop.suspendedAt =
+      new Date();
+
+    // ====================================================
+    // REVOKE ALL ACTIVE SESSIONS
+    // ====================================================
+
+    shop.authVersion =
+      (Number(
+        shop.authVersion
+      ) || 0) + 1;
+
+    await shop.save();
 
     return res.status(200).json({
       success: true,
+
       message:
-        'Shop suspended successfully',
+        'Shop suspended successfully. All active sessions have been revoked.',
+
+      suspensionReason,
     });
-
   } catch (error) {
-
     console.error(
       'Suspend Shop Error:',
       error
@@ -545,8 +539,12 @@ const suspendShop = async (req, res) => {
 
     return res.status(500).json({
       success: false,
+
       message:
-        'Server error while suspending shop',
+        'Internal server error',
+
+      error:
+        error.message,
     });
   }
 };
@@ -557,38 +555,25 @@ const suspendShop = async (req, res) => {
 // =====================================================
 
 const activateShop = async (req, res) => {
-
   try {
-
     const { shopId } =
       req.params;
-
-
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        shopId
-      )
-    ) {
-
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid shop ID',
-      });
-    }
-
 
     const shop =
       await Shop.findById(shopId);
 
-
     if (!shop) {
-
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
 
+    // ====================================================
+    // EXPIRED SUBSCRIPTION CANNOT BE ACTIVATED
+    // ====================================================
 
     if (
       shop.subscriptionExpiresAt &&
@@ -597,48 +582,81 @@ const activateShop = async (req, res) => {
           shop.subscriptionExpiresAt
         )
     ) {
-
       return res.status(400).json({
         success: false,
+
         message:
-          'Cannot activate an expired subscription. Please renew the subscription first.',
+          'This shop subscription has expired. Please renew the subscription first.',
       });
     }
 
+    // ====================================================
+    // REVOKE OLD SESSIONS
+    //
+    // This is VERY important.
+    //
+    // Example:
+    //
+    // Before suspension:
+    // JWT authVersion = 5
+    //
+    // Suspension:
+    // authVersion = 6
+    //
+    // Activation:
+    // authVersion = 7
+    //
+    // Old JWT version 5 can NEVER become valid again.
+    // ====================================================
 
-    await Shop.updateOne(
+    shop.authVersion =
+      (Number(
+        shop.authVersion
+      ) || 0) + 1;
+
+    // ====================================================
+    // ACTIVATE
+    // ====================================================
+
+    shop.subscriptionStatus =
+      'Active';
+
+    shop.suspensionReason =
+      '';
+
+    shop.suspendedAt =
+      null;
+
+    // Existing two-device behavior:
+    // Fresh activation starts with zero devices.
+    shop.authorizedDevices =
+      [];
+
+    await shop.save();
+
+    // ====================================================
+    // RESET FAILED LOGIN ATTEMPTS
+    // ====================================================
+
+    await Admin.updateMany(
       {
-        _id: shop._id,
+        shopId:
+          shop._id,
       },
       {
         $set: {
-          subscriptionStatus:
-            'Active',
-          suspensionReason: '',
-          suspendedAt: null,
-          // A device-limit suspension is intentionally reset here. The first
-          // two approved devices can sign in again after Super Admin approval.
-          authorizedDevices: [],
+          failedLoginAttempts: 0,
         },
       }
     );
 
-    // Reactivating a shop also clears the security lock counter so the shop
-    // admin can sign in again without waiting for another reset.
-    await Admin.updateMany(
-      { shopId: shop._id },
-      { $set: { failedLoginAttempts: 0 } }
-    );
-
-
     return res.status(200).json({
       success: true,
+
       message:
-        'Shop activated successfully',
+        'Shop activated successfully. All previous sessions were revoked. The owner must log in again.',
     });
-
   } catch (error) {
-
     console.error(
       'Activate Shop Error:',
       error
@@ -646,8 +664,12 @@ const activateShop = async (req, res) => {
 
     return res.status(500).json({
       success: false,
+
       message:
-        'Server error while activating shop',
+        'Internal server error',
+
+      error:
+        error.message,
     });
   }
 };
@@ -718,9 +740,7 @@ const renewShopSubscription = async (
   req,
   res
 ) => {
-
   try {
-
     const { shopId } =
       req.params;
 
@@ -729,19 +749,24 @@ const renewShopSubscription = async (
       durationMonths,
     } = req.body;
 
+    // ============================================
+    // VALIDATE SHOP ID
+    // ============================================
 
     if (
       !mongoose.Types.ObjectId.isValid(
         shopId
       )
     ) {
-
       return res.status(400).json({
         success: false,
         message: 'Invalid shop ID',
       });
     }
 
+    // ============================================
+    // VALIDATE PLAN
+    // ============================================
 
     if (
       subscriptionPlan !==
@@ -749,7 +774,6 @@ const renewShopSubscription = async (
       subscriptionPlan !==
         'Complete'
     ) {
-
       return res.status(400).json({
         success: false,
         message:
@@ -757,19 +781,20 @@ const renewShopSubscription = async (
       });
     }
 
+    // ============================================
+    // VALIDATE COMPLETE DURATION
+    // ============================================
 
     if (
       subscriptionPlan ===
       'Complete'
     ) {
-
       if (
         !Number.isInteger(
           Number(durationMonths)
         ) ||
         Number(durationMonths) < 1
       ) {
-
         return res.status(400).json({
           success: false,
           message:
@@ -778,23 +803,26 @@ const renewShopSubscription = async (
       }
     }
 
+    // ============================================
+    // FIND SHOP
+    // ============================================
 
     const shop =
       await Shop.findById(shopId);
 
-
     if (!shop) {
-
       return res.status(404).json({
         success: false,
         message: 'Shop not found',
       });
     }
 
+    // ============================================
+    // DATES
+    // ============================================
 
     const now =
       new Date();
-
 
     const previousExpiryDate =
       shop.subscriptionExpiresAt
@@ -803,10 +831,8 @@ const renewShopSubscription = async (
           )
         : null;
 
-
     let baseDate =
       now;
-
 
     // If current subscription
     // is still active, extend
@@ -815,39 +841,37 @@ const renewShopSubscription = async (
       previousExpiryDate &&
       previousExpiryDate > now
     ) {
-
       baseDate =
         previousExpiryDate;
     }
 
-
     let newExpiryDate;
 
-
-    // -----------------------------
+    // ============================================
     // FREE TRIAL
-    // -----------------------------
+    // 7 DAYS
+    // ============================================
 
     if (
-  subscriptionPlan ===
-  'Free Trial'
-) {
+      subscriptionPlan ===
+      'Free Trial'
+    ) {
+      newExpiryDate =
+        new Date(
+          baseDate.getTime() +
+          7 *
+            24 *
+            60 *
+            60 *
+            1000
+        );
+    }
 
-  newExpiryDate =
-    new Date(
-      baseDate.getTime() +
-      7 * 24 * 60 * 60 * 1000
-    );
-
-}
-
-
-    // -----------------------------
-    // COMPLETE
-    // -----------------------------
+    // ============================================
+    // COMPLETE PLAN
+    // ============================================
 
     else {
-
       newExpiryDate =
         new Date(baseDate);
 
@@ -857,10 +881,9 @@ const renewShopSubscription = async (
       );
     }
 
-
-    // -----------------------------
-    // HISTORY
-    // -----------------------------
+    // ============================================
+    // SUBSCRIPTION HISTORY
+    // ============================================
 
     shop.subscriptionHistory.push({
       plan:
@@ -882,6 +905,9 @@ const renewShopSubscription = async (
         newExpiryDate,
     });
 
+    // ============================================
+    // UPDATE SUBSCRIPTION
+    // ============================================
 
     shop.subscriptionPlan =
       subscriptionPlan;
@@ -889,22 +915,46 @@ const renewShopSubscription = async (
     shop.subscriptionStatus =
       'Active';
 
-    shop.suspensionReason = '';
-    shop.suspendedAt = null;
+    shop.suspensionReason =
+      '';
+
+    shop.suspendedAt =
+      null;
 
     shop.subscriptionExpiresAt =
       newExpiryDate;
 
+    // ============================================
+    // IMPORTANT:
+    // REVOKE ALL OLD SESSIONS
+    // ============================================
+
+    shop.authVersion =
+      (Number(shop.authVersion) || 0) +
+      1;
+
+    // ============================================
+    // OPTIONAL BUT RECOMMENDED:
+    // CLEAR OLD AUTHORIZED DEVICES
+    // ============================================
+
+    shop.authorizedDevices = [];
+
+    // ============================================
+    // SAVE
+    // ============================================
 
     await shop.save();
 
+    // ============================================
+    // RESPONSE
+    // ============================================
 
     return res.status(200).json({
-
       success: true,
 
       message:
-        'Subscription renewed successfully',
+        'Subscription renewed successfully. Previous sessions have been revoked. Please log in again.',
 
       shop: {
         id:
@@ -928,7 +978,6 @@ const renewShopSubscription = async (
     });
 
   } catch (error) {
-
     console.error(
       'Renew Subscription Error:',
       error
@@ -941,6 +990,7 @@ const renewShopSubscription = async (
     });
   }
 };
+
 
 
 // =====================================================
