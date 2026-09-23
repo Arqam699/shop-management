@@ -2,16 +2,32 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-const aiRoutes =
-  require('./routes/aiRoutes');
+const cron = require('node-cron');
 
-const connectDB = require('./config/db');
+// =====================================================
+// ROUTES
+// =====================================================
 
-const Admin = require('./models/Admin');
-
+const aiRoutes = require('./routes/aiRoutes');
 const authRoutes = require('./routes/authRoutes');
 const superAdminRoutes = require('./routes/superAdmin.routes');
+const backupRoutes = require('./routes/backupRoutes');
 
+// =====================================================
+// DATABASE / MODELS
+// =====================================================
+
+const connectDB = require('./config/db');
+const Admin = require('./models/Admin');
+
+// =====================================================
+// BACKUP SERVICE
+// =====================================================
+
+const {
+  runAutomaticDailyBackups,
+  initializeBackupStorage,
+} = require('./services/backupService');
 
 // =====================================================
 // ENVIRONMENT
@@ -19,13 +35,11 @@ const superAdminRoutes = require('./routes/superAdmin.routes');
 
 dotenv.config();
 
-
 // =====================================================
 // APP
 // =====================================================
 
 const app = express();
-
 
 // =====================================================
 // TRUST PROXY
@@ -35,14 +49,12 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-
 // =====================================================
 // GLOBAL MIDDLEWARE
 // =====================================================
 
 // Increased limit because fingerprint images
 // can be sent as Base64.
-
 app.use(
   express.json({
     limit: '10mb',
@@ -58,14 +70,12 @@ app.use(
 
 app.use(cookieParser());
 
-
 // =====================================================
 // CORS
 // =====================================================
 
-
 // -----------------------------------------------------
-// NORMALIZE ORIGIN FUNCTION
+// NORMALIZE ORIGIN
 // -----------------------------------------------------
 
 const normalizeOrigin = (origin) => {
@@ -75,7 +85,6 @@ const normalizeOrigin = (origin) => {
     .trim()
     .replace(/\/+$/, '');
 };
-
 
 // -----------------------------------------------------
 // ENVIRONMENT-BASED ORIGINS
@@ -91,7 +100,6 @@ const configuredOrigins = [
   .map(normalizeOrigin)
   .filter(Boolean);
 
-
 // -----------------------------------------------------
 // DEVELOPMENT ORIGINS
 // -----------------------------------------------------
@@ -101,7 +109,6 @@ const developmentOrigins = [
   'http://127.0.0.1:5173',
 ];
 
-
 // -----------------------------------------------------
 // PRODUCTION FRONTEND ORIGINS
 // -----------------------------------------------------
@@ -109,7 +116,6 @@ const developmentOrigins = [
 const productionOrigins = [
   'https://shop-frontend-black-ten.vercel.app',
 ];
-
 
 // -----------------------------------------------------
 // FINAL ALLOWED ORIGINS
@@ -125,16 +131,14 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
-
 // -----------------------------------------------------
-// DEBUG
+// CORS DEBUG
 // -----------------------------------------------------
 
 console.log(
   '[CORS] Allowed origins:',
   Array.from(allowedOrigins)
 );
-
 
 // =====================================================
 // CORS OPTIONS
@@ -143,7 +147,8 @@ console.log(
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests without Origin.
-    // For example:
+    //
+    // Examples:
     // Postman
     // server-to-server
     // health checks
@@ -154,16 +159,12 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
 
-
     // Allow approved origins
-
     if (allowedOrigins.has(normalizedOrigin)) {
       return callback(null, true);
     }
 
-
     // Block unknown origins
-
     console.error(
       `[CORS BLOCKED] Origin: ${origin}`
     );
@@ -175,14 +176,10 @@ const corsOptions = {
     );
   },
 
-
   // Required when authentication uses cookies
-
   credentials: true,
 
-
   // Allowed HTTP methods
-
   methods: [
     'GET',
     'POST',
@@ -192,19 +189,15 @@ const corsOptions = {
     'OPTIONS',
   ],
 
-
   // Allowed custom headers
-
   allowedHeaders: [
     'Content-Type',
     'Authorization',
     'X-Device-ID',
   ],
 
-
   optionsSuccessStatus: 204,
 };
-
 
 // =====================================================
 // APPLY CORS
@@ -214,21 +207,15 @@ app.use(
   cors(corsOptions)
 );
 
-
 // =====================================================
 // EXPLICIT PREFLIGHT HANDLER
 // EXPRESS 5 COMPATIBLE
 // =====================================================
 
-// IMPORTANT:
-// Do NOT use '*'
-// Express 5 does not support unnamed wildcard '*'.
-
 app.options(
   '/{*any}',
   cors(corsOptions)
 );
-
 
 // =====================================================
 // SECURITY HEADERS
@@ -255,7 +242,6 @@ app.use(
   }
 );
 
-
 // =====================================================
 // HEALTH CHECK
 // =====================================================
@@ -266,10 +252,12 @@ app.get(
     return res.status(200).json({
       status: 'ok',
       service: 'Shop Management API',
+      backupScheduler: 'active',
+      timezone: 'Asia/Karachi',
+      automaticBackupTime: '23:59',
     });
   }
 );
-
 
 // =====================================================
 // AUTH ROUTES
@@ -285,7 +273,6 @@ app.use(
   authRoutes
 );
 
-
 // =====================================================
 // SETTINGS
 // =====================================================
@@ -299,7 +286,6 @@ app.use(
   '/settings',
   require('./routes/settingsRoutes')
 );
-
 
 // =====================================================
 // PRODUCTS
@@ -315,7 +301,6 @@ app.use(
   require('./routes/productRoutes')
 );
 
-
 // =====================================================
 // CUSTOMERS
 // =====================================================
@@ -329,7 +314,6 @@ app.use(
   '/customers',
   require('./routes/customerRoutes')
 );
-
 
 // =====================================================
 // SALES
@@ -345,7 +329,6 @@ app.use(
   require('./routes/saleRoutes')
 );
 
-
 // =====================================================
 // INSTALLMENTS
 // =====================================================
@@ -359,7 +342,6 @@ app.use(
   '/installments',
   require('./routes/installmentRoutes')
 );
-
 
 // =====================================================
 // PAYMENTS
@@ -375,7 +357,6 @@ app.use(
   require('./routes/paymentRoutes')
 );
 
-
 // =====================================================
 // RETURNS
 // =====================================================
@@ -389,7 +370,6 @@ app.use(
   '/returns',
   require('./routes/returnRoutes')
 );
-
 
 // =====================================================
 // REPORTS
@@ -405,7 +385,6 @@ app.use(
   require('./routes/reportRoutes')
 );
 
-
 // =====================================================
 // EXPENSES
 // =====================================================
@@ -419,7 +398,6 @@ app.use(
   '/expenses',
   require('./routes/expenseRoutes')
 );
-
 
 // =====================================================
 // YEARLY AUDITS
@@ -435,9 +413,8 @@ app.use(
   require('./routes/auditRoutes')
 );
 
-
 // =====================================================
-// SUPER ADMIN ROUTES
+// SUPER ADMIN
 // =====================================================
 
 app.use(
@@ -446,17 +423,25 @@ app.use(
 );
 
 // =====================================================
-// AI / SHOP ASSISTANT ROUTES
+// AI / SHOP ASSISTANT
 // =====================================================
 
 app.use(
   '/api/ai',
-  require('./routes/aiRoutes')
+  aiRoutes
 );
 
+// =====================================================
+// BACKUP ROUTES
+// =====================================================
+
+app.use(
+  '/api/backup',
+  backupRoutes
+);
 
 // =====================================================
-// PERMANENT ADMIN SESSION SEEDER
+// ADMIN SEEDER
 // =====================================================
 
 const seedAdminAccount = async () => {
@@ -468,17 +453,14 @@ const seedAdminAccount = async () => {
       .trim()
       .toLowerCase();
 
-
     const adminPassword =
       process.env.ADMIN_PASSWORD ||
       'SecureAdminPassword123';
-
 
     let admin =
       await Admin.findOne({
         email: adminEmail,
       });
-
 
     // =================================================
     // CREATE ADMIN IF NOT EXISTS
@@ -490,9 +472,7 @@ const seedAdminAccount = async () => {
         password: adminPassword,
       });
 
-
       await admin.save();
-
 
       console.log(
         `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
@@ -500,7 +480,6 @@ const seedAdminAccount = async () => {
 
       return;
     }
-
 
     // =================================================
     // SYNC PASSWORD WITH ENV
@@ -511,27 +490,22 @@ const seedAdminAccount = async () => {
         adminPassword
       );
 
-
     if (!isMatch) {
       admin.password =
         adminPassword;
 
-
       await admin.save();
-
 
       console.log(
         `[SEED UPDATE] Password synced from .env for: ${adminEmail}`
       );
     }
 
-
     console.log(
       `[SEED READY] Admin account already exists: ${adminEmail}`
     );
 
   } catch (err) {
-
     console.error(
       `[SEED ERROR]: ${err.message}`
     );
@@ -540,6 +514,147 @@ const seedAdminAccount = async () => {
   }
 };
 
+// =====================================================
+// AUTOMATIC BACKUP SCHEDULER
+// =====================================================
+//
+// Pakistan Time:
+// Every day at 11:59 PM
+//
+// Cron:
+// 59 23 * * *
+//
+// This scheduler is initialized ONLY after:
+// 1. MongoDB connection
+// 2. Backup storage initialization
+// 3. Admin initialization
+//
+// =====================================================
+
+let backupScheduler = null;
+
+const initializeAutomaticBackupScheduler = () => {
+  // Prevent duplicate scheduler
+  if (backupScheduler) {
+    console.log(
+      '[BACKUP] Scheduler already initialized.'
+    );
+
+    return backupScheduler;
+  }
+
+  backupScheduler = cron.schedule(
+    '59 23 * * *',
+
+    async () => {
+      console.log('');
+      console.log(
+        '====================================================='
+      );
+
+      console.log(
+        '[BACKUP] Automatic daily backup started.'
+      );
+
+      console.log(
+        '[BACKUP] Timezone: Asia/Karachi'
+      );
+
+      console.log(
+        '[BACKUP] Scheduled time: 11:59 PM'
+      );
+
+      console.log(
+        '====================================================='
+      );
+
+      try {
+        const result =
+          await runAutomaticDailyBackups();
+
+        console.log('');
+        console.log(
+          '====================================================='
+        );
+
+        console.log(
+          '[BACKUP] Automatic daily backup finished.'
+        );
+
+        console.log(
+          `[BACKUP] Total Shops: ${result?.total ?? 0}`
+        );
+
+        console.log(
+          `[BACKUP] Successful: ${result?.success ?? 0}`
+        );
+
+        console.log(
+          `[BACKUP] Failed: ${result?.failed ?? 0}`
+        );
+
+        console.log(
+          '====================================================='
+        );
+
+        console.log('');
+
+      } catch (error) {
+        console.error('');
+        console.error(
+          '====================================================='
+        );
+
+        console.error(
+          '[BACKUP] Automatic backup ERROR:'
+        );
+
+        console.error(
+          error
+        );
+
+        console.error(
+          '====================================================='
+        );
+
+        console.error('');
+      }
+    },
+
+    {
+      timezone: 'Asia/Karachi',
+    }
+  );
+
+  console.log('');
+  console.log(
+    '====================================================='
+  );
+
+  console.log(
+    '[BACKUP] Automatic daily backup scheduler initialized.'
+  );
+
+  console.log(
+    '[BACKUP] Schedule: Every day at 11:59 PM'
+  );
+
+  console.log(
+    '[BACKUP] Timezone: Asia/Karachi'
+  );
+
+  console.log(
+    '[BACKUP] Status: ACTIVE'
+  );
+
+  console.log(
+    '====================================================='
+  );
+
+  console.log('');
+
+  return backupScheduler;
+};
 
 // =====================================================
 // 404 HANDLER
@@ -551,11 +666,11 @@ app.all(
   (req, res) => {
     return res.status(404).json({
       success: false,
-      message: `Route not found: ${req.method} ${req.originalUrl}`,
+      message:
+        `Route not found: ${req.method} ${req.originalUrl}`,
     });
   }
 );
-
 
 // =====================================================
 // GLOBAL ERROR HANDLER
@@ -568,12 +683,10 @@ app.use(
     res,
     next
   ) => {
-
     console.error(
       'GLOBAL SERVER ERROR:',
       err.stack || err.message
     );
-
 
     // -------------------------------------------------
     // CORS ERROR
@@ -585,14 +698,12 @@ app.use(
         'CORS origin is not allowed'
       )
     ) {
-
       return res.status(403).json({
         success: false,
         message:
           'CORS origin is not allowed.',
       });
     }
-
 
     // -------------------------------------------------
     // GENERAL SERVER ERROR
@@ -609,7 +720,6 @@ app.use(
   }
 );
 
-
 // =====================================================
 // SERVER STARTUP
 // =====================================================
@@ -617,64 +727,123 @@ app.use(
 const PORT =
   process.env.PORT || 5000;
 
+// =====================================================
+// START SERVER
+// =====================================================
 
 const startServer = async () => {
-
   try {
 
     // =================================================
-    // DATABASE CONNECTION
+    // 1. DATABASE CONNECTION
     // =================================================
 
     await connectDB();
-
 
     console.log(
       'MongoDB connection is ready.'
     );
 
+    // =================================================
+    // 2. BACKUP STORAGE INITIALIZATION
+    // =================================================
+
+    const backupPaths =
+      await initializeBackupStorage();
+
+    console.log(
+      '[BACKUP] Storage initialized:'
+    );
+
+    console.log(
+      backupPaths
+    );
 
     // =================================================
-    // SEED ADMIN
+    // 3. ADMIN SEED
     // =================================================
 
     await seedAdminAccount();
 
+    // =================================================
+    // 4. START AUTOMATIC BACKUP SCHEDULER
+    // =================================================
+
+    initializeAutomaticBackupScheduler();
 
     // =================================================
-    // START SERVER
+    // 5. START HTTP SERVER
     // =================================================
 
     app.listen(
       PORT,
       () => {
 
+        console.log('');
+        console.log(
+          '====================================================='
+        );
+
         console.log(
           `Server executing in ${
             process.env.NODE_ENV ||
             'development'
-          } mode on port ${PORT}`
+          } mode`
         );
-
 
         console.log(
-          `API running on http://localhost:${PORT}`
+          `Server running on port ${PORT}`
         );
 
+        console.log(
+          `API: http://localhost:${PORT}`
+        );
+
+        console.log(
+          '[BACKUP] Automatic daily backup: ACTIVE'
+        );
+
+        console.log(
+          '[BACKUP] Next scheduled time: 11:59 PM Asia/Karachi'
+        );
+
+        console.log(
+          '====================================================='
+        );
+
+        console.log('');
       }
     );
 
   } catch (error) {
 
     console.error(
-      'SERVER STARTUP ERROR:',
+      ''
+    );
+
+    console.error(
+      '====================================================='
+    );
+
+    console.error(
+      'SERVER STARTUP ERROR'
+    );
+
+    console.error(
       error.message
+    );
+
+    console.error(
+      '====================================================='
+    );
+
+    console.error(
+      ''
     );
 
     process.exit(1);
   }
 };
-
 
 // =====================================================
 // START APPLICATION
