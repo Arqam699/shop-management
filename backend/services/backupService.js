@@ -1,6 +1,15 @@
 // ============================================================
 // BACKUP SERVICE
 // Human-Readable TXT Backup System
+//
+// LOCAL:
+//   Desktop/BACKUP/
+//     COMPLETE-BACKUP/
+//     DAILY-BACKUPS/
+//
+// VERCEL:
+//   No Desktop/file-system dependency for manual API backup.
+//   TXT files are generated in memory and returned as ZIP.
 // ============================================================
 
 const mongoose = require('mongoose');
@@ -29,19 +38,14 @@ const Shop = require('../models/Shop');
 // CONFIG
 // ============================================================
 
-const BACKUP_VERSION = '10.0.0';
+const BACKUP_VERSION = '11.0.0';
 const TIME_ZONE = 'Asia/Karachi';
 
+const IS_VERCEL =
+  process.env.VERCEL === '1';
+
 // ============================================================
-// BACKUP LOCATION
-//
-// Desktop/
-// └── BACKUP/
-//     ├── COMPLETE-BACKUP/
-//     └── DAILY-BACKUPS/
-//         ├── 2026-09-23/
-//         ├── 2026-09-24/
-//         └── ...
+// LOCAL BACKUP LOCATION
 // ============================================================
 
 const BACKUP_ROOT = path.join(
@@ -52,80 +56,6 @@ const BACKUP_ROOT = path.join(
 const BACKUP_FOLDER_NAME = 'BACKUP';
 const COMPLETE_FOLDER_NAME = 'COMPLETE-BACKUP';
 const DAILY_FOLDER_NAME = 'DAILY-BACKUPS';
-
-// ============================================================
-// BACKUP PATHS
-// ============================================================
-
-const getBackupPaths = () => {
-  const backupDir = path.join(
-    BACKUP_ROOT,
-    BACKUP_FOLDER_NAME
-  );
-
-  const completeDir = path.join(
-    backupDir,
-    COMPLETE_FOLDER_NAME
-  );
-
-  const dailyDir = path.join(
-    backupDir,
-    DAILY_FOLDER_NAME
-  );
-
-  return {
-    backupDir,
-    completeDir,
-    dailyDir,
-  };
-};
-
-// ============================================================
-// ENSURE BACKUP STRUCTURE
-// ============================================================
-
-const ensureBackupStructure = async () => {
-  const {
-    backupDir,
-    completeDir,
-    dailyDir,
-  } = getBackupPaths();
-
-  await fsp.mkdir(
-    backupDir,
-    {
-      recursive: true,
-    }
-  );
-
-  await fsp.mkdir(
-    completeDir,
-    {
-      recursive: true,
-    }
-  );
-
-  await fsp.mkdir(
-    dailyDir,
-    {
-      recursive: true,
-    }
-  );
-
-  return {
-    backupDir,
-    completeDir,
-    dailyDir,
-  };
-};
-
-// ============================================================
-// INITIALIZE
-// ============================================================
-
-const initializeBackupStorage = async () => {
-  return ensureBackupStructure();
-};
 
 // ============================================================
 // BACKUP MODELS
@@ -194,6 +124,107 @@ const BACKUP_ONLY_FIELDS = new Set([
 ]);
 
 // ============================================================
+// ENVIRONMENT
+// ============================================================
+
+const isVercelEnvironment = () => {
+  return process.env.VERCEL === '1';
+};
+
+// ============================================================
+// BACKUP PATHS
+// ============================================================
+
+const getBackupPaths = () => {
+  const backupDir = path.join(
+    BACKUP_ROOT,
+    BACKUP_FOLDER_NAME
+  );
+
+  const completeDir = path.join(
+    backupDir,
+    COMPLETE_FOLDER_NAME
+  );
+
+  const dailyDir = path.join(
+    backupDir,
+    DAILY_FOLDER_NAME
+  );
+
+  return {
+    backupDir,
+    completeDir,
+    dailyDir,
+  };
+};
+
+// ============================================================
+// ENSURE LOCAL BACKUP STRUCTURE
+// ============================================================
+
+const ensureBackupStructure = async () => {
+  if (isVercelEnvironment()) {
+    throw new Error(
+      'Local Desktop backup storage is not available on Vercel.'
+    );
+  }
+
+  const {
+    backupDir,
+    completeDir,
+    dailyDir,
+  } = getBackupPaths();
+
+  await fsp.mkdir(
+    backupDir,
+    {
+      recursive: true,
+    }
+  );
+
+  await fsp.mkdir(
+    completeDir,
+    {
+      recursive: true,
+    }
+  );
+
+  await fsp.mkdir(
+    dailyDir,
+    {
+      recursive: true,
+    }
+  );
+
+  return {
+    backupDir,
+    completeDir,
+    dailyDir,
+  };
+};
+
+// ============================================================
+// INITIALIZE
+// ============================================================
+
+const initializeBackupStorage = async () => {
+  if (isVercelEnvironment()) {
+    console.log(
+      '[BACKUP] Vercel detected. Local Desktop storage skipped.'
+    );
+
+    return {
+      vercel: true,
+      skipped: true,
+      reason:
+        'Desktop filesystem is not used on Vercel.',
+    };
+  }
+
+  return ensureBackupStructure();
+};
+
+// ============================================================
 // OBJECT ID
 // ============================================================
 
@@ -215,10 +246,13 @@ const toObjectId = (value) => {
     typeof value === 'object' &&
     value._id
   ) {
-    return toObjectId(value._id);
+    return toObjectId(
+      value._id
+    );
   }
 
-  const stringValue = String(value).trim();
+  const stringValue =
+    String(value).trim();
 
   if (
     !/^[a-fA-F0-9]{24}$/.test(
@@ -232,12 +266,7 @@ const toObjectId = (value) => {
     return new mongoose.Types.ObjectId(
       stringValue
     );
-  } catch (error) {
-    console.error(
-      '[BACKUP] ObjectId conversion failed:',
-      error.message
-    );
-
+  } catch {
     return null;
   }
 };
@@ -333,7 +362,8 @@ const formatFieldName = (key) => {
     )
     .replace(
       /^./,
-      (char) => char.toUpperCase()
+      (char) =>
+        char.toUpperCase()
     )
     .trim();
 };
@@ -444,16 +474,6 @@ const formatSimpleValue = (value) => {
 
 // ============================================================
 // CLEAN OBJECT
-//
-// Removes:
-// - Mongo internal fields
-// - fingerprints
-// - FMD
-// - templates
-// - live images
-// - biometric data
-//
-// Keeps normal business data.
 // ============================================================
 
 const cleanObject = (
@@ -472,7 +492,7 @@ const cleanObject = (
       .toLowerCase();
 
   // ----------------------------------------------------------
-  // DIRECT EXCLUDED KEY
+  // EXCLUDED KEY
   // ----------------------------------------------------------
 
   if (
@@ -523,7 +543,7 @@ const cleanObject = (
   }
 
   // ----------------------------------------------------------
-  // BUFFER / BINARY
+  // BUFFER
   // ----------------------------------------------------------
 
   if (
@@ -538,18 +558,20 @@ const cleanObject = (
 
   if (
     value &&
-    value._bsontype === 'Decimal128'
+    value._bsontype ===
+      'Decimal128'
   ) {
     return value.toString();
   }
 
   // ----------------------------------------------------------
-  // MONGOOSE BUFFER-LIKE
+  // BSON BINARY
   // ----------------------------------------------------------
 
   if (
     value &&
-    value._bsontype === 'Binary'
+    value._bsontype ===
+      'Binary'
   ) {
     return undefined;
   }
@@ -584,18 +606,17 @@ const cleanObject = (
   ) {
     const result = {};
 
-    for (const [
-      key,
-      childValue,
-    ] of Object.entries(value)) {
-
+    for (
+      const [
+        key,
+        childValue,
+      ] of Object.entries(value)
+    ) {
       const lower =
         String(key).toLowerCase();
 
-      // ------------------------------------------------------
-      // REMOVE MONGO INTERNAL FIELDS
-      // KEEP _id
-      // ------------------------------------------------------
+      // Keep _id but remove other
+      // Mongo internal underscore fields.
 
       if (
         lower.startsWith('_') &&
@@ -603,10 +624,6 @@ const cleanObject = (
       ) {
         continue;
       }
-
-      // ------------------------------------------------------
-      // REMOVE EXCLUDED DATA
-      // ------------------------------------------------------
 
       if (
         EXCLUDED_FIELDS.has(
@@ -644,7 +661,8 @@ const cleanObject = (
       if (
         cleaned !== undefined
       ) {
-        result[key] = cleaned;
+        result[key] =
+          cleaned;
       }
     }
 
@@ -690,10 +708,6 @@ const valueToText = (
     return 'Not Available';
   }
 
-  // ----------------------------------------------------------
-  // DATE
-  // ----------------------------------------------------------
-
   if (
     value instanceof Date ||
     isDateKey(key)
@@ -710,10 +724,6 @@ const valueToText = (
     }
   }
 
-  // ----------------------------------------------------------
-  // BOOLEAN
-  // ----------------------------------------------------------
-
   if (
     typeof value === 'boolean'
   ) {
@@ -721,10 +731,6 @@ const valueToText = (
       ? 'Yes'
       : 'No';
   }
-
-  // ----------------------------------------------------------
-  // NUMBER
-  // ----------------------------------------------------------
 
   if (
     typeof value === 'number'
@@ -734,20 +740,12 @@ const valueToText = (
     );
   }
 
-  // ----------------------------------------------------------
-  // STRING
-  // ----------------------------------------------------------
-
   if (
     typeof value === 'string' ||
     typeof value === 'bigint'
   ) {
     return String(value);
   }
-
-  // ----------------------------------------------------------
-  // ARRAY
-  // ----------------------------------------------------------
 
   if (
     Array.isArray(value)
@@ -765,7 +763,8 @@ const valueToText = (
           index
         ) => {
           if (
-            typeof item === 'object' &&
+            typeof item ===
+              'object' &&
             item !== null
           ) {
             return (
@@ -792,10 +791,6 @@ const valueToText = (
       )
       .join('\n');
   }
-
-  // ----------------------------------------------------------
-  // OBJECT
-  // ----------------------------------------------------------
 
   if (
     typeof value === 'object'
@@ -909,7 +904,8 @@ const collectionDisplayName = (
     products: 'PRODUCTS',
     sales: 'SALES',
     payments: 'PAYMENTS',
-    installments: 'INSTALLMENTS',
+    installments:
+      'INSTALLMENTS',
     installmentPlans:
       'INSTALLMENT PLANS',
     expenses: 'EXPENSES',
@@ -971,7 +967,9 @@ const getFirstValue = (
     return '';
   }
 
-  for (const key of keys) {
+  for (
+    const key of keys
+  ) {
     if (
       object[key] !== undefined &&
       object[key] !== null &&
@@ -1004,7 +1002,7 @@ const getReferenceId = (
 };
 
 // ============================================================
-// FIND BY ID FROM MAP
+// FIND BY ID
 // ============================================================
 
 const findByIdFromMap = (
@@ -1160,7 +1158,6 @@ const enrichSales = (
 ) => {
   return sales.map(
     (sale) => {
-
       const customerId =
         getReferenceId(
           sale,
@@ -1231,7 +1228,6 @@ const enrichInstallmentPlans = (
 ) => {
   return plans.map(
     (plan) => {
-
       const customerId =
         getReferenceId(
           plan,
@@ -1366,7 +1362,6 @@ const enrichInstallments = (
 ) => {
   return installments.map(
     (installment) => {
-
       const customerId =
         getReferenceId(
           installment,
@@ -1451,7 +1446,6 @@ const enrichPayments = (
 ) => {
   return payments.map(
     (payment) => {
-
       const customerId =
         getReferenceId(
           payment,
@@ -1552,9 +1546,7 @@ const createCollectionText = (
 
   text += '\n';
 
-  text += separator(
-    '-'
-  );
+  text += separator('-');
 
   text += '\n\n';
 
@@ -1569,7 +1561,6 @@ const createCollectionText = (
 
   records.forEach(
     (record, index) => {
-
       text +=
         `RECORD #${index + 1}\n`;
 
@@ -1591,9 +1582,7 @@ const createCollectionText = (
 
       text += '\n\n';
 
-      text += separator(
-        '-'
-      );
+      text += separator('-');
 
       text += '\n\n';
     }
@@ -1697,7 +1686,7 @@ ${separator()}
 };
 
 // ============================================================
-// BACKUP INFO
+// BACKUP INFO TEXT
 // ============================================================
 
 const createBackupInfoText = (
@@ -1746,6 +1735,11 @@ const createBackupInfoText = (
   text +=
     `Generated By: ${metadata.generatedBy}\n`;
 
+  text +=
+    `Delivery: ${
+      metadata.deliveryMode
+    }\n`;
+
   return text;
 };
 
@@ -1774,9 +1768,7 @@ const createBackupSummaryText = (
   text +=
     `Created At: ${metadata.createdAt}\n\n`;
 
-  text += separator(
-    '-'
-  );
+  text += separator('-');
 
   text += '\n';
 
@@ -1796,9 +1788,7 @@ const createBackupSummaryText = (
       )}\n`;
   }
 
-  text += separator(
-    '-'
-  );
+  text += separator('-');
 
   text += '\n';
 
@@ -1812,16 +1802,12 @@ const createBackupSummaryText = (
 
 // ============================================================
 // LOAD SHOP DATA
-//
-// IMPORTANT:
-// Every collection is checked for shopId.
-// ObjectId and String shopId both supported.
 // ============================================================
 
 const loadShopData = async (
   shopId
 ) => {
-  console.log('\n');
+  console.log('');
   console.log(
     '============================================================'
   );
@@ -1834,14 +1820,8 @@ const loadShopData = async (
 
   console.log(
     '[BACKUP] Received shopId:',
-    shopId,
-    '| type:',
-    typeof shopId
+    shopId
   );
-
-  // ----------------------------------------------------------
-  // OBJECT ID
-  // ----------------------------------------------------------
 
   const shopObjId =
     toObjectId(
@@ -1849,11 +1829,6 @@ const loadShopData = async (
     );
 
   if (!shopObjId) {
-    console.error(
-      '[BACKUP] INVALID SHOP ID:',
-      shopId
-    );
-
     throw new Error(
       `Invalid shop ID for backup: ${String(
         shopId
@@ -1861,32 +1836,14 @@ const loadShopData = async (
     );
   }
 
-  console.log(
-    '[BACKUP] Valid ObjectId:',
-    shopObjId.toString()
-  );
+  // ==========================================================
+  // SHOP
+  // ==========================================================
 
-  // ----------------------------------------------------------
-  // LOAD SHOP
-  // ----------------------------------------------------------
-
-  let shop;
-
-  try {
-    shop =
-      await Shop.findById(
-        shopObjId
-      ).lean();
-  } catch (error) {
-    console.error(
-      '[BACKUP] Shop query failed:',
-      error
-    );
-
-    throw new Error(
-      `Shop query failed: ${error.message}`
-    );
-  }
+  const shop =
+    await Shop.findById(
+      shopObjId
+    ).lean();
 
   if (!shop) {
     throw new Error(
@@ -1910,15 +1867,15 @@ const loadShopData = async (
     shopName
   );
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // DATA
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const data = {};
 
-  // ----------------------------------------------------------
-  // LOAD EVERY BACKUP COLLECTION
-  // ----------------------------------------------------------
+  // ==========================================================
+  // LOAD COLLECTIONS
+  // ==========================================================
 
   for (
     const [
@@ -1928,25 +1885,11 @@ const loadShopData = async (
       BACKUP_MODELS
     )
   ) {
-
-    console.log('\n');
     console.log(
-      '------------------------------------------------------------'
-    );
-
-    console.log(
-      `[BACKUP] Loading collection: ${key}`
-    );
-
-    console.log(
-      `[BACKUP] Model: ${
-        Model.modelName ||
-        'Unknown'
-      }`
+      `[BACKUP] Loading: ${key}`
     );
 
     try {
-
       const schemaPaths =
         Model.schema?.paths ||
         {};
@@ -1956,53 +1899,24 @@ const loadShopData = async (
           schemaPaths.shopId
         );
 
-      console.log(
-        `[BACKUP] ${key} has shopId field:`,
-        hasShopId
-      );
-
       // ------------------------------------------------------
       // COLLECTION WITHOUT SHOP ID
       // ------------------------------------------------------
 
       if (!hasShopId) {
-
         console.warn(
-          `[BACKUP] WARNING: ${key} has no shopId field.`
+          `[BACKUP] ${key} has no shopId. Loading global collection.`
         );
-
-        /*
-         * Global collection.
-         *
-         * We still include it so the backup does not
-         * silently lose its data.
-         */
 
         data[key] =
           await Model.find({})
             .lean();
 
-        console.log(
-          `[BACKUP] ${key}: ${data[key].length} records (GLOBAL COLLECTION)`
-        );
-
         continue;
       }
 
-      // ------------------------------------------------------
-      // SHOP ID TYPE
-      // ------------------------------------------------------
-
-      const shopIdPath =
-        schemaPaths.shopId;
-
       const instance =
-        shopIdPath.instance;
-
-      console.log(
-        `[BACKUP] ${key}.shopId type:`,
-        instance
-      );
+        schemaPaths.shopId.instance;
 
       // ------------------------------------------------------
       // OBJECT ID
@@ -2012,13 +1926,11 @@ const loadShopData = async (
         instance === 'ObjectID' ||
         instance === 'ObjectId'
       ) {
-
         data[key] =
           await Model.find({
             shopId:
               shopObjId,
           }).lean();
-
       }
 
       // ------------------------------------------------------
@@ -2028,41 +1940,25 @@ const loadShopData = async (
       else if (
         instance === 'String'
       ) {
-
         data[key] =
           await Model.find({
             shopId:
               shopObjId.toString(),
           }).lean();
-
       }
 
       // ------------------------------------------------------
-      // UNKNOWN
+      // UNKNOWN TYPE
       // ------------------------------------------------------
 
       else {
-
-        console.warn(
-          `[BACKUP] ${key}.shopId has unexpected type: ${instance}`
-        );
-
         try {
-
           data[key] =
             await Model.find({
               shopId:
                 shopObjId,
             }).lean();
-
-        } catch (
-          firstError
-        ) {
-
-          console.warn(
-            `[BACKUP] ObjectId query failed for ${key}. Trying string...`
-          );
-
+        } catch {
           data[key] =
             await Model.find({
               shopId:
@@ -2071,63 +1967,16 @@ const loadShopData = async (
         }
       }
 
-      // ------------------------------------------------------
-      // RESULT
-      // ------------------------------------------------------
-
       console.log(
-        `[BACKUP] ${key}: ${data[key].length} records`
+        `[BACKUP] ${key}: ${
+          data[key].length
+        } records`
       );
-
-      if (
-        data[key].length > 0
-      ) {
-
-        const firstRecord =
-          data[key][0];
-
-        console.log(
-          `[BACKUP] ${key} first record ID:`,
-          firstRecord?._id
-            ? String(
-                firstRecord._id
-              )
-            : 'No _id'
-        );
-
-      } else {
-
-        console.log(
-          `[BACKUP] ${key}: NO RECORDS FOUND`
-        );
-      }
-
     } catch (error) {
-
-      console.error('\n');
       console.error(
-        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-      );
-
-      console.error(
-        `[BACKUP] FAILED COLLECTION: ${key}`
-      );
-
-      console.error(
-        '[BACKUP] Error:',
+        `[BACKUP] Failed collection ${key}:`,
         error
       );
-
-      console.error(
-        '[BACKUP] Message:',
-        error.message
-      );
-
-      console.error(
-        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-      );
-
-      console.error('\n');
 
       throw new Error(
         `Backup failed while loading ${key}: ${error.message}`
@@ -2136,15 +1985,10 @@ const loadShopData = async (
   }
 
   // ==========================================================
-  // BUILD MAPS
+  // MAPS
   // ==========================================================
 
-  console.log(
-    '\n[BACKUP] Building relationship maps...'
-  );
-
   const maps = {
-
     customers:
       buildIdMap(
         data.customers || []
@@ -2172,7 +2016,7 @@ const loadShopData = async (
   };
 
   // ==========================================================
-  // ENRICH SALES
+  // ENRICH
   // ==========================================================
 
   data.sales =
@@ -2186,10 +2030,6 @@ const loadShopData = async (
       data.sales
     );
 
-  // ==========================================================
-  // ENRICH INSTALLMENT PLANS
-  // ==========================================================
-
   data.installmentPlans =
     enrichInstallmentPlans(
       data.installmentPlans || [],
@@ -2201,19 +2041,11 @@ const loadShopData = async (
       data.installmentPlans
     );
 
-  // ==========================================================
-  // ENRICH INSTALLMENTS
-  // ==========================================================
-
   data.installments =
     enrichInstallments(
       data.installments || [],
       maps
     );
-
-  // ==========================================================
-  // ENRICH PAYMENTS
-  // ==========================================================
 
   data.payments =
     enrichPayments(
@@ -2222,12 +2054,8 @@ const loadShopData = async (
     );
 
   // ==========================================================
-  // CLEAN DATA
+  // CLEAN
   // ==========================================================
-
-  console.log(
-    '[BACKUP] Cleaning data...'
-  );
 
   const cleanedData = {};
 
@@ -2239,7 +2067,6 @@ const loadShopData = async (
       data
     )
   ) {
-
     cleanedData[key] =
       (records || [])
         .map(
@@ -2255,22 +2082,16 @@ const loadShopData = async (
         );
 
     console.log(
-      `[BACKUP] Cleaned ${key}: ${cleanedData[key].length} records`
+      `[BACKUP] Cleaned ${key}: ${
+        cleanedData[key].length
+      } records`
     );
   }
-
-  // ==========================================================
-  // CLEAN SHOP
-  // ==========================================================
 
   const cleanedShop =
     cleanObject(
       shop
     );
-
-  // ==========================================================
-  // FINAL SUMMARY
-  // ==========================================================
 
   let totalRecords = 0;
 
@@ -2284,20 +2105,7 @@ const loadShopData = async (
   }
 
   console.log(
-    '\n============================================================'
-  );
-
-  console.log(
-    '[BACKUP] SHOP DATA LOAD COMPLETE'
-  );
-
-  console.log(
-    '[BACKUP] TOTAL RECORDS:',
-    totalRecords
-  );
-
-  console.log(
-    '============================================================\n'
+    `[BACKUP] TOTAL RECORDS: ${totalRecords}`
   );
 
   return {
@@ -2318,8 +2126,8 @@ const createMetadata = ({
   data,
   backupType,
   backupDate,
+  deliveryMode = 'Browser ZIP Download',
 }) => {
-
   const collections = {};
 
   let totalDocuments = 0;
@@ -2332,7 +2140,6 @@ const createMetadata = ({
       data
     )
   ) {
-
     collections[
       collection
     ] = records.length;
@@ -2353,7 +2160,6 @@ const createMetadata = ({
     'My Electronics Shop';
 
   return {
-
     backupVersion:
       BACKUP_VERSION,
 
@@ -2388,18 +2194,480 @@ const createMetadata = ({
 
     generatedBy:
       'Shop Management Backup Service',
+
+    deliveryMode,
   };
 };
 
 // ============================================================
-// WRITE TEXT FILE
+// BUILD ALL BACKUP TEXT FILES IN MEMORY
+//
+// THIS IS THE IMPORTANT VERCEL FIX.
+//
+// No filesystem is required here.
+// ============================================================
+
+const buildBackupTextFiles = ({
+  shop,
+  data,
+  metadata,
+}) => {
+  const files = {};
+
+  files['README.txt'] =
+    createReadmeText(
+      metadata
+    );
+
+  files['backup-info.txt'] =
+    createBackupInfoText(
+      metadata
+    );
+
+  files['backup-summary.txt'] =
+    createBackupSummaryText(
+      metadata
+    );
+
+  files['shop.txt'] =
+    createShopText(
+      shop
+    );
+
+  for (
+    const [
+      collectionName,
+      records,
+    ] of Object.entries(
+      data
+    )
+  ) {
+    const fileName =
+      `${sanitizeFileName(
+        collectionName
+      )}.txt`;
+
+    files[fileName] =
+      createCollectionText(
+        collectionName,
+        records
+      );
+  }
+
+  if (
+    Object.keys(files).length === 0
+  ) {
+    throw new Error(
+      'No backup TXT files were generated.'
+    );
+  }
+
+  return files;
+};
+
+// ============================================================
+// CREATE ZIP FROM IN-MEMORY TXT FILES
+//
+// VERCEL SAFE.
+// ============================================================
+
+const createZipBufferFromTextFiles = async (
+  files,
+  zipRootName
+) => {
+  return new Promise(
+    async (
+      resolve,
+      reject
+    ) => {
+      const archive =
+        archiver(
+          'zip',
+          {
+            zlib: {
+              level: 9,
+            },
+          }
+        );
+
+      const chunks = [];
+
+      let settled = false;
+
+      const fail = (
+        error
+      ) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        reject(error);
+      };
+
+      archive.on(
+        'data',
+        (chunk) => {
+          chunks.push(
+            chunk
+          );
+        }
+      );
+
+      archive.on(
+        'warning',
+        (warning) => {
+          if (
+            warning.code ===
+            'ENOENT'
+          ) {
+            console.warn(
+              '[BACKUP ZIP WARNING]',
+              warning.message
+            );
+
+            return;
+          }
+
+          fail(
+            warning
+          );
+        }
+      );
+
+      archive.on(
+        'error',
+        (error) => {
+          fail(
+            error
+          );
+        }
+      );
+
+      archive.on(
+        'end',
+        () => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+
+          const buffer =
+            Buffer.concat(
+              chunks
+            );
+
+          if (
+            !buffer.length
+          ) {
+            reject(
+              new Error(
+                'Generated backup ZIP is empty.'
+              )
+            );
+
+            return;
+          }
+
+          console.log(
+            `[BACKUP ZIP] Created in memory: ${buffer.length} bytes`
+          );
+
+          resolve(
+            buffer
+          );
+        }
+      );
+
+      try {
+        const root =
+          sanitizeZipPath(
+            zipRootName ||
+              'BACKUP'
+          );
+
+        for (
+          const [
+            fileName,
+            content,
+          ] of Object.entries(
+            files
+          )
+        ) {
+          const safeName =
+            sanitizeZipPath(
+              fileName
+            );
+
+          archive.append(
+            Buffer.from(
+              String(
+                content || ''
+              ),
+              'utf8'
+            ),
+            {
+              name:
+                `${root}/${safeName}`,
+            }
+          );
+        }
+
+        await archive.finalize();
+      } catch (error) {
+        fail(error);
+      }
+    }
+  );
+};
+
+// ============================================================
+// SAFE ZIP PATH
+// ============================================================
+
+const sanitizeZipPath = (
+  value
+) => {
+  return String(
+    value || 'backup'
+  )
+    .replace(
+      /\\/g,
+      '/'
+    )
+    .split('/')
+    .filter(
+      (part) =>
+        part &&
+        part !== '.' &&
+        part !== '..'
+    )
+    .map(
+      (part) =>
+        sanitizeFileName(
+          part
+        )
+    )
+    .join('/');
+};
+
+// ============================================================
+// CREATE COMPLETE BACKUP ZIP DIRECTLY
+//
+// VERCEL + LOCAL SAFE
+//
+// On Vercel:
+//   MongoDB -> TXT memory -> ZIP memory
+//
+// On local:
+//   Same ZIP is generated directly.
+// ============================================================
+
+const createCompleteBackupZip = async (
+  shopId
+) => {
+  console.log('');
+  console.log(
+    '============================================================'
+  );
+  console.log(
+    '[COMPLETE BACKUP ZIP] START'
+  );
+  console.log(
+    `[COMPLETE BACKUP ZIP] Environment: ${
+      isVercelEnvironment()
+        ? 'VERCEL'
+        : 'LOCAL'
+    }`
+  );
+  console.log(
+    `[COMPLETE BACKUP ZIP] Shop: ${shopId}`
+  );
+  console.log(
+    '============================================================'
+  );
+
+  const {
+    shop,
+    data,
+  } =
+    await loadShopData(
+      shopId
+    );
+
+  const backupDate =
+    getPakistanDate();
+
+  const metadata =
+    createMetadata({
+      shop,
+      data,
+      backupType:
+        'COMPLETE',
+      backupDate,
+      deliveryMode:
+        'Browser ZIP Download',
+    });
+
+  const files =
+    buildBackupTextFiles({
+      shop,
+      data,
+      metadata,
+    });
+
+  const zipBuffer =
+    await createZipBufferFromTextFiles(
+      files,
+      'COMPLETE-BACKUP'
+    );
+
+  const filename =
+    `${sanitizeFileName(
+      metadata.shopName
+    )}-COMPLETE-BACKUP-${backupDate.replace(
+      /-/g,
+      ''
+    )}.zip`;
+
+  console.log(
+    `[COMPLETE BACKUP ZIP] SUCCESS: ${filename}`
+  );
+
+  return {
+    files:
+      Object.keys(files),
+
+    metadata,
+
+    savedPath:
+      null,
+
+    zipBuffer,
+
+    filename,
+  };
+};
+
+// ============================================================
+// CREATE DAILY BACKUP ZIP DIRECTLY
+//
+// IMPORTANT:
+// requestedDate is only the snapshot label/date.
+// Data comes from the current MongoDB database.
+// ============================================================
+
+const createDailyBackupZip = async (
+  shopId,
+  requestedDate = null
+) => {
+  const backupDate =
+    requestedDate ||
+    getPakistanDate();
+
+  if (
+    !isValidBackupDate(
+      backupDate
+    )
+  ) {
+    throw new Error(
+      'Invalid daily backup date. Expected YYYY-MM-DD.'
+    );
+  }
+
+  console.log('');
+  console.log(
+    '============================================================'
+  );
+  console.log(
+    '[DAILY BACKUP ZIP] START'
+  );
+  console.log(
+    `[DAILY BACKUP ZIP] Environment: ${
+      isVercelEnvironment()
+        ? 'VERCEL'
+        : 'LOCAL'
+    }`
+  );
+  console.log(
+    `[DAILY BACKUP ZIP] Shop: ${shopId}`
+  );
+  console.log(
+    `[DAILY BACKUP ZIP] Date: ${backupDate}`
+  );
+  console.log(
+    '============================================================'
+  );
+
+  const {
+    shop,
+    data,
+  } =
+    await loadShopData(
+      shopId
+    );
+
+  const metadata =
+    createMetadata({
+      shop,
+      data,
+      backupType:
+        'DAILY',
+      backupDate,
+      deliveryMode:
+        'Browser ZIP Download',
+    });
+
+  const files =
+    buildBackupTextFiles({
+      shop,
+      data,
+      metadata,
+    });
+
+  const zipBuffer =
+    await createZipBufferFromTextFiles(
+      files,
+      backupDate
+    );
+
+  const filename =
+    `${sanitizeFileName(
+      metadata.shopName
+    )}-DAILY-BACKUP-${backupDate.replace(
+      /-/g,
+      ''
+    )}.zip`;
+
+  console.log(
+    `[DAILY BACKUP ZIP] SUCCESS: ${filename}`
+  );
+
+  return {
+    files:
+      Object.keys(files),
+
+    metadata,
+
+    savedPath:
+      null,
+
+    zipBuffer,
+
+    filename,
+  };
+};
+
+// ============================================================
+// LOCAL TXT FILE WRITE
 // ============================================================
 
 const writeTextFile = async (
   filePath,
   content
 ) => {
-
   await fsp.writeFile(
     filePath,
     String(
@@ -2407,10 +2675,6 @@ const writeTextFile = async (
     ),
     'utf8'
   );
-
-  // ----------------------------------------------------------
-  // VERIFY FILE
-  // ----------------------------------------------------------
 
   const stat =
     await fsp.stat(
@@ -2427,13 +2691,12 @@ const writeTextFile = async (
 };
 
 // ============================================================
-// READ BACKUP FILES
+// READ LOCAL BACKUP FILES
 // ============================================================
 
 const readBackupFiles = async (
   directory
 ) => {
-
   const entries =
     await fsp.readdir(
       directory,
@@ -2455,19 +2718,17 @@ const readBackupFiles = async (
 };
 
 // ============================================================
-// REMOVE DIRECTORY / FILE
+// REMOVE DIRECTORY
 // ============================================================
 
 const removeDirectory = async (
   targetPath
 ) => {
-
   if (!targetPath) {
     return;
   }
 
   try {
-
     await fsp.rm(
       targetPath,
       {
@@ -2475,48 +2736,15 @@ const removeDirectory = async (
         force: true,
       }
     );
-
-  } catch (error) {
-
-    console.warn(
-      `[BACKUP] Could not remove ${targetPath}:`,
-      error.message
-    );
-
-    try {
-
-      const stat =
-        await fsp.stat(
-          targetPath
-        );
-
-      if (
-        stat.isDirectory()
-      ) {
-
-        await fsp.rm(
-          targetPath,
-          {
-            recursive: true,
-            force: true,
-          }
-        );
-
-      } else {
-
-        await fsp.unlink(
-          targetPath
-        );
-      }
-
-    } catch {
-      // Already removed
-    }
+  } catch {
+    // Ignore cleanup errors
   }
 };
 
 // ============================================================
-// WRITE BACKUP CONTENT
+// WRITE BACKUP CONTENT TO LOCAL DISK
+//
+// LOCAL ONLY.
 // ============================================================
 
 const writeBackupContent = async ({
@@ -2525,6 +2753,13 @@ const writeBackupContent = async ({
   data,
   metadata,
 }) => {
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'writeBackupContent is local-only and cannot run on Vercel.'
+    );
+  }
 
   await fsp.mkdir(
     directory,
@@ -2533,132 +2768,34 @@ const writeBackupContent = async ({
     }
   );
 
-  console.log(
-    '\n[BACKUP WRITE] Target directory:',
-    directory
-  );
-
-  // ==========================================================
-  // README
-  // ==========================================================
-
-  await writeTextFile(
-    path.join(
-      directory,
-      'README.txt'
-    ),
-    createReadmeText(
-      metadata
-    )
-  );
-
-  // ==========================================================
-  // BACKUP INFO
-  // ==========================================================
-
-  await writeTextFile(
-    path.join(
-      directory,
-      'backup-info.txt'
-    ),
-    createBackupInfoText(
-      metadata
-    )
-  );
-
-  // ==========================================================
-  // BACKUP SUMMARY
-  // ==========================================================
-
-  await writeTextFile(
-    path.join(
-      directory,
-      'backup-summary.txt'
-    ),
-    createBackupSummaryText(
-      metadata
-    )
-  );
-
-  // ==========================================================
-  // SHOP
-  // ==========================================================
-
-  await writeTextFile(
-    path.join(
-      directory,
-      'shop.txt'
-    ),
-    createShopText(
-      shop
-    )
-  );
-
-  // ==========================================================
-  // COLLECTIONS
-  // ==========================================================
+  const files =
+    buildBackupTextFiles({
+      shop,
+      data,
+      metadata,
+    });
 
   for (
     const [
-      collectionName,
-      records,
+      fileName,
+      content,
     ] of Object.entries(
-      data
+      files
     )
   ) {
-
-    const fileName =
-      `${sanitizeFileName(
-        collectionName
-      )}.txt`;
-
-    const filePath =
+    await writeTextFile(
       path.join(
         directory,
         fileName
-      );
-
-    const content =
-      createCollectionText(
-        collectionName,
-        records
-      );
-
-    console.log(
-      `[BACKUP WRITE] ${fileName}: ${records.length} records`
-    );
-
-    await writeTextFile(
-      filePath,
+      ),
       content
     );
   }
-
-  // ==========================================================
-  // VERIFY FILES
-  // ==========================================================
 
   const fileNames =
     await readBackupFiles(
       directory
     );
-
-  console.log(
-    '[BACKUP WRITE] Files successfully written:',
-    fileNames
-  );
-
-  if (
-    !fileNames.length
-  ) {
-    throw new Error(
-      `Backup files were not written to: ${directory}`
-    );
-  }
-
-  // ==========================================================
-  // VERIFY EXPECTED CORE FILES
-  // ==========================================================
 
   const requiredFiles = [
     'README.txt',
@@ -2670,7 +2807,6 @@ const writeBackupContent = async ({
   for (
     const requiredFile of requiredFiles
   ) {
-
     if (
       !fileNames.includes(
         requiredFile
@@ -2686,7 +2822,7 @@ const writeBackupContent = async ({
 };
 
 // ============================================================
-// SAVE DAILY SNAPSHOT
+// SAVE DAILY SNAPSHOT LOCALLY
 // ============================================================
 
 const saveDailySnapshot = async ({
@@ -2694,6 +2830,13 @@ const saveDailySnapshot = async ({
   data,
   metadata,
 }) => {
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'Local daily snapshot cannot run on Vercel.'
+    );
+  }
 
   const {
     dailyDir,
@@ -2728,23 +2871,9 @@ const saveDailySnapshot = async ({
     );
 
   try {
-
-    console.log(
-      '[DAILY BACKUP] Temp directory:',
-      tempDir
-    );
-
-    // --------------------------------------------------------
-    // REMOVE OLD TEMP
-    // --------------------------------------------------------
-
     await removeDirectory(
       tempDir
     );
-
-    // --------------------------------------------------------
-    // WRITE TEMP
-    // --------------------------------------------------------
 
     await writeBackupContent({
       directory:
@@ -2753,10 +2882,6 @@ const saveDailySnapshot = async ({
       data,
       metadata,
     });
-
-    // --------------------------------------------------------
-    // VERIFY TEMP
-    // --------------------------------------------------------
 
     const tempFiles =
       await readBackupFiles(
@@ -2771,36 +2896,19 @@ const saveDailySnapshot = async ({
       );
     }
 
-    // --------------------------------------------------------
-    // REMOVE OLD DATE
-    // --------------------------------------------------------
-
     await removeDirectory(
       finalDir
     );
-
-    // --------------------------------------------------------
-    // RENAME TEMP TO FINAL
-    // --------------------------------------------------------
 
     await fsp.rename(
       tempDir,
       finalDir
     );
 
-    // --------------------------------------------------------
-    // VERIFY FINAL
-    // --------------------------------------------------------
-
     const finalFiles =
       await readBackupFiles(
         finalDir
       );
-
-    console.log(
-      '[DAILY BACKUP] Final files:',
-      finalFiles
-    );
 
     if (
       !finalFiles.length
@@ -2811,21 +2919,14 @@ const saveDailySnapshot = async ({
     }
 
     console.log(
-      '[DAILY BACKUP] Saved successfully:',
+      '[DAILY BACKUP] Saved:',
       finalDir
     );
 
     return finalDir;
-
   } catch (error) {
-
     await removeDirectory(
       tempDir
-    );
-
-    console.error(
-      '[DAILY BACKUP] Save failed:',
-      error
     );
 
     throw error;
@@ -2833,9 +2934,7 @@ const saveDailySnapshot = async ({
 };
 
 // ============================================================
-// SAVE COMPLETE BACKUP
-//
-// COMPLETE-BACKUP contains only latest snapshot.
+// SAVE COMPLETE BACKUP LOCALLY
 // ============================================================
 
 const saveCompleteBackup = async ({
@@ -2843,6 +2942,13 @@ const saveCompleteBackup = async ({
   data,
   metadata,
 }) => {
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'Local complete backup cannot run on Vercel.'
+    );
+  }
 
   const {
     backupDir,
@@ -2859,23 +2965,9 @@ const saveCompleteBackup = async ({
     );
 
   try {
-
-    console.log(
-      '[COMPLETE BACKUP] Temp directory:',
-      tempDir
-    );
-
-    // --------------------------------------------------------
-    // REMOVE TEMP
-    // --------------------------------------------------------
-
     await removeDirectory(
       tempDir
     );
-
-    // --------------------------------------------------------
-    // WRITE TEMP
-    // --------------------------------------------------------
 
     await writeBackupContent({
       directory:
@@ -2884,10 +2976,6 @@ const saveCompleteBackup = async ({
       data,
       metadata,
     });
-
-    // --------------------------------------------------------
-    // VERIFY TEMP
-    // --------------------------------------------------------
 
     const tempFiles =
       await readBackupFiles(
@@ -2902,26 +2990,14 @@ const saveCompleteBackup = async ({
       );
     }
 
-    // --------------------------------------------------------
-    // REMOVE OLD COMPLETE
-    // --------------------------------------------------------
-
     await removeDirectory(
       completeDir
     );
-
-    // --------------------------------------------------------
-    // RENAME
-    // --------------------------------------------------------
 
     await fsp.rename(
       tempDir,
       completeDir
     );
-
-    // --------------------------------------------------------
-    // VERIFY FINAL
-    // --------------------------------------------------------
 
     const finalFiles =
       await readBackupFiles(
@@ -2937,26 +3013,14 @@ const saveCompleteBackup = async ({
     }
 
     console.log(
-      '[COMPLETE BACKUP] Final files:',
-      finalFiles
-    );
-
-    console.log(
-      '[COMPLETE BACKUP] Saved successfully:',
+      '[COMPLETE BACKUP] Saved:',
       completeDir
     );
 
     return completeDir;
-
   } catch (error) {
-
     await removeDirectory(
       tempDir
-    );
-
-    console.error(
-      '[COMPLETE BACKUP] Save failed:',
-      error
     );
 
     throw error;
@@ -2964,185 +3028,22 @@ const saveCompleteBackup = async ({
 };
 
 // ============================================================
-// CREATE ZIP BUFFER FROM DIRECTORY
+// CREATE DAILY BACKUP LOCALLY
 //
-// ZIP is created in memory.
-// It is NOT stored on Desktop.
-// ============================================================
-
-const createZipBufferFromDirectory = async (
-  directory,
-  zipRootName
-) => {
-
-  return new Promise(
-    async (
-      resolve,
-      reject
-    ) => {
-
-      try {
-
-        const archive =
-          archiver(
-            'zip',
-            {
-              zlib: {
-                level: 9,
-              },
-            }
-          );
-
-        const chunks = [];
-
-        let settled = false;
-
-        const fail = (
-          error
-        ) => {
-
-          if (
-            settled
-          ) {
-            return;
-          }
-
-          settled = true;
-
-          reject(
-            error
-          );
-        };
-
-        archive.on(
-          'data',
-          (chunk) => {
-            chunks.push(
-              chunk
-            );
-          }
-        );
-
-        archive.on(
-          'warning',
-          (warning) => {
-
-            if (
-              warning.code ===
-              'ENOENT'
-            ) {
-              console.warn(
-                '[BACKUP ZIP WARNING]',
-                warning.message
-              );
-              return;
-            }
-
-            fail(
-              warning
-            );
-          }
-        );
-
-        archive.on(
-          'error',
-          (error) => {
-            fail(
-              error
-            );
-          }
-        );
-
-        archive.on(
-          'end',
-          () => {
-
-            if (
-              settled
-            ) {
-              return;
-            }
-
-            settled = true;
-
-            const buffer =
-              Buffer.concat(
-                chunks
-              );
-
-            if (
-              !buffer.length
-            ) {
-              reject(
-                new Error(
-                  'Generated backup ZIP is empty.'
-                )
-              );
-              return;
-            }
-
-            console.log(
-              '[BACKUP ZIP] ZIP size:',
-              buffer.length,
-              'bytes'
-            );
-
-            resolve(
-              buffer
-            );
-          }
-        );
-
-        // ------------------------------------------------------
-        // VERIFY DIRECTORY
-        // ------------------------------------------------------
-
-        const stat =
-          await fsp.stat(
-            directory
-          );
-
-        if (
-          !stat.isDirectory()
-        ) {
-          throw new Error(
-            `Backup directory does not exist: ${directory}`
-          );
-        }
-
-        // ------------------------------------------------------
-        // ADD DIRECTORY
-        // ------------------------------------------------------
-
-        archive.directory(
-          directory,
-          zipRootName
-        );
-
-        // ------------------------------------------------------
-        // FINALIZE
-        // ------------------------------------------------------
-
-        await archive.finalize();
-
-      } catch (error) {
-
-        reject(
-          error
-        );
-      }
-    }
-  );
-};
-
-// ============================================================
-// CREATE DAILY BACKUP
+// Used by automatic local scheduler.
 // ============================================================
 
 const createDailyBackup = async (
   shopId,
   requestedDate = null
 ) => {
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'Automatic/local daily backup cannot run on Vercel.'
+    );
+  }
 
   const backupDate =
     requestedDate ||
@@ -3157,28 +3058,6 @@ const createDailyBackup = async (
       'Invalid daily backup date. Expected YYYY-MM-DD.'
     );
   }
-
-  console.log(
-    '\n============================================================'
-  );
-
-  console.log(
-    '[DAILY BACKUP] Creating backup'
-  );
-
-  console.log(
-    '[DAILY BACKUP] Shop:',
-    shopId
-  );
-
-  console.log(
-    '[DAILY BACKUP] Date:',
-    backupDate
-  );
-
-  console.log(
-    '============================================================'
-  );
 
   const {
     shop,
@@ -3195,6 +3074,8 @@ const createDailyBackup = async (
       backupType:
         'DAILY',
       backupDate,
+      deliveryMode:
+        'Local Desktop Storage',
     });
 
   const savedPath =
@@ -3217,29 +3098,19 @@ const createDailyBackup = async (
 };
 
 // ============================================================
-// CREATE COMPLETE BACKUP
+// CREATE COMPLETE BACKUP LOCALLY
 // ============================================================
 
 const createBackup = async (
   shopId
 ) => {
-
-  console.log(
-    '\n============================================================'
-  );
-
-  console.log(
-    '[COMPLETE BACKUP] Creating backup'
-  );
-
-  console.log(
-    '[COMPLETE BACKUP] Shop:',
-    shopId
-  );
-
-  console.log(
-    '============================================================'
-  );
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'Local complete backup cannot run on Vercel.'
+    );
+  }
 
   const backupDate =
     getPakistanDate();
@@ -3259,6 +3130,8 @@ const createBackup = async (
       backupType:
         'COMPLETE',
       backupDate,
+      deliveryMode:
+        'Local Desktop Storage',
     });
 
   const savedPath =
@@ -3281,92 +3154,180 @@ const createBackup = async (
 };
 
 // ============================================================
-// CREATE COMPLETE BACKUP ZIP
+// ZIP DIRECTORY
+//
+// Kept for local compatibility.
 // ============================================================
 
-const createCompleteBackupZip = async (
-  shopId
+const createZipBufferFromDirectory = async (
+  directory,
+  zipRootName
 ) => {
-
-  const result =
-    await createBackup(
-      shopId
+  if (
+    isVercelEnvironment()
+  ) {
+    throw new Error(
+      'Directory-based ZIP is disabled on Vercel. Use in-memory TXT ZIP generation.'
     );
+  }
 
-  const zipBuffer =
-    await createZipBufferFromDirectory(
-      result.savedPath,
-      'COMPLETE-BACKUP'
-    );
+  return new Promise(
+    async (
+      resolve,
+      reject
+    ) => {
+      try {
+        const archive =
+          archiver(
+            'zip',
+            {
+              zlib: {
+                level: 9,
+              },
+            }
+          );
 
-  const filename =
-    `${sanitizeFileName(
-      result.metadata.shopName
-    )}-COMPLETE-BACKUP-${result.metadata.backupDate.replace(
-      /-/g,
-      ''
-    )}.zip`;
+        const chunks = [];
 
-  return {
-    ...result,
-    zipBuffer,
-    filename,
-  };
-};
+        let settled = false;
 
-// ============================================================
-// CREATE DAILY BACKUP ZIP
-// ============================================================
+        const fail = (
+          error
+        ) => {
+          if (
+            settled
+          ) {
+            return;
+          }
 
-const createDailyBackupZip = async (
-  shopId,
-  requestedDate = null
-) => {
+          settled = true;
 
-  const result =
-    await createDailyBackup(
-      shopId,
-      requestedDate
-    );
+          reject(error);
+        };
 
-  const zipBuffer =
-    await createZipBufferFromDirectory(
-      result.savedPath,
-      result.metadata.backupDate
-    );
+        archive.on(
+          'data',
+          (chunk) => {
+            chunks.push(
+              chunk
+            );
+          }
+        );
 
-  const filename =
-    `${sanitizeFileName(
-      result.metadata.shopName
-    )}-DAILY-BACKUP-${result.metadata.backupDate.replace(
-      /-/g,
-      ''
-    )}.zip`;
+        archive.on(
+          'warning',
+          (warning) => {
+            if (
+              warning.code ===
+              'ENOENT'
+            ) {
+              console.warn(
+                '[BACKUP ZIP WARNING]',
+                warning.message
+              );
 
-  return {
-    ...result,
-    zipBuffer,
-    filename,
-  };
+              return;
+            }
+
+            fail(
+              warning
+            );
+          }
+        );
+
+        archive.on(
+          'error',
+          (error) => {
+            fail(error);
+          }
+        );
+
+        archive.on(
+          'end',
+          () => {
+            if (
+              settled
+            ) {
+              return;
+            }
+
+            settled = true;
+
+            const buffer =
+              Buffer.concat(
+                chunks
+              );
+
+            if (
+              !buffer.length
+            ) {
+              reject(
+                new Error(
+                  'Generated backup ZIP is empty.'
+                )
+              );
+
+              return;
+            }
+
+            resolve(
+              buffer
+            );
+          }
+        );
+
+        const stat =
+          await fsp.stat(
+            directory
+          );
+
+        if (
+          !stat.isDirectory()
+        ) {
+          throw new Error(
+            `Backup directory does not exist: ${directory}`
+          );
+        }
+
+        archive.directory(
+          directory,
+          zipRootName
+        );
+
+        await archive.finalize();
+      } catch (error) {
+        reject(error);
+      }
+    }
+  );
 };
 
 // ============================================================
 // AUTOMATIC DAILY BACKUPS
+//
+// LOCAL ONLY.
 // ============================================================
 
 const runAutomaticDailyBackups =
   async () => {
+    if (
+      isVercelEnvironment()
+    ) {
+      console.log(
+        '[AUTOMATIC BACKUP] Skipped because environment is Vercel.'
+      );
+
+      return {
+        total: 0,
+        success: 0,
+        failed: 0,
+        results: [],
+        skipped: true,
+      };
+    }
 
     console.log(
-      '\n============================================================'
-    );
-
-    console.log(
-      '[AUTOMATIC BACKUP] Starting daily backups'
-    );
-
-    console.log(
-      '============================================================'
+      '[AUTOMATIC BACKUP] Starting...'
     );
 
     const shops =
@@ -3377,7 +3338,6 @@ const runAutomaticDailyBackups =
         .lean();
 
     const result = {
-
       total:
         shops.length,
 
@@ -3393,9 +3353,7 @@ const runAutomaticDailyBackups =
     for (
       const shop of shops
     ) {
-
       try {
-
         const backup =
           await createDailyBackup(
             shop._id
@@ -3447,9 +3405,7 @@ const runAutomaticDailyBackups =
             'Unknown Shop'
           }`
         );
-
       } catch (error) {
-
         result.failed += 1;
 
         result.results.push({
@@ -3477,23 +3433,11 @@ const runAutomaticDailyBackups =
         });
 
         console.error(
-          `[AUTOMATIC BACKUP] FAILED for shop ${shop._id}:`,
+          `[AUTOMATIC BACKUP] FAILED:`,
           error.message
         );
       }
     }
-
-    console.log(
-      '\n[AUTOMATIC BACKUP] Finished:',
-      {
-        total:
-          result.total,
-        success:
-          result.success,
-        failed:
-          result.failed,
-      }
-    );
 
     return result;
   };
@@ -3505,11 +3449,9 @@ const runAutomaticDailyBackups =
 const getDirectorySize = async (
   directory
 ) => {
-
   let total = 0;
 
   try {
-
     const entries =
       await fsp.readdir(
         directory,
@@ -3521,7 +3463,6 @@ const getDirectorySize = async (
     for (
       const entry of entries
     ) {
-
       const fullPath =
         path.join(
           directory,
@@ -3531,18 +3472,14 @@ const getDirectorySize = async (
       if (
         entry.isDirectory()
       ) {
-
         total +=
           await getDirectorySize(
             fullPath
           );
-
       } else if (
         entry.isFile()
       ) {
-
         try {
-
           const stat =
             await fsp.stat(
               fullPath
@@ -3550,13 +3487,11 @@ const getDirectorySize = async (
 
           total +=
             stat.size;
-
         } catch {
           // Ignore
         }
       }
     }
-
   } catch {
     // Ignore
   }
@@ -3566,20 +3501,16 @@ const getDirectorySize = async (
 
 // ============================================================
 // GET BACKUP STORAGE INFO
+//
+// IMPORTANT:
+// Vercel does not have the user's Desktop backup.
+// Therefore return a clean "browser storage" response.
 // ============================================================
 
 const getBackupStorageInfo =
   async (
     shopId
   ) => {
-
-    const {
-      backupDir,
-      completeDir,
-      dailyDir,
-    } =
-      await ensureBackupStructure();
-
     const shopObjId =
       toObjectId(
         shopId
@@ -3609,8 +3540,83 @@ const getBackupStorageInfo =
     }
 
     // ========================================================
-    // COMPLETE
+    // VERCEL
     // ========================================================
+
+    if (
+      isVercelEnvironment()
+    ) {
+      return {
+        storageMode:
+          'Browser Local Storage',
+
+        vercel:
+          true,
+
+        backupRoot:
+          null,
+
+        completeBackup: {
+          exists:
+            false,
+
+          path:
+            null,
+
+          files:
+            [],
+
+          fileCount:
+            0,
+
+          size:
+            0,
+        },
+
+        dailyBackups: {
+          path:
+            null,
+
+          dates:
+            [],
+
+          items:
+            [],
+
+          total:
+            0,
+        },
+
+        shop: {
+          id:
+            getIdString(
+              shop._id
+            ),
+
+          name:
+            getFirstValue(
+              shop,
+              [
+                'shopName',
+                'name',
+                'businessName',
+              ]
+            ) ||
+            'Unknown Shop',
+        },
+      };
+    }
+
+    // ========================================================
+    // LOCAL
+    // ========================================================
+
+    const {
+      backupDir,
+      completeDir,
+      dailyDir,
+    } =
+      await ensureBackupStructure();
 
     let completeExists =
       false;
@@ -3622,7 +3628,6 @@ const getBackupStorageInfo =
       0;
 
     try {
-
       const stat =
         await fsp.stat(
           completeDir
@@ -3634,7 +3639,6 @@ const getBackupStorageInfo =
       if (
         completeExists
       ) {
-
         completeFiles =
           await readBackupFiles(
             completeDir
@@ -3645,21 +3649,15 @@ const getBackupStorageInfo =
             completeDir
           );
       }
-
     } catch {
       completeExists =
         false;
     }
 
-    // ========================================================
-    // DAILY
-    // ========================================================
-
     const dailyBackups =
       [];
 
     try {
-
       const entries =
         await fsp.readdir(
           dailyDir,
@@ -3671,7 +3669,6 @@ const getBackupStorageInfo =
       for (
         const entry of entries
       ) {
-
         if (
           !entry.isDirectory()
         ) {
@@ -3705,7 +3702,6 @@ const getBackupStorageInfo =
           0;
 
         try {
-
           const files =
             await readBackupFiles(
               dailyPath
@@ -3718,7 +3714,6 @@ const getBackupStorageInfo =
             await getDirectorySize(
               dailyPath
             );
-
         } catch {
           // Ignore
         }
@@ -3735,7 +3730,6 @@ const getBackupStorageInfo =
           size,
         });
       }
-
     } catch {
       // Ignore
     }
@@ -3747,17 +3741,17 @@ const getBackupStorageInfo =
         )
     );
 
-    // ========================================================
-    // RETURN
-    // ========================================================
-
     return {
+      storageMode:
+        'Local Desktop',
+
+      vercel:
+        false,
 
       backupRoot:
         backupDir,
 
       completeBackup: {
-
         exists:
           completeExists,
 
@@ -3775,7 +3769,6 @@ const getBackupStorageInfo =
       },
 
       dailyBackups: {
-
         path:
           dailyDir,
 
@@ -3793,7 +3786,6 @@ const getBackupStorageInfo =
       },
 
       shop: {
-
         id:
           getIdString(
             shop._id
@@ -3818,25 +3810,30 @@ const getBackupStorageInfo =
 // ============================================================
 
 module.exports = {
-
-  // Main
+  // Main local backup functions
   createBackup,
   createDailyBackup,
 
-  // ZIP
+  // Browser/API ZIP functions
   createCompleteBackupZip,
   createDailyBackupZip,
+
+  // ZIP utility
   createZipBufferFromDirectory,
+  createZipBufferFromTextFiles,
 
   // Storage
   initializeBackupStorage,
   getBackupStorageInfo,
 
-  // Automatic
+  // Automatic local backup
   runAutomaticDailyBackups,
 
   // Constants
   BACKUP_MODELS,
   BACKUP_VERSION,
+
+  // Utilities
   getPakistanDate,
+  isVercelEnvironment,
 };
