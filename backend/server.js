@@ -50,28 +50,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // =====================================================
-// GLOBAL MIDDLEWARE
-// =====================================================
-
-// Increased limit because fingerprint images
-// can be sent as Base64.
-app.use(
-  express.json({
-    limit: '10mb',
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '10mb',
-  })
-);
-
-app.use(cookieParser());
-
-// =====================================================
 // CORS
+// IMPORTANT:
+// CORS MUST COME BEFORE ROUTES
 // =====================================================
 
 // -----------------------------------------------------
@@ -81,10 +62,29 @@ app.use(cookieParser());
 const normalizeOrigin = (origin) => {
   if (!origin) return '';
 
-  return origin
+  return String(origin)
     .trim()
     .replace(/\/+$/, '');
 };
+
+// -----------------------------------------------------
+// DEVELOPMENT ORIGINS
+// -----------------------------------------------------
+
+const developmentOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
+// -----------------------------------------------------
+// PRODUCTION FRONTEND ORIGINS
+// -----------------------------------------------------
+
+const productionOrigins = [
+  'https://shop-frontend-black-ten.vercel.app',
+];
 
 // -----------------------------------------------------
 // ENVIRONMENT-BASED ORIGINS
@@ -96,26 +96,9 @@ const configuredOrigins = [
   process.env.CORS_ORIGINS,
 ]
   .filter(Boolean)
-  .flatMap((value) => value.split(','))
+  .flatMap((value) => String(value).split(','))
   .map(normalizeOrigin)
   .filter(Boolean);
-
-// -----------------------------------------------------
-// DEVELOPMENT ORIGINS
-// -----------------------------------------------------
-
-const developmentOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-];
-
-// -----------------------------------------------------
-// PRODUCTION FRONTEND ORIGINS
-// -----------------------------------------------------
-
-const productionOrigins = [
-  'https://shop-frontend-black-ten.vercel.app',
-];
 
 // -----------------------------------------------------
 // FINAL ALLOWED ORIGINS
@@ -135,10 +118,16 @@ const allowedOrigins = new Set(
 // CORS DEBUG
 // -----------------------------------------------------
 
-console.log(
-  '[CORS] Allowed origins:',
-  Array.from(allowedOrigins)
-);
+console.log('');
+console.log('=====================================================');
+console.log('[CORS] Allowed Origins:');
+
+Array.from(allowedOrigins).forEach((origin) => {
+  console.log(`  - ${origin}`);
+});
+
+console.log('=====================================================');
+console.log('');
 
 // =====================================================
 // CORS OPTIONS
@@ -146,12 +135,9 @@ console.log(
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests without Origin.
-    //
-    // Examples:
-    // Postman
-    // server-to-server
-    // health checks
+    // -------------------------------------------------
+    // Requests without Origin
+    // -------------------------------------------------
 
     if (!origin) {
       return callback(null, true);
@@ -159,15 +145,24 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
 
-    // Allow approved origins
+    // -------------------------------------------------
+    // Allowed Origin
+    // -------------------------------------------------
+
     if (allowedOrigins.has(normalizedOrigin)) {
       return callback(null, true);
     }
 
-    // Block unknown origins
-    console.error(
-      `[CORS BLOCKED] Origin: ${origin}`
-    );
+    // -------------------------------------------------
+    // Block Unknown Origin
+    // -------------------------------------------------
+
+    console.error('');
+    console.error('=====================================================');
+    console.error('[CORS BLOCKED]');
+    console.error(`Origin: ${origin}`);
+    console.error('=====================================================');
+    console.error('');
 
     return callback(
       new Error(
@@ -176,10 +171,16 @@ const corsOptions = {
     );
   },
 
-  // Required when authentication uses cookies
+  // ---------------------------------------------------
+  // Cookies / Authentication
+  // ---------------------------------------------------
+
   credentials: true,
 
-  // Allowed HTTP methods
+  // ---------------------------------------------------
+  // HTTP Methods
+  // ---------------------------------------------------
+
   methods: [
     'GET',
     'POST',
@@ -189,75 +190,106 @@ const corsOptions = {
     'OPTIONS',
   ],
 
-  // Allowed custom headers
+  // ---------------------------------------------------
+  // Headers
+  // ---------------------------------------------------
+
   allowedHeaders: [
     'Content-Type',
     'Authorization',
     'X-Device-ID',
+    'X-Device-Id',
+    'Accept',
+    'Origin',
   ],
+
+  // ---------------------------------------------------
+  // Headers Browser Can Read
+  // ---------------------------------------------------
+
+  exposedHeaders: [
+    'Content-Disposition',
+  ],
+
+  // ---------------------------------------------------
+  // Preflight Response
+  // ---------------------------------------------------
 
   optionsSuccessStatus: 204,
 };
 
 // =====================================================
-// APPLY CORS
+// GLOBAL MIDDLEWARE
 // =====================================================
+
+// CORS MUST BE BEFORE ROUTES
+app.use(cors(corsOptions));
+
+// -----------------------------------------------------
+// Explicit OPTIONS / Preflight
+// Express 5 compatible
+// -----------------------------------------------------
+
+app.options('/{*any}', cors(corsOptions));
+
+// =====================================================
+// BODY PARSERS
+// =====================================================
+
+// Increased limit because fingerprint images
+// can be sent as Base64.
 
 app.use(
-  cors(corsOptions)
+  express.json({
+    limit: '10mb',
+  })
 );
 
-// =====================================================
-// EXPLICIT PREFLIGHT HANDLER
-// EXPRESS 5 COMPATIBLE
-// =====================================================
-
-app.options(
-  '/{*any}',
-  cors(corsOptions)
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb',
+  })
 );
+
+app.use(cookieParser());
 
 // =====================================================
 // SECURITY HEADERS
 // =====================================================
 
-app.use(
-  (req, res, next) => {
-    res.setHeader(
-      'X-Content-Type-Options',
-      'nosniff'
-    );
+app.use((req, res, next) => {
+  res.setHeader(
+    'X-Content-Type-Options',
+    'nosniff'
+  );
 
-    res.setHeader(
-      'X-Frame-Options',
-      'DENY'
-    );
+  res.setHeader(
+    'X-Frame-Options',
+    'DENY'
+  );
 
-    res.setHeader(
-      'Referrer-Policy',
-      'strict-origin-when-cross-origin'
-    );
+  res.setHeader(
+    'Referrer-Policy',
+    'strict-origin-when-cross-origin'
+  );
 
-    next();
-  }
-);
+  next();
+});
 
 // =====================================================
 // HEALTH CHECK
 // =====================================================
 
-app.get(
-  '/health',
-  (req, res) => {
-    return res.status(200).json({
-      status: 'ok',
-      service: 'Shop Management API',
-      backupScheduler: 'active',
-      timezone: 'Asia/Karachi',
-      automaticBackupTime: '23:59',
-    });
-  }
-);
+app.get('/health', (req, res) => {
+  return res.status(200).json({
+    status: 'ok',
+    service: 'Shop Management API',
+    backupScheduler: 'active',
+    timezone: 'Asia/Karachi',
+    automaticBackupTime: '23:59',
+  });
+});
 
 // =====================================================
 // AUTH ROUTES
@@ -457,10 +489,9 @@ const seedAdminAccount = async () => {
       process.env.ADMIN_PASSWORD ||
       'SecureAdminPassword123';
 
-    let admin =
-      await Admin.findOne({
-        email: adminEmail,
-      });
+    let admin = await Admin.findOne({
+      email: adminEmail,
+    });
 
     // =================================================
     // CREATE ADMIN IF NOT EXISTS
@@ -491,8 +522,7 @@ const seedAdminAccount = async () => {
       );
 
     if (!isMatch) {
-      admin.password =
-        adminPassword;
+      admin.password = adminPassword;
 
       await admin.save();
 
@@ -504,7 +534,6 @@ const seedAdminAccount = async () => {
     console.log(
       `[SEED READY] Admin account already exists: ${adminEmail}`
     );
-
   } catch (err) {
     console.error(
       `[SEED ERROR]: ${err.message}`
@@ -524,11 +553,6 @@ const seedAdminAccount = async () => {
 // Cron:
 // 59 23 * * *
 //
-// This scheduler is initialized ONLY after:
-// 1. MongoDB connection
-// 2. Backup storage initialization
-// 3. Admin initialization
-//
 // =====================================================
 
 let backupScheduler = null;
@@ -545,9 +569,9 @@ const initializeAutomaticBackupScheduler = () => {
 
   backupScheduler = cron.schedule(
     '59 23 * * *',
-
     async () => {
       console.log('');
+
       console.log(
         '====================================================='
       );
@@ -573,6 +597,7 @@ const initializeAutomaticBackupScheduler = () => {
           await runAutomaticDailyBackups();
 
         console.log('');
+
         console.log(
           '====================================================='
         );
@@ -598,9 +623,9 @@ const initializeAutomaticBackupScheduler = () => {
         );
 
         console.log('');
-
       } catch (error) {
         console.error('');
+
         console.error(
           '====================================================='
         );
@@ -609,9 +634,7 @@ const initializeAutomaticBackupScheduler = () => {
           '[BACKUP] Automatic backup ERROR:'
         );
 
-        console.error(
-          error
-        );
+        console.error(error);
 
         console.error(
           '====================================================='
@@ -620,13 +643,13 @@ const initializeAutomaticBackupScheduler = () => {
         console.error('');
       }
     },
-
     {
       timezone: 'Asia/Karachi',
     }
   );
 
   console.log('');
+
   console.log(
     '====================================================='
   );
@@ -658,7 +681,6 @@ const initializeAutomaticBackupScheduler = () => {
 
 // =====================================================
 // 404 HANDLER
-// EXPRESS 5 COMPATIBLE
 // =====================================================
 
 app.all(
@@ -733,7 +755,6 @@ const PORT =
 
 const startServer = async () => {
   try {
-
     // =================================================
     // 1. DATABASE CONNECTION
     // =================================================
@@ -778,8 +799,8 @@ const startServer = async () => {
     app.listen(
       PORT,
       () => {
-
         console.log('');
+
         console.log(
           '====================================================='
         );
@@ -814,12 +835,8 @@ const startServer = async () => {
         console.log('');
       }
     );
-
   } catch (error) {
-
-    console.error(
-      ''
-    );
+    console.error('');
 
     console.error(
       '====================================================='
@@ -837,9 +854,7 @@ const startServer = async () => {
       '====================================================='
     );
 
-    console.error(
-      ''
-    );
+    console.error('');
 
     process.exit(1);
   }
