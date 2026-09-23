@@ -51,8 +51,6 @@ if (process.env.NODE_ENV === 'production') {
 
 // =====================================================
 // CORS
-// IMPORTANT:
-// CORS MUST COME BEFORE ROUTES
 // =====================================================
 
 // -----------------------------------------------------
@@ -87,7 +85,7 @@ const productionOrigins = [
 ];
 
 // -----------------------------------------------------
-// ENVIRONMENT-BASED ORIGINS
+// ENVIRONMENT ORIGINS
 // -----------------------------------------------------
 
 const configuredOrigins = [
@@ -123,7 +121,7 @@ console.log('=====================================================');
 console.log('[CORS] Allowed Origins:');
 
 Array.from(allowedOrigins).forEach((origin) => {
-  console.log(`  - ${origin}`);
+  console.log(` - ${origin}`);
 });
 
 console.log('=====================================================');
@@ -171,15 +169,7 @@ const corsOptions = {
     );
   },
 
-  // ---------------------------------------------------
-  // Cookies / Authentication
-  // ---------------------------------------------------
-
   credentials: true,
-
-  // ---------------------------------------------------
-  // HTTP Methods
-  // ---------------------------------------------------
 
   methods: [
     'GET',
@@ -190,10 +180,6 @@ const corsOptions = {
     'OPTIONS',
   ],
 
-  // ---------------------------------------------------
-  // Headers
-  // ---------------------------------------------------
-
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -203,41 +189,25 @@ const corsOptions = {
     'Origin',
   ],
 
-  // ---------------------------------------------------
-  // Headers Browser Can Read
-  // ---------------------------------------------------
-
   exposedHeaders: [
     'Content-Disposition',
   ],
-
-  // ---------------------------------------------------
-  // Preflight Response
-  // ---------------------------------------------------
 
   optionsSuccessStatus: 204,
 };
 
 // =====================================================
-// GLOBAL MIDDLEWARE
+// APPLY CORS
 // =====================================================
 
-// CORS MUST BE BEFORE ROUTES
 app.use(cors(corsOptions));
-
-// -----------------------------------------------------
-// Explicit OPTIONS / Preflight
-// Express 5 compatible
-// -----------------------------------------------------
-
-app.options('/{*any}', cors(corsOptions));
 
 // =====================================================
 // BODY PARSERS
 // =====================================================
 
-// Increased limit because fingerprint images
-// can be sent as Base64.
+// Fingerprint images can be sent as Base64.
+// Keep the 10MB limit.
 
 app.use(
   express.json({
@@ -285,8 +255,19 @@ app.get('/health', (req, res) => {
   return res.status(200).json({
     status: 'ok',
     service: 'Shop Management API',
-    backupScheduler: 'active',
+
+    environment:
+      process.env.VERCEL === '1'
+        ? 'vercel'
+        : process.env.NODE_ENV || 'development',
+
+    backupScheduler:
+      process.env.VERCEL === '1'
+        ? 'disabled-on-vercel'
+        : 'active',
+
     timezone: 'Asia/Karachi',
+
     automaticBackupTime: '23:59',
   });
 });
@@ -547,18 +528,39 @@ const seedAdminAccount = async () => {
 // AUTOMATIC BACKUP SCHEDULER
 // =====================================================
 //
-// Pakistan Time:
-// Every day at 11:59 PM
+// LOCAL MACHINE ONLY
 //
-// Cron:
-// 59 23 * * *
+// Every day at 11:59 PM Pakistan Time.
+//
+// IMPORTANT:
+// This scheduler is NOT started on Vercel.
+// Vercel serverless functions are not persistent.
 //
 // =====================================================
 
 let backupScheduler = null;
 
 const initializeAutomaticBackupScheduler = () => {
+  // ---------------------------------------------------
+  // Do not run scheduler on Vercel
+  // ---------------------------------------------------
+
+  if (process.env.VERCEL === '1') {
+    console.log(
+      '[BACKUP] Vercel detected.'
+    );
+
+    console.log(
+      '[BACKUP] Automatic local cron scheduler skipped.'
+    );
+
+    return null;
+  }
+
+  // ---------------------------------------------------
   // Prevent duplicate scheduler
+  // ---------------------------------------------------
+
   if (backupScheduler) {
     console.log(
       '[BACKUP] Scheduler already initialized.'
@@ -566,6 +568,10 @@ const initializeAutomaticBackupScheduler = () => {
 
     return backupScheduler;
   }
+
+  // ---------------------------------------------------
+  // Create Cron
+  // ---------------------------------------------------
 
   backupScheduler = cron.schedule(
     '59 23 * * *',
@@ -768,17 +774,46 @@ const startServer = async () => {
     // =================================================
     // 2. BACKUP STORAGE INITIALIZATION
     // =================================================
+    //
+    // ONLY LOCAL MACHINE
+    //
+    // Vercel cannot use the user's Windows Desktop.
+    //
+    // =================================================
 
-    const backupPaths =
-      await initializeBackupStorage();
+    if (process.env.VERCEL !== '1') {
+      try {
+        const backupPaths =
+          await initializeBackupStorage();
 
-    console.log(
-      '[BACKUP] Storage initialized:'
-    );
+        console.log(
+          '[BACKUP] Local storage initialized:'
+        );
 
-    console.log(
-      backupPaths
-    );
+        console.log(
+          backupPaths
+        );
+      } catch (backupError) {
+        // Do not crash the complete application
+        // because of local backup initialization.
+
+        console.error(
+          '[BACKUP] Local storage initialization failed:'
+        );
+
+        console.error(
+          backupError.message
+        );
+      }
+    } else {
+      console.log(
+        '[BACKUP] Vercel environment detected.'
+      );
+
+      console.log(
+        '[BACKUP] Local Desktop backup storage initialization skipped.'
+      );
+    }
 
     // =================================================
     // 3. ADMIN SEED
@@ -787,10 +822,16 @@ const startServer = async () => {
     await seedAdminAccount();
 
     // =================================================
-    // 4. START AUTOMATIC BACKUP SCHEDULER
+    // 4. AUTOMATIC BACKUP SCHEDULER
     // =================================================
 
-    initializeAutomaticBackupScheduler();
+    if (process.env.VERCEL !== '1') {
+      initializeAutomaticBackupScheduler();
+    } else {
+      console.log(
+        '[BACKUP] Automatic cron scheduler disabled on Vercel.'
+      );
+    }
 
     // =================================================
     // 5. START HTTP SERVER
@@ -820,13 +861,27 @@ const startServer = async () => {
           `API: http://localhost:${PORT}`
         );
 
-        console.log(
-          '[BACKUP] Automatic daily backup: ACTIVE'
-        );
+        if (process.env.VERCEL === '1') {
+          console.log(
+            '[VERCEL] Running in Vercel environment.'
+          );
 
-        console.log(
-          '[BACKUP] Next scheduled time: 11:59 PM Asia/Karachi'
-        );
+          console.log(
+            '[BACKUP] Local Desktop backup initialization: SKIPPED'
+          );
+
+          console.log(
+            '[BACKUP] Automatic local cron: SKIPPED'
+          );
+        } else {
+          console.log(
+            '[BACKUP] Automatic daily backup: ACTIVE'
+          );
+
+          console.log(
+            '[BACKUP] Next scheduled time: 11:59 PM Asia/Karachi'
+          );
+        }
 
         console.log(
           '====================================================='
@@ -847,7 +902,7 @@ const startServer = async () => {
     );
 
     console.error(
-      error.message
+      error.stack || error.message
     );
 
     console.error(
@@ -855,6 +910,10 @@ const startServer = async () => {
     );
 
     console.error('');
+
+    // IMPORTANT:
+    // We still fail startup for critical errors
+    // such as MongoDB/auth initialization.
 
     process.exit(1);
   }
@@ -865,3 +924,14 @@ const startServer = async () => {
 // =====================================================
 
 startServer();
+
+// =====================================================
+// EXPORT APP
+// =====================================================
+//
+// Useful for Vercel / serverless environments.
+// Local app.listen() continues to work as well.
+//
+// =====================================================
+
+module.exports = app;
