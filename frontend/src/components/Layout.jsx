@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   LayoutDashboard,
+   DatabaseBackup,
   Boxes,
   Users,
   ShoppingCart,
@@ -968,6 +969,11 @@ export const Layout = ({ children }) => {
       path: '/audits',
       icon: CalendarRange,
     },
+    {
+  name: 'Backup',
+  path: '/backup',
+  icon: DatabaseBackup,
+},
 
     {
       name: 'Reports',

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
@@ -632,25 +631,25 @@ const SuperAdminDashboard = () => {
             }
 
             // ------------------------------------------
-            // 3RD DEVICE
+            // 4TH DEVICE
             // ------------------------------------------
 
             else if (
               suspensionReason.includes(
-                'third device'
+                'fourth device'
               ) ||
               suspensionReason.includes(
-                '3rd device'
+                '4th device'
               ) ||
               suspensionReason.includes(
-                'third different device'
+                'fourth different device'
               )
             ) {
               whatsappMessage =
                 `Assalam o Alaikum,\n\n` +
-                `Ap ki shop is liye suspend hoi kyun ke 3rd device se login karne ki koshish ki gayi thi.\n\n` +
-                `Ap ki shop par sirf 2 devices se login allowed hai. 3rd device se login allowed nahi hai.\n\n` +
-                `Meharbani kar ke ainda 3rd device se login na karein, warna ap ki shop dobara suspend ho sakti hai.\n\n` +
+                `Ap ki shop is liye suspend hoi kyun ke 4th device se login karne ki koshish ki gayi thi.\n\n` +
+                `Ap ki shop par maximum 3 devices se login allowed hai. 4th device se login allowed nahi hai.\n\n` +
+                `Meharbani kar ke ainda 4th device se login na karein, warna ap ki shop dobara suspend ho sakti hai.\n\n` +
                 `Ap ka Email: ${email}\n\n` +
                 `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
                 `Shukriya.`;

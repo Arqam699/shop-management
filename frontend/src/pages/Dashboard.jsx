@@ -34,6 +34,7 @@ import {
   Download,
   Sparkles,
   CalendarRange,
+  DatabaseBackup,
   ArrowRight,
   CheckCircle2,
 } from 'lucide-react';
@@ -1099,102 +1100,126 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         {/* =====================================================
             HERO HEADER
         ====================================================== */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
-          <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
-          <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+  <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
+  <div className="pointer-events-none absolute -bottom-32 right-10 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl" />
 
-          <div className="relative z-10 p-5 sm:p-7 lg:p-8">
-            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+  <div className="relative z-10 p-5 sm:p-7 lg:p-8">
+    <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
 
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
-                    <Sparkles className="w-3 h-3 text-blue-400" />
-                    Console Overview
-                  </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
+            <Sparkles className="w-3 h-3 text-blue-400" />
+            Console Overview
+          </span>
 
-                  <span className="text-slate-600">•</span>
+          <span className="text-slate-600">•</span>
 
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/[0.05] text-[10px] font-bold text-slate-300">
-                    <Calendar className="w-3 h-3 text-violet-400" />
-                    {filterPreset === 'today'
-                      ? 'Today'
-                      : filterPreset === 'yesterday'
-                      ? 'Yesterday'
-                      : filterPreset === 'dayBeforeYesterday'
-                      ? 'Day Before Yesterday'
-                      : filterPreset === 'week'
-                      ? 'Last 7 Days'
-                      : filterPreset === 'month'
-                      ? 'This Month'
-                      : filterPreset === 'all'
-                      ? 'All Time'
-                      : 'Custom Range'}
-                  </span>
-                </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/[0.05] text-[10px] font-bold text-slate-300">
+            <Calendar className="w-3 h-3 text-violet-400" />
 
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white truncate">
-                  {settings?.shopName || 'Electronics Shop'}
-                </h1>
+            {filterPreset === 'today'
+              ? 'Today'
+              : filterPreset === 'yesterday'
+              ? 'Yesterday'
+              : filterPreset === 'dayBeforeYesterday'
+              ? 'Day Before Yesterday'
+              : filterPreset === 'week'
+              ? 'Last 7 Days'
+              : filterPreset === 'month'
+              ? 'This Month'
+              : filterPreset === 'all'
+              ? 'All Time'
+              : 'Custom Range'}
+          </span>
+        </div>
 
-                <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
-                  Sales, collections, installment financing and profitability — all in one place.
-                </p>
-              </div>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white truncate">
+          {settings?.shopName || 'Electronics Shop'}
+        </h1>
 
-              {/* ACTION BUTTONS */}
-              <div className="flex flex-wrap items-center gap-2.5">
-                <button
-                  onClick={() => fetchStats(true)}
-                  disabled={refreshing}
-                  className="group relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-                >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 transition-transform duration-500 ${
-                      refreshing ? 'animate-spin text-blue-400' : 'group-hover:rotate-180'
-                    }`}
-                  />
-                  Refresh
-                </button>
+        <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
+          Sales, collections, installment financing and profitability — all in one place.
+        </p>
+      </div>
 
-                <button
-                  onClick={() => setShowIndexRecord(true)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-lg shadow-amber-500/20"
-                >
-                  <List className="w-3.5 h-3.5" />
-                  Index Record
-                </button>
+      {/* ACTION BUTTONS */}
+      <div className="flex flex-wrap items-center gap-2.5">
 
-                <Link
-                  to="/sales/new"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  New Checkout
-                </Link>
+        {/* REFRESH */}
+        <button
+          onClick={() => fetchStats(true)}
+          disabled={refreshing}
+          className="group relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 transition-transform duration-500 ${
+              refreshing
+                ? 'animate-spin text-blue-400'
+                : 'group-hover:rotate-180'
+            }`}
+          />
+          Refresh
+        </button>
 
-                <Link
-                  to="/customers/add"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
-                >
-                  <Users className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="hidden sm:inline">Register Customer</span>
-                  <span className="sm:hidden">Customer</span>
-                </Link>
+        {/* INDEX RECORD */}
+        <button
+          onClick={() => setShowIndexRecord(true)}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-lg shadow-amber-500/20"
+        >
+          <List className="w-3.5 h-3.5" />
+          Index Record
+        </button>
 
-                <button
-                  onClick={handleDownloadCSV}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Export
-                </button>
-              </div>
+        {/* NEW CHECKOUT */}
+        <Link
+          to="/sales/new"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
+        >
+          <PlusCircle className="w-3.5 h-3.5" />
+          New Checkout
+        </Link>
 
-            </div>
-          </div>
-        </section>
+        {/* REGISTER CUSTOMER */}
+        <Link
+          to="/customers/add"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
+        >
+          <Users className="w-3.5 h-3.5 text-blue-400" />
 
+          <span className="hidden sm:inline">
+            Register Customer
+          </span>
+
+          <span className="sm:hidden">
+            Customer
+          </span>
+        </Link>
+
+        {/* EXPORT */}
+        <button
+          onClick={handleDownloadCSV}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5" />
+          Export
+        </button>
+
+        {/* BACKUP */}
+        <Link
+          to="/backup"
+          className="group inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95"
+        >
+          <DatabaseBackup className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110" />
+          Backup
+        </Link>
+
+      </div>
+
+    </div>
+  </div>
+</section>
         {/* =====================================================
             INDEX RECORD DRAWER / SECTION
         ====================================================== */}

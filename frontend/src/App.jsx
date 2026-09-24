@@ -21,6 +21,7 @@ const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const AiAssistant = lazy(() => import('./pages/AiAssistant')); // <-- NAYA ASSISTANT PAGE IMPORT
 const SettingsPage = lazy(() => import('./pages/Settings'));
+const BackupPage = lazy(() => import('./pages/BackupPage'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const AddEditProduct = lazy(() => import('./pages/AddEditProduct'));
 const Customers = lazy(() => import('./pages/Customers'));
@@ -329,6 +330,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+
+            {/* =====================================================
+    BACKUP ROUTING
+    ===================================================== */}
+
+<Route
+  path="/backup"
+  element={
+    <ProtectedRoute>
+      <Layout>
+        <BackupPage />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
 
 
             {/* =====================================================

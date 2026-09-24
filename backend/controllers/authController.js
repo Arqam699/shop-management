@@ -1,5 +1,6 @@
 const Admin = require('../models/Admin');
 const Shop = require('../models/Shop');
+
 const {
   generateToken,
 } = require('../utils/token');
@@ -43,6 +44,7 @@ const loginAdmin = async (req, res) => {
     if (!admin) {
       return res.status(401).json({
         success: false,
+
         message:
           'Invalid credentials',
       });
@@ -336,15 +338,20 @@ const loginAdmin = async (req, res) => {
       );
 
     // ====================================================
-    // THIRD DEVICE = SUSPEND
+    // MAXIMUM 3 DEVICES
+    //
+    // Device 1 = Allowed
+    // Device 2 = Allowed
+    // Device 3 = Allowed
+    // Device 4 = Suspend
     // ====================================================
 
     if (
       deviceIndex === -1 &&
-      shop.authorizedDevices.length >= 2
+      shop.authorizedDevices.length >= 3
     ) {
       const suspensionReason =
-        'Suspended automatically because a third device attempted to log in.';
+        'Suspended automatically because a fourth device attempted to log in.';
 
       shop.subscriptionStatus =
         'Suspended';
@@ -355,8 +362,11 @@ const loginAdmin = async (req, res) => {
       shop.suspendedAt =
         new Date();
 
+      // ==================================================
       // IMPORTANT:
-      // Revoke all current sessions
+      // Revoke ALL existing sessions
+      // ==================================================
+
       shop.authVersion =
         (Number(
           shop.authVersion
@@ -373,9 +383,12 @@ const loginAdmin = async (req, res) => {
           'ACCOUNT_SUSPENDED',
 
         message:
-          'Your shop account has been suspended because a third device attempted to log in. Please contact the Super Admin.',
+          'Your shop account has been suspended because a fourth device attempted to log in. Please contact the Super Admin.',
 
         suspensionReason,
+
+        authVersion:
+          shop.authVersion,
       });
     }
 
@@ -389,11 +402,13 @@ const loginAdmin = async (req, res) => {
     if (
       deviceIndex >= 0
     ) {
+      // Existing authorized device
       shop.authorizedDevices[
         deviceIndex
       ].lastSeenAt =
         deviceSeenAt;
     } else {
+      // New device
       shop.authorizedDevices.push({
         deviceId,
 
@@ -434,7 +449,10 @@ const loginAdmin = async (req, res) => {
       loggedInAt,
     });
 
-    // Keep only last 50
+    // ====================================================
+    // KEEP ONLY LAST 50 LOGIN IP RECORDS
+    // ====================================================
+
     if (
       shop.loginIpHistory
         .length > 50
@@ -466,6 +484,10 @@ const loginAdmin = async (req, res) => {
         shop.authVersion
       ) || 0
     );
+
+    // ====================================================
+    // SUCCESS RESPONSE
+    // ====================================================
 
     return res.status(200).json({
       success: true,
@@ -580,6 +602,10 @@ const getAdminProfile = async (
     });
   }
 };
+
+// ========================================================
+// EXPORTS
+// ========================================================
 
 module.exports = {
   loginAdmin,
