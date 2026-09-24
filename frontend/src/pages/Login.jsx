@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -78,26 +77,76 @@ const Login = () => {
     try {
       const result = await login(email, password);
 
+      // =================================================
+      // LOGIN SUCCESS
+      // =================================================
+
       if (result.success) {
-        navigate('/dashboard');
-      } else {
-        setErrorMsg(
-          result.message || 'Invalid email or password.'
+
+        // -----------------------------------------------
+        // TEMPORARY PASSWORD / FIRST LOGIN
+        // -----------------------------------------------
+        //
+        // New shops and shops whose password was reset
+        // by Super Admin must change their password before
+        // accessing the dashboard.
+        //
+        // We check both locations for compatibility:
+        //
+        // result.mustChangePassword
+        // result.data.mustChangePassword
+        // -----------------------------------------------
+
+        if (
+          result.mustChangePassword ||
+          result.data?.mustChangePassword
+        ) {
+          navigate(
+            '/change-password',
+            {
+              replace: true,
+            }
+          );
+
+          return;
+        }
+
+        // -----------------------------------------------
+        // NORMAL LOGIN
+        // -----------------------------------------------
+
+        navigate(
+          '/dashboard',
+          {
+            replace: true,
+          }
         );
 
-        // ===============================================
-        // SUSPENDED ACCOUNT
-        // ===============================================
-
-        if (result.accountSuspended) {
-          setIsSuspended(true);
-
-          setSuspensionReason(
-            result.suspensionReason ||
-              'No suspension reason was provided.'
-          );
-        }
+        return;
       }
+
+      // =================================================
+      // LOGIN FAILED
+      // =================================================
+
+      setErrorMsg(
+        result.message ||
+          'Invalid email or password.'
+      );
+
+      // =================================================
+      // SUSPENDED ACCOUNT
+      // =================================================
+
+      if (result.accountSuspended) {
+        setIsSuspended(true);
+
+        setSuspensionReason(
+          result.suspensionReason ||
+            'No suspension reason was provided.'
+        );
+      }
+
     } catch (err) {
       setErrorMsg(
         'An unexpected connection error occurred.'
@@ -160,6 +209,7 @@ const Login = () => {
           <div className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-violet-600/20 blur-3xl" />
 
           {/* Top Brand */}
+
           <div className="relative z-10">
 
             <div className="flex items-center gap-3">
@@ -177,8 +227,11 @@ const Login = () => {
                 <div className="flex items-center gap-2 mt-0.5">
 
                   <span className="relative flex w-2 h-2">
+
                     <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
+
                     <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-400" />
+
                   </span>
 
                   <span className="text-[9px] uppercase tracking-[0.16em] font-black text-slate-400">
@@ -194,6 +247,7 @@ const Login = () => {
           </div>
 
           {/* Middle */}
+
           <div className="relative z-10 my-auto py-6">
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300 mb-3">
@@ -211,6 +265,7 @@ const Login = () => {
               <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-violet-400 bg-clip-text text-transparent">
                 business
               </span>{' '}
+
               <br />
 
               smarter & faster.
@@ -223,27 +278,37 @@ const Login = () => {
             </p>
 
             {/* Feature Pills */}
+
             <div className="flex flex-wrap gap-2.5 mt-6">
 
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
+
                 <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
+
                 <span className="text-[11px] font-bold text-slate-300">
                   Live Analytics
                 </span>
+
               </div>
 
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
+
                 <Package className="w-3.5 h-3.5 text-indigo-400" />
+
                 <span className="text-[11px] font-bold text-slate-300">
                   Smart Stock
                 </span>
+
               </div>
 
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
+
                 <Layers className="w-3.5 h-3.5 text-violet-400" />
+
                 <span className="text-[11px] font-bold text-slate-300">
                   Financing Dues
                 </span>
+
               </div>
 
             </div>
@@ -251,13 +316,16 @@ const Login = () => {
           </div>
 
           {/* Footer */}
+
           <div className="relative z-10 flex items-center justify-between text-[10px] font-bold text-slate-500 border-t border-white/[0.06] pt-4">
 
             <span>
               Secure Enterprise Authentication
             </span>
 
-            <span>v3.5 Live</span>
+            <span>
+              v3.5 Live
+            </span>
 
           </div>
 
@@ -272,6 +340,7 @@ const Login = () => {
           <div className="w-full max-w-[400px]">
 
             {/* Mobile Branding */}
+
             <div className="lg:hidden text-center mb-6">
 
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-xl shadow-blue-950/20 mx-auto mb-2.5">
@@ -291,6 +360,7 @@ const Login = () => {
             </div>
 
             {/* Heading */}
+
             <div className="mb-7">
 
               <span className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
@@ -313,6 +383,7 @@ const Login = () => {
             ================================================== */}
 
             {errorMsg && (
+
               <div
                 className={`mb-5 rounded-2xl p-3.5 flex items-start gap-2.5 animate-[pageEnter_0.2s_ease-out] ${
                   isSuspended
@@ -335,7 +406,9 @@ const Login = () => {
                     {errorMsg}
                   </span>
 
-                  {isSuspended && suspensionReason && (
+                  {isSuspended &&
+                    suspensionReason && (
+
                     <div className="mt-2 pt-2 border-t border-amber-200/70">
 
                       <p className="text-[10px] font-black uppercase tracking-wider text-amber-700 mb-1">
@@ -347,11 +420,13 @@ const Login = () => {
                       </p>
 
                     </div>
+
                   )}
 
                 </div>
 
               </div>
+
             )}
 
             {/* =================================================
@@ -364,6 +439,7 @@ const Login = () => {
             >
 
               {/* Email */}
+
               <div className="space-y-1.5">
 
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -400,6 +476,7 @@ const Login = () => {
               </div>
 
               {/* Password */}
+
               <div className="space-y-1.5">
 
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -463,6 +540,7 @@ const Login = () => {
               </div>
 
               {/* Sign In */}
+
               <div className="pt-2">
 
                 <button
@@ -527,9 +605,11 @@ const Login = () => {
               </a>
 
               <p className="text-center text-[9px] text-slate-400 font-semibold mt-2">
+
                 {isSuspended
                   ? 'Your email and suspension reason will be included automatically'
                   : 'Direct support available via WhatsApp'}
+
               </p>
 
             </div>
@@ -540,7 +620,9 @@ const Login = () => {
 
             <div className="mt-7 pt-5 border-t border-slate-100 flex items-center justify-between text-[10px] font-bold text-slate-400">
 
-              <span>Secure Session Guard</span>
+              <span>
+                Secure Session Guard
+              </span>
 
               <span>
                 © {new Date().getFullYear()} POS Hub

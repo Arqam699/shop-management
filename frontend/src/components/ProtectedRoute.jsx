@@ -52,5 +52,59 @@ export const ProtectedRoute = ({
     );
   }
 
+  // ======================================================
+  // FORCE PASSWORD CHANGE
+  // ======================================================
+  //
+  // New shop / Super Admin password reset:
+  // admin.mustChangePassword === true
+  //
+  // Admin is only allowed to access:
+  // /change-password
+  //
+  // All other protected pages are blocked until
+  // the password has been changed.
+  // ======================================================
+
+  if (
+    admin.mustChangePassword &&
+    location.pathname !== '/change-password'
+  ) {
+    return (
+      <Navigate
+        to="/change-password"
+        replace
+        state={{
+          from:
+            location.pathname,
+        }}
+      />
+    );
+  }
+
+  // ======================================================
+  // ALREADY CHANGED PASSWORD
+  // ======================================================
+  //
+  // If someone manually opens /change-password after
+  // completing the password change, send them to dashboard.
+  // ======================================================
+
+  if (
+    !admin.mustChangePassword &&
+    location.pathname === '/change-password'
+  ) {
+    return (
+      <Navigate
+        to="/dashboard"
+        replace
+      />
+    );
+  }
+
+  // ======================================================
+  // AUTHORIZED
+  // ======================================================
+
   return children;
 };

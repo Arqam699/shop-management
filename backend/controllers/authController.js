@@ -5,6 +5,7 @@ const {
   generateToken,
 } = require('../utils/token');
 
+
 // ========================================================
 // LOGIN ADMIN
 // ========================================================
@@ -23,7 +24,6 @@ const loginAdmin = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-
         message:
           'Please provide both email and password',
       });
@@ -44,7 +44,6 @@ const loginAdmin = async (req, res) => {
     if (!admin) {
       return res.status(401).json({
         success: false,
-
         message:
           'Invalid credentials',
       });
@@ -59,7 +58,7 @@ const loginAdmin = async (req, res) => {
         await Shop.findById(
           admin.shopId
         ).select(
-          'subscriptionStatus subscriptionExpiresAt suspensionReason authVersion'
+          'subscriptionStatus subscriptionExpiresAt suspensionReason authVersion mustChangePassword'
         );
 
       if (
@@ -68,15 +67,11 @@ const loginAdmin = async (req, res) => {
       ) {
         return res.status(403).json({
           success: false,
-
           accountSuspended: true,
-
           code:
             'ACCOUNT_SUSPENDED',
-
           message:
             'Your shop account has been suspended. Please contact the administrator.',
-
           suspensionReason:
             assignedShop.suspensionReason ||
             'No suspension reason was provided.',
@@ -107,7 +102,7 @@ const loginAdmin = async (req, res) => {
             },
           },
           {
-            returnDocument: 'after',
+            new: true,
           }
         ).select(
           'failedLoginAttempts shopId'
@@ -139,7 +134,6 @@ const loginAdmin = async (req, res) => {
                   new Date(),
               },
 
-              // Revoke ALL existing sessions
               $inc: {
                 authVersion: 1,
               },
@@ -151,17 +145,12 @@ const loginAdmin = async (req, res) => {
 
         return res.status(403).json({
           success: false,
-
           accountSuspended: true,
-
           code:
             'ACCOUNT_SUSPENDED',
-
           message:
             'Your shop account has been suspended after 3 incorrect password attempts. Please contact the Super Admin.',
-
           suspensionReason,
-
           authVersion:
             suspendedShop?.authVersion,
         });
@@ -169,7 +158,6 @@ const loginAdmin = async (req, res) => {
 
       return res.status(401).json({
         success: false,
-
         message:
           'Invalid credentials',
       });
@@ -202,7 +190,6 @@ const loginAdmin = async (req, res) => {
     if (!admin.shopId) {
       return res.status(403).json({
         success: false,
-
         message:
           'Your account is not assigned to a shop',
       });
@@ -220,7 +207,6 @@ const loginAdmin = async (req, res) => {
     if (!shop) {
       return res.status(403).json({
         success: false,
-
         message:
           'Your shop account was not found',
       });
@@ -236,15 +222,11 @@ const loginAdmin = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-
         accountSuspended: true,
-
         code:
           'ACCOUNT_SUSPENDED',
-
         message:
           'Your shop account has been suspended. Please contact the administrator.',
-
         suspensionReason:
           shop.suspensionReason ||
           'No suspension reason was provided.',
@@ -274,10 +256,8 @@ const loginAdmin = async (req, res) => {
 
       return res.status(403).json({
         success: false,
-
         code:
           'SUBSCRIPTION_EXPIRED',
-
         message:
           'Your subscription has expired. Please contact the administrator to renew your access.',
       });
@@ -293,10 +273,8 @@ const loginAdmin = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-
         code:
           'SUBSCRIPTION_EXPIRED',
-
         message:
           'Your subscription has expired. Please contact the administrator to renew your access.',
       });
@@ -320,7 +298,6 @@ const loginAdmin = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-
         message:
           'Device identity is missing. Please refresh the application and try again.',
       });
@@ -339,11 +316,6 @@ const loginAdmin = async (req, res) => {
 
     // ====================================================
     // MAXIMUM 3 DEVICES
-    //
-    // Device 1 = Allowed
-    // Device 2 = Allowed
-    // Device 3 = Allowed
-    // Device 4 = Suspend
     // ====================================================
 
     if (
@@ -362,11 +334,6 @@ const loginAdmin = async (req, res) => {
       shop.suspendedAt =
         new Date();
 
-      // ==================================================
-      // IMPORTANT:
-      // Revoke ALL existing sessions
-      // ==================================================
-
       shop.authVersion =
         (Number(
           shop.authVersion
@@ -376,17 +343,12 @@ const loginAdmin = async (req, res) => {
 
       return res.status(403).json({
         success: false,
-
         accountSuspended: true,
-
         code:
           'ACCOUNT_SUSPENDED',
-
         message:
           'Your shop account has been suspended because a fourth device attempted to log in. Please contact the Super Admin.',
-
         suspensionReason,
-
         authVersion:
           shop.authVersion,
       });
@@ -402,19 +364,15 @@ const loginAdmin = async (req, res) => {
     if (
       deviceIndex >= 0
     ) {
-      // Existing authorized device
       shop.authorizedDevices[
         deviceIndex
       ].lastSeenAt =
         deviceSeenAt;
     } else {
-      // New device
       shop.authorizedDevices.push({
         deviceId,
-
         firstSeenAt:
           deviceSeenAt,
-
         lastSeenAt:
           deviceSeenAt,
       });
@@ -442,15 +400,13 @@ const loginAdmin = async (req, res) => {
 
     shop.loginIpHistory.push({
       ip: clientIp,
-
       adminEmail:
         admin.email,
-
       loggedInAt,
     });
 
     // ====================================================
-    // KEEP ONLY LAST 50 LOGIN IP RECORDS
+    // KEEP LAST 50 LOGIN IP RECORDS
     // ====================================================
 
     if (
@@ -475,11 +431,8 @@ const loginAdmin = async (req, res) => {
 
     generateToken(
       res,
-
       admin._id,
-
       admin.shopId,
-
       Number(
         shop.authVersion
       ) || 0
@@ -491,7 +444,6 @@ const loginAdmin = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-
       message:
         'Logged in successfully',
 
@@ -501,11 +453,232 @@ const loginAdmin = async (req, res) => {
 
         shopId:
           admin.shopId,
+
+        mustChangePassword:
+          !!shop.mustChangePassword,
       },
     });
+
   } catch (error) {
     console.error(
       'Login Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error',
+      error:
+        error.message,
+    });
+  }
+};
+
+
+// ========================================================
+// CHANGE ADMIN PASSWORD
+// ========================================================
+
+const changeAdminPassword = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    // ====================================================
+    // VALIDATION
+    // ====================================================
+
+    if (
+      !newPassword ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please provide new password and confirm password.',
+      });
+    }
+
+    // ====================================================
+    // TRIM PASSWORD
+    // ====================================================
+
+    const cleanNewPassword =
+      String(newPassword);
+
+    const cleanConfirmPassword =
+      String(confirmPassword);
+
+    // ====================================================
+    // PASSWORD LENGTH
+    // ====================================================
+
+    if (
+      cleanNewPassword.length < 6
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Password must be at least 6 characters long.',
+      });
+    }
+
+    // ====================================================
+    // PASSWORD MATCH
+    // ====================================================
+
+    if (
+      cleanNewPassword !==
+      cleanConfirmPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'New password and confirm password do not match.',
+      });
+    }
+
+    // ====================================================
+    // ADMIN CHECK
+    // ====================================================
+
+    if (!req.admin?._id) {
+      return res.status(401).json({
+        success: false,
+        message:
+          'Admin session is invalid.',
+      });
+    }
+
+    // ====================================================
+    // SHOP CHECK
+    // ====================================================
+
+    if (!req.shopId) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Shop is not assigned to this account.',
+      });
+    }
+
+    // ====================================================
+    // GET FULL ADMIN DOCUMENT
+    // ====================================================
+
+    const admin =
+      await Admin.findById(
+        req.admin._id
+      );
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Admin account was not found.',
+      });
+    }
+
+    // ====================================================
+    // GET SHOP
+    // ====================================================
+
+    const shop =
+      await Shop.findById(
+        req.shopId
+      );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Shop account was not found.',
+      });
+    }
+
+    // ====================================================
+    // CHECK WHETHER THIS IS FIRST PASSWORD CHANGE
+    // ====================================================
+
+    const hasPreviousAdminPasswordChange =
+      Array.isArray(
+        shop.passwordChangeHistory
+      ) &&
+      shop.passwordChangeHistory.some(
+        (entry) =>
+          entry.changedBy ===
+          'Admin'
+      );
+
+    const changeType =
+      hasPreviousAdminPasswordChange
+        ? 'Admin Changed'
+        : 'First Login';
+
+    // ====================================================
+    // CHANGE PASSWORD
+    //
+    // Admin model pre-save middleware
+    // will bcrypt hash it.
+    // ====================================================
+
+    admin.password =
+      cleanNewPassword;
+
+    await admin.save();
+
+    // ====================================================
+    // RECORD PASSWORD HISTORY
+    // ====================================================
+
+    shop.passwordChangeHistory.push({
+      changedBy:
+        'Admin',
+
+      changeType:
+        changeType,
+
+      adminEmail:
+        admin.email,
+
+      changedAt:
+        new Date(),
+    });
+
+    // ====================================================
+    // PASSWORD NO LONGER TEMPORARY
+    // ====================================================
+
+    shop.mustChangePassword =
+      false;
+
+    await shop.save();
+
+    // ====================================================
+    // SUCCESS
+    // ====================================================
+
+    return res.status(200).json({
+      success: true,
+
+      message:
+        'Password changed successfully.',
+
+      data: {
+        mustChangePassword:
+          false,
+      },
+    });
+
+  } catch (error) {
+    console.error(
+      'Change Admin Password Error:',
       error
     );
 
@@ -520,6 +693,7 @@ const loginAdmin = async (req, res) => {
     });
   }
 };
+
 
 // ========================================================
 // LOGOUT
@@ -556,6 +730,7 @@ const logoutAdmin = (
   });
 };
 
+
 // ========================================================
 // GET ADMIN PROFILE
 // ========================================================
@@ -583,6 +758,9 @@ const getAdminProfile = async (
 
         shopId:
           req.shopId,
+
+        mustChangePassword:
+          !!req.shop?.mustChangePassword,
       },
     });
   } catch (error) {
@@ -603,12 +781,14 @@ const getAdminProfile = async (
   }
 };
 
+
 // ========================================================
 // EXPORTS
 // ========================================================
 
 module.exports = {
   loginAdmin,
+  changeAdminPassword,
   logoutAdmin,
   getAdminProfile,
 };

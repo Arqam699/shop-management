@@ -50,12 +50,16 @@ export const AuthProvider = ({
           setSessionMessage(
             message
           );
+        } else {
+          setSessionMessage('');
         }
 
         if (reason) {
           setSuspensionReason(
             reason
           );
+        } else {
+          setSuspensionReason('');
         }
       },
       []
@@ -80,8 +84,11 @@ export const AuthProvider = ({
             response.data &&
             response.data.success
           ) {
+            const authData =
+              response.data.data;
+
             setAdmin(
-              response.data.data
+              authData
             );
 
             if (!silent) {
@@ -93,7 +100,14 @@ export const AuthProvider = ({
               success: true,
 
               data:
-                response.data.data,
+                authData,
+
+              // ==========================================
+              // PASSWORD CHANGE REQUIRED
+              // ==========================================
+
+              mustChangePassword:
+                !!authData.mustChangePassword,
             };
           }
 
@@ -221,6 +235,12 @@ export const AuthProvider = ({
   // AUTOMATIC SESSION MONITOR
   //
   // Every 10 seconds.
+  //
+  // This also detects:
+  // - Suspension
+  // - Session revocation
+  // - Subscription expiry
+  // - Password reset by Super Admin
   // ======================================================
 
   useEffect(() => {
@@ -305,8 +325,11 @@ export const AuthProvider = ({
         response.data &&
         response.data.success
       ) {
+        const authData =
+          response.data.data;
+
         setAdmin(
-          response.data.data
+          authData
         );
 
         setSessionMessage('');
@@ -317,7 +340,14 @@ export const AuthProvider = ({
           success: true,
 
           data:
-            response.data.data,
+            authData,
+
+          // ============================================
+          // IMPORTANT
+          // ============================================
+
+          mustChangePassword:
+            !!authData.mustChangePassword,
         };
       }
 
@@ -375,6 +405,171 @@ export const AuthProvider = ({
   };
 
   // ======================================================
+  // CHANGE PASSWORD
+  // ======================================================
+
+  const changePassword =
+    async (
+      newPassword,
+      confirmPassword
+    ) => {
+      try {
+        const response =
+          await api.patch(
+            '/api/auth/change-password',
+            {
+              newPassword,
+              confirmPassword,
+            }
+          );
+
+        // ================================================
+        // SUCCESS
+        // ================================================
+
+        if (
+          response.data &&
+          response.data.success
+        ) {
+          // ----------------------------------------------
+          // Update local state immediately
+          // ----------------------------------------------
+
+          setAdmin(
+            (currentAdmin) => {
+              if (!currentAdmin) {
+                return currentAdmin;
+              }
+
+              return {
+                ...currentAdmin,
+
+                mustChangePassword:
+                  false,
+              };
+            }
+          );
+
+          setSessionMessage('');
+
+          setSuspensionReason('');
+
+          // ----------------------------------------------
+          // Refresh from backend
+          // ----------------------------------------------
+
+          const authCheck =
+            await checkAuthStatus({
+              silent: true,
+            });
+
+          return {
+            success: true,
+
+            message:
+              response.data.message ||
+              'Password changed successfully.',
+
+            data:
+              authCheck.data ||
+              response.data.data,
+          };
+        }
+
+        return {
+          success: false,
+
+          message:
+            response.data?.message ||
+            'Unable to change password.',
+        };
+      } catch (error) {
+        const responseData =
+          error.response?.data;
+
+        // ==============================================
+        // SUSPENDED
+        // ==============================================
+
+        if (
+          responseData?.code ===
+            'ACCOUNT_SUSPENDED' ||
+          responseData?.accountSuspended
+        ) {
+          clearAuthState({
+            message:
+              responseData?.message ||
+              'Your shop account has been suspended.',
+
+            reason:
+              responseData?.suspensionReason ||
+              '',
+          });
+
+          return {
+            success: false,
+
+            accountSuspended:
+              true,
+
+            suspensionReason:
+              responseData?.suspensionReason ||
+              '',
+
+            message:
+              responseData?.message ||
+              'Your shop account has been suspended.',
+          };
+        }
+
+        // ==============================================
+        // SESSION REVOKED
+        // ==============================================
+
+        if (
+          responseData?.code ===
+            'SESSION_REVOKED' ||
+          responseData?.code ===
+            'TOKEN_EXPIRED' ||
+          responseData?.code ===
+            'INVALID_TOKEN' ||
+          responseData?.code ===
+            'AUTH_REQUIRED'
+        ) {
+          clearAuthState({
+            message:
+              responseData?.message ||
+              'Your session has expired. Please log in again.',
+          });
+
+          return {
+            success: false,
+
+            code:
+              responseData?.code ||
+              '',
+
+            message:
+              responseData?.message ||
+              'Your session has expired. Please log in again.',
+          };
+        }
+
+        // ==============================================
+        // NORMAL ERROR
+        // ==============================================
+
+        return {
+          success: false,
+
+          message:
+            responseData?.message ||
+            'Unable to change password. Please try again.',
+        };
+      }
+    };
+
+  // ======================================================
   // LOGOUT
   // ======================================================
 
@@ -423,6 +618,8 @@ export const AuthProvider = ({
         login,
 
         logout,
+
+        changePassword,
 
         checkAuthStatus,
 

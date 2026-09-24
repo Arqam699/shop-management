@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   MessageCircle,
+  KeyRound,
 } from 'lucide-react';
 
 const API_URL = (
@@ -80,11 +81,24 @@ const SuperAdminDashboard = () => {
   const [completeMonths, setCompleteMonths] = useState(1);
 
   // =====================================================
-  // HISTORY MODAL
+  // SUBSCRIPTION HISTORY / LOGIN IP MODALS
   // =====================================================
 
   const [historyModal, setHistoryModal] = useState(null);
   const [loginIpModal, setLoginIpModal] = useState(null);
+
+  // =====================================================
+  // PASSWORD CHANGE HISTORY MODAL
+  // =====================================================
+
+  const [passwordHistoryModal, setPasswordHistoryModal] =
+    useState({
+      open: false,
+      loading: false,
+      shop: null,
+      history: [],
+      totalChanges: 0,
+    });
 
   // =====================================================
   // DELETE MODAL
@@ -295,6 +309,7 @@ const SuperAdminDashboard = () => {
     setCreatePlan('Free Trial');
     setCreateCompleteMonths(1);
     setMonthlyCharge('');
+    setShowAdminPassword(false);
   };
 
   const openCreateShopModal = () => {
@@ -631,25 +646,25 @@ const SuperAdminDashboard = () => {
             }
 
             // ------------------------------------------
-            // 4TH DEVICE
+            // 3RD DEVICE
             // ------------------------------------------
 
             else if (
               suspensionReason.includes(
-                'fourth device'
+                'third device'
               ) ||
               suspensionReason.includes(
-                '4th device'
+                '3rd device'
               ) ||
               suspensionReason.includes(
-                'fourth different device'
+                'third different device'
               )
             ) {
               whatsappMessage =
                 `Assalam o Alaikum,\n\n` +
-                `Ap ki shop is liye suspend hoi kyun ke 4th device se login karne ki koshish ki gayi thi.\n\n` +
-                `Ap ki shop par maximum 3 devices se login allowed hai. 4th device se login allowed nahi hai.\n\n` +
-                `Meharbani kar ke ainda 4th device se login na karein, warna ap ki shop dobara suspend ho sakti hai.\n\n` +
+                `Ap ki shop is liye suspend hoi kyun ke 3rd device se login karne ki koshish ki gayi thi.\n\n` +
+                `Ap ki shop par sirf 2 devices se login allowed hai. 3rd device se login allowed nahi hai.\n\n` +
+                `Meharbani kar ke ainda 3rd device se login na karein, warna ap ki shop dobara suspend ho sakti hai.\n\n` +
                 `Ap ka Email: ${email}\n\n` +
                 `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
                 `Shukriya.`;
@@ -679,10 +694,6 @@ const SuperAdminDashboard = () => {
             let phoneNumber = String(
               shop.phone || ''
             ).replace(/\D/g, '');
-
-            // Pakistan:
-            // 03001234567
-            // -> 923001234567
 
             if (phoneNumber.startsWith('0')) {
               phoneNumber =
@@ -824,7 +835,7 @@ const SuperAdminDashboard = () => {
   };
 
   // =====================================================
-  // HISTORY & IP MODALS
+  // SUBSCRIPTION HISTORY & LOGIN IP MODALS
   // =====================================================
 
   const openHistoryModal = (shop) => {
@@ -861,6 +872,71 @@ const SuperAdminDashboard = () => {
   };
 
   // =====================================================
+  // PASSWORD CHANGE HISTORY
+  // =====================================================
+
+  const handleViewPasswordHistory = async (shop) => {
+    try {
+      setPasswordHistoryModal({
+        open: true,
+        loading: true,
+        shop,
+        history: [],
+        totalChanges: 0,
+      });
+
+      const data = await fetchJson(
+        `${API_URL}/api/super-admin/shops/${shop.shopId}/password-history`,
+        {
+          method: 'GET',
+        }
+      );
+
+      setPasswordHistoryModal({
+        open: true,
+        loading: false,
+        shop: data.shop || shop,
+        history: Array.isArray(data.history)
+          ? data.history
+          : [],
+        totalChanges: Number(
+          data.totalChanges || 0
+        ),
+      });
+    } catch (error) {
+      console.error(
+        'Password History Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      toast.error(
+        error.message ||
+          'Failed to load password history.'
+      );
+
+      setPasswordHistoryModal({
+        open: false,
+        loading: false,
+        shop: null,
+        history: [],
+        totalChanges: 0,
+      });
+    }
+  };
+
+  const closePasswordHistoryModal = () => {
+    setPasswordHistoryModal({
+      open: false,
+      loading: false,
+      shop: null,
+      history: [],
+      totalChanges: 0,
+    });
+  };
+
+  // =====================================================
   // DELETE SHOP
   // =====================================================
 
@@ -868,6 +944,7 @@ const SuperAdminDashboard = () => {
     setDeleteModal(shop);
     setDeleteConfirmation('');
     setDeletePassword('');
+    setShowDeletePassword(false);
     setError('');
   };
 
@@ -878,6 +955,7 @@ const SuperAdminDashboard = () => {
     setDeleteModal(null);
     setDeleteConfirmation('');
     setDeletePassword('');
+    setShowDeletePassword(false);
   };
 
   const handleDeleteShop = async () => {
@@ -923,6 +1001,7 @@ const SuperAdminDashboard = () => {
       setDeleteModal(null);
       setDeleteConfirmation('');
       setDeletePassword('');
+      setShowDeletePassword(false);
 
       toast.success(
         'Shop permanently deleted.'
@@ -954,6 +1033,8 @@ const SuperAdminDashboard = () => {
     setPasswordModal(shop);
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setError('');
   };
 
@@ -964,6 +1045,8 @@ const SuperAdminDashboard = () => {
     setPasswordModal(null);
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const handleResetPassword = async () => {
@@ -1010,6 +1093,8 @@ const SuperAdminDashboard = () => {
       setPasswordModal(null);
       setNewPassword('');
       setConfirmPassword('');
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
 
       toast.success(
         `Password for ${currentShopName} has been reset successfully.`
@@ -1108,13 +1193,17 @@ const SuperAdminDashboard = () => {
   if (authChecking) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-4">
+
         <div className="rounded-3xl bg-white p-8 text-center shadow-xl border border-slate-200">
+
           <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
 
           <p className="text-xs font-black uppercase tracking-wider text-slate-700">
             Verifying Super Admin Session...
           </p>
+
         </div>
+
       </div>
     );
   }
@@ -1125,6 +1214,7 @@ const SuperAdminDashboard = () => {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f5f7fb] p-4 sm:p-6 lg:p-8 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+
       <div className="mx-auto w-full max-w-[1500px] space-y-6">
 
         {/* =====================================================
@@ -1228,6 +1318,7 @@ const SuperAdminDashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
           <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1243,9 +1334,11 @@ const SuperAdminDashboard = () => {
             <p className="mt-1 text-xs font-semibold text-slate-400">
               Registered shops
             </p>
+
           </div>
 
           <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
 
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1261,9 +1354,11 @@ const SuperAdminDashboard = () => {
             <p className="mt-1 text-xs font-semibold text-slate-400">
               Subscription valid
             </p>
+
           </div>
 
           <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
 
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1279,9 +1374,11 @@ const SuperAdminDashboard = () => {
             <p className="mt-1 text-xs font-semibold text-slate-400">
               Needs renewal
             </p>
+
           </div>
 
           <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
 
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1297,6 +1394,7 @@ const SuperAdminDashboard = () => {
             <p className="mt-1 text-xs font-semibold text-slate-400">
               Manually locked
             </p>
+
           </div>
 
         </div>
@@ -1320,14 +1418,19 @@ const SuperAdminDashboard = () => {
           </div>
 
           {loading ? (
+
             <div className="p-16 text-center text-xs font-black uppercase text-slate-400">
               Loading tenant database...
             </div>
+
           ) : shops.length === 0 ? (
+
             <div className="p-16 text-center text-xs font-bold text-slate-400">
               No shops registered in the system yet.
             </div>
+
           ) : (
+
             <div className="overflow-x-auto">
 
               <table className="w-full text-left text-xs text-slate-600 font-medium">
@@ -1335,6 +1438,7 @@ const SuperAdminDashboard = () => {
                 <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
 
                   <tr>
+
                     <th className="px-5 py-4">
                       Shop Details
                     </th>
@@ -1366,6 +1470,7 @@ const SuperAdminDashboard = () => {
                     <th className="px-5 py-4 text-center">
                       Actions
                     </th>
+
                   </tr>
 
                 </thead>
@@ -1383,6 +1488,7 @@ const SuperAdminDashboard = () => {
                         ?.length || 0;
 
                     return (
+
                       <tr
                         key={shop.shopId}
                         className="hover:bg-slate-50/80 transition-colors"
@@ -1473,6 +1579,8 @@ const SuperAdminDashboard = () => {
 
                           <div className="flex flex-wrap items-center justify-center gap-1.5">
 
+                            {/* SUBSCRIPTION HISTORY */}
+
                             <button
                               type="button"
                               disabled={isLoading}
@@ -1487,6 +1595,8 @@ const SuperAdminDashboard = () => {
                               {historyCount > 0 &&
                                 `(${historyCount})`}
                             </button>
+
+                            {/* LOGIN IPS */}
 
                             <button
                               type="button"
@@ -1504,8 +1614,11 @@ const SuperAdminDashboard = () => {
                               )
                             </button>
 
+                            {/* SUSPEND / ACTIVATE */}
+
                             {shop.subscriptionStatus ===
                             'Active' ? (
+
                               <button
                                 type="button"
                                 disabled={isLoading}
@@ -1516,9 +1629,13 @@ const SuperAdminDashboard = () => {
                                 }
                                 className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-black hover:bg-amber-100 transition-all"
                               >
-                                Suspend
+                                {isLoading
+                                  ? 'Working...'
+                                  : 'Suspend'}
                               </button>
+
                             ) : (
+
                               <button
                                 type="button"
                                 disabled={isLoading}
@@ -1533,7 +1650,10 @@ const SuperAdminDashboard = () => {
                                   ? 'Activating...'
                                   : 'Activate'}
                               </button>
+
                             )}
+
+                            {/* MONTHLY CHARGE */}
 
                             <button
                               type="button"
@@ -1548,6 +1668,8 @@ const SuperAdminDashboard = () => {
                               Charge
                             </button>
 
+                            {/* RENEW */}
+
                             <button
                               type="button"
                               disabled={isLoading}
@@ -1561,6 +1683,8 @@ const SuperAdminDashboard = () => {
                               Renew
                             </button>
 
+                            {/* RESET PASSWORD */}
+
                             <button
                               type="button"
                               disabled={isLoading}
@@ -1573,6 +1697,25 @@ const SuperAdminDashboard = () => {
                             >
                               Password
                             </button>
+
+                            {/* PASSWORD HISTORY */}
+
+                            <button
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() =>
+                                handleViewPasswordHistory(
+                                  shop
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-black hover:bg-violet-100 transition-all"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+
+                              Password History
+                            </button>
+
+                            {/* DELETE */}
 
                             <button
                               type="button"
@@ -1592,6 +1735,7 @@ const SuperAdminDashboard = () => {
                         </td>
 
                       </tr>
+
                     );
                   })}
 
@@ -1600,6 +1744,7 @@ const SuperAdminDashboard = () => {
               </table>
 
             </div>
+
           )}
 
         </div>
@@ -1611,6 +1756,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {createShopModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -1632,7 +1778,10 @@ const SuperAdminDashboard = () => {
 
             <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
 
+              {/* SHOP NAME */}
+
               <div>
+
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Shop Name *
                 </label>
@@ -1646,9 +1795,13 @@ const SuperAdminDashboard = () => {
                   placeholder="e.g. Al-Madina Electronics"
                   className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
                 />
+
               </div>
 
+              {/* OWNER NAME */}
+
               <div>
+
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Owner Name *
                 </label>
@@ -1662,9 +1815,13 @@ const SuperAdminDashboard = () => {
                   placeholder="e.g. Muhammad Ali"
                   className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
                 />
+
               </div>
 
+              {/* ADMIN EMAIL */}
+
               <div>
+
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Admin Email *
                 </label>
@@ -1678,9 +1835,13 @@ const SuperAdminDashboard = () => {
                   placeholder="admin@shop.com"
                   className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
                 />
+
               </div>
 
+              {/* PHONE */}
+
               <div>
+
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   WhatsApp / Phone Number
                 </label>
@@ -1698,9 +1859,13 @@ const SuperAdminDashboard = () => {
                 <p className="mt-1 text-[10px] text-slate-400">
                   This number will be used for WhatsApp support messages.
                 </p>
+
               </div>
 
+              {/* ADMIN PASSWORD */}
+
               <div>
+
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Admin Password *
                 </label>
@@ -1750,7 +1915,10 @@ const SuperAdminDashboard = () => {
                   </button>
 
                 </div>
+
               </div>
+
+              {/* PLAN */}
 
               <div className="grid grid-cols-2 gap-3">
 
@@ -1782,6 +1950,7 @@ const SuperAdminDashboard = () => {
 
                 {createPlan ===
                   'Complete' && (
+
                   <div>
 
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
@@ -1803,9 +1972,12 @@ const SuperAdminDashboard = () => {
                     />
 
                   </div>
+
                 )}
 
               </div>
+
+              {/* MONTHLY CHARGE */}
 
               <div>
 
@@ -1865,6 +2037,7 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================
@@ -1872,6 +2045,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {chargeModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
@@ -1959,6 +2133,7 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================
@@ -1966,6 +2141,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {renewModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
@@ -2043,6 +2219,7 @@ const SuperAdminDashboard = () => {
 
               {renewPlan ===
                 'Complete' && (
+
                 <div>
 
                   <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
@@ -2062,6 +2239,7 @@ const SuperAdminDashboard = () => {
                   />
 
                 </div>
+
               )}
 
             </div>
@@ -2096,13 +2274,15 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================
-          HISTORY MODAL
+          SUBSCRIPTION HISTORY MODAL
       ====================================================== */}
 
       {historyModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2130,79 +2310,87 @@ const SuperAdminDashboard = () => {
               {historyModal.subscriptionHistory
                 ?.length ? (
 
-                <table className="w-full text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
 
-                  <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
+                  <table className="w-full min-w-[700px] text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
 
-                    <tr>
-                      <th className="px-4 py-3">
-                        Plan
-                      </th>
+                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
 
-                      <th className="px-4 py-3">
-                        Duration
-                      </th>
+                      <tr>
 
-                      <th className="px-4 py-3">
-                        Renewed On
-                      </th>
+                        <th className="px-4 py-3">
+                          Plan
+                        </th>
 
-                      <th className="px-4 py-3">
-                        Previous Expiry
-                      </th>
+                        <th className="px-4 py-3">
+                          Duration
+                        </th>
 
-                      <th className="px-4 py-3">
-                        New Expiry
-                      </th>
-                    </tr>
+                        <th className="px-4 py-3">
+                          Renewed On
+                        </th>
 
-                  </thead>
+                        <th className="px-4 py-3">
+                          Previous Expiry
+                        </th>
 
-                  <tbody className="divide-y divide-slate-100">
+                        <th className="px-4 py-3">
+                          New Expiry
+                        </th>
 
-                    {historyModal.subscriptionHistory
-                      .slice()
-                      .reverse()
-                      .map((h, i) => (
-                        <tr
-                          key={i}
-                          className="hover:bg-slate-50/60"
-                        >
+                      </tr>
 
-                          <td className="px-4 py-3 font-black text-blue-600">
-                            {h.plan}
-                          </td>
+                    </thead>
 
-                          <td className="px-4 py-3">
-                            {h.durationMonths
-                              ? `${h.durationMonths} Months`
-                              : '7 Days'}
-                          </td>
+                    <tbody className="divide-y divide-slate-100">
 
-                          <td className="px-4 py-3 text-slate-500">
-                            {formatDate(
-                              h.renewedAt
-                            )}
-                          </td>
+                      {historyModal.subscriptionHistory
+                        .slice()
+                        .reverse()
+                        .map((h, i) => (
 
-                          <td className="px-4 py-3 text-slate-500">
-                            {formatDate(
-                              h.previousExpiryDate
-                            )}
-                          </td>
+                          <tr
+                            key={h._id || i}
+                            className="hover:bg-slate-50/60"
+                          >
 
-                          <td className="px-4 py-3 font-bold text-slate-900">
-                            {formatDate(
-                              h.newExpiryDate
-                            )}
-                          </td>
+                            <td className="px-4 py-3 font-black text-blue-600">
+                              {h.plan}
+                            </td>
 
-                        </tr>
-                      ))}
+                            <td className="px-4 py-3">
+                              {h.durationMonths
+                                ? `${h.durationMonths} Months`
+                                : '7 Days'}
+                            </td>
 
-                  </tbody>
+                            <td className="px-4 py-3 text-slate-500">
+                              {formatDate(
+                                h.renewedAt
+                              )}
+                            </td>
 
-                </table>
+                            <td className="px-4 py-3 text-slate-500">
+                              {formatDate(
+                                h.previousExpiryDate
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3 font-bold text-slate-900">
+                              {formatDate(
+                                h.newExpiryDate
+                              )}
+                            </td>
+
+                          </tr>
+
+                        ))}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
 
               ) : (
 
@@ -2217,6 +2405,7 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================
@@ -2224,6 +2413,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {loginIpModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2251,63 +2441,74 @@ const SuperAdminDashboard = () => {
               {loginIpModal.loginIpHistory
                 ?.length ? (
 
-                <table className="w-full text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
 
-                  <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
+                  <table className="w-full min-w-[600px] text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
 
-                    <tr>
-                      <th className="px-4 py-3">
-                        IP Address
-                      </th>
+                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
 
-                      <th className="px-4 py-3">
-                        Admin Email
-                      </th>
+                      <tr>
 
-                      <th className="px-4 py-3">
-                        Login Time
-                      </th>
-                    </tr>
+                        <th className="px-4 py-3">
+                          IP Address
+                        </th>
 
-                  </thead>
+                        <th className="px-4 py-3">
+                          Admin Email
+                        </th>
 
-                  <tbody className="divide-y divide-slate-100">
+                        <th className="px-4 py-3">
+                          Login Time
+                        </th>
 
-                    {loginIpModal.loginIpHistory
-                      .slice()
-                      .reverse()
-                      .map(
-                        (
-                          entry,
-                          idx
-                        ) => (
-                          <tr
-                            key={idx}
-                            className="hover:bg-slate-50/60"
-                          >
+                      </tr>
 
-                            <td className="px-4 py-3 font-mono font-bold text-slate-800">
-                              {entry.ip}
-                            </td>
+                    </thead>
 
-                            <td className="px-4 py-3 text-slate-600">
-                              {entry.adminEmail ||
-                                '—'}
-                            </td>
+                    <tbody className="divide-y divide-slate-100">
 
-                            <td className="px-4 py-3 text-slate-500">
-                              {formatPakistanDateTime(
-                                entry.loggedInAt
-                              )}
-                            </td>
+                      {loginIpModal.loginIpHistory
+                        .slice()
+                        .reverse()
+                        .map(
+                          (
+                            entry,
+                            idx
+                          ) => (
 
-                          </tr>
-                        )
-                      )}
+                            <tr
+                              key={
+                                entry._id ||
+                                idx
+                              }
+                              className="hover:bg-slate-50/60"
+                            >
 
-                  </tbody>
+                              <td className="px-4 py-3 font-mono font-bold text-slate-800">
+                                {entry.ip}
+                              </td>
 
-                </table>
+                              <td className="px-4 py-3 text-slate-600">
+                                {entry.adminEmail ||
+                                  '—'}
+                              </td>
+
+                              <td className="px-4 py-3 text-slate-500">
+                                {formatPakistanDateTime(
+                                  entry.loggedInAt
+                                )}
+                              </td>
+
+                            </tr>
+
+                          )
+                        )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
 
               ) : (
 
@@ -2322,6 +2523,351 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
+      )}
+
+      {/* =====================================================
+          PASSWORD CHANGE HISTORY MODAL
+      ====================================================== */}
+
+      {passwordHistoryModal.open && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+
+            {/* HEADER */}
+
+            <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
+
+              <div className="min-w-0">
+
+                <div className="flex items-center gap-2">
+
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 border border-violet-400/20">
+
+                    <KeyRound className="w-4 h-4 text-violet-300" />
+
+                  </div>
+
+                  <div className="min-w-0">
+
+                    <h3 className="font-black text-base">
+                      Password Change History
+                    </h3>
+
+                    <p className="mt-0.5 text-[10px] text-slate-400 truncate">
+                      {passwordHistoryModal.shop?.shopName ||
+                        'Shop'}
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closePasswordHistoryModal
+                }
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 transition shrink-0"
+                aria-label="Close password history"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+            </div>
+
+            {/* SHOP SUMMARY */}
+
+            <div className="p-5 sm:p-6 border-b border-slate-100 bg-slate-50/70">
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                <div className="rounded-2xl bg-white border border-slate-200 p-4">
+
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    Shop
+                  </p>
+
+                  <p className="mt-1 text-sm font-black text-slate-900 break-words">
+                    {passwordHistoryModal.shop?.shopName ||
+                      '—'}
+                  </p>
+
+                </div>
+
+                <div className="rounded-2xl bg-white border border-slate-200 p-4">
+
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    Admin Email
+                  </p>
+
+                  <p className="mt-1 text-sm font-bold text-slate-700 break-all">
+                    {passwordHistoryModal.shop?.email ||
+                      passwordHistoryModal.shop?.adminEmail ||
+                      '—'}
+                  </p>
+
+                </div>
+
+                <div className="rounded-2xl bg-violet-50/60 border border-violet-200 p-4">
+
+                  <p className="text-[9px] font-black uppercase tracking-wider text-violet-500">
+                    Total Password Changes
+                  </p>
+
+                  <p className="mt-1 text-2xl font-black text-violet-700">
+                    {passwordHistoryModal.loading
+                      ? '...'
+                      : passwordHistoryModal.totalChanges}
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* HISTORY CONTENT */}
+
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
+
+              {passwordHistoryModal.loading ? (
+
+                <div className="flex flex-col items-center justify-center py-16">
+
+                  <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+
+                  <p className="mt-4 text-xs font-black uppercase tracking-wider text-slate-400">
+                    Loading password history...
+                  </p>
+
+                </div>
+
+              ) : passwordHistoryModal.history.length ===
+                0 ? (
+
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 border border-slate-200">
+
+                    <KeyRound className="w-6 h-6 text-slate-400" />
+
+                  </div>
+
+                  <p className="mt-4 text-sm font-black text-slate-700">
+                    No Password Changes Recorded
+                  </p>
+
+                  <p className="mt-1 max-w-sm text-xs font-medium leading-relaxed text-slate-400">
+                    This shop does not have any password
+                    change history yet. Password history
+                    will appear here after the admin
+                    changes the password or Super Admin
+                    resets it.
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+
+                  <table className="w-full min-w-[750px] text-left text-xs">
+
+                    <thead className="bg-slate-50 border-b border-slate-200">
+
+                      <tr>
+
+                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                          #
+                        </th>
+
+                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                          Date & Time
+                        </th>
+
+                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                          Changed By
+                        </th>
+
+                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                          Change Type
+                        </th>
+
+                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                          Admin Email
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+
+                      {passwordHistoryModal.history.map(
+                        (entry, index) => {
+
+                          const changeType =
+                            entry.changeType ||
+                            'Password Changed';
+
+                          let badgeClass =
+                            'bg-slate-50 text-slate-700 border-slate-200';
+
+                          if (
+                            changeType ===
+                            'Super Admin Reset'
+                          ) {
+                            badgeClass =
+                              'bg-violet-50 text-violet-700 border-violet-200';
+                          } else if (
+                            changeType ===
+                            'First Login'
+                          ) {
+                            badgeClass =
+                              'bg-emerald-50 text-emerald-700 border-emerald-200';
+                          } else if (
+                            changeType ===
+                            'Admin Changed'
+                          ) {
+                            badgeClass =
+                              'bg-blue-50 text-blue-700 border-blue-200';
+                          }
+
+                          return (
+
+                            <tr
+                              key={
+                                entry._id ||
+                                `${entry.changedAt}-${index}`
+                              }
+                              className="hover:bg-slate-50/70 transition-colors"
+                            >
+
+                              {/* NUMBER */}
+
+                              <td className="px-4 py-3">
+
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-black text-slate-500">
+                                  {index + 1}
+                                </span>
+
+                              </td>
+
+                              {/* DATE */}
+
+                              <td className="px-4 py-3 whitespace-nowrap">
+
+                                <p className="font-black text-slate-800">
+                                  {formatDate(
+                                    entry.changedAt
+                                  )}
+                                </p>
+
+                                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                                  {formatPakistanDateTime(
+                                    entry.changedAt
+                                  )}
+                                </p>
+
+                              </td>
+
+                              {/* CHANGED BY */}
+
+                              <td className="px-4 py-3">
+
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] font-black ${
+                                    entry.changedBy ===
+                                    'Super Admin'
+                                      ? 'bg-violet-50 border-violet-200 text-violet-700'
+                                      : 'bg-blue-50 border-blue-200 text-blue-700'
+                                  }`}
+                                >
+
+                                  <ShieldCheck className="w-3 h-3" />
+
+                                  {entry.changedBy ||
+                                    '—'}
+
+                                </span>
+
+                              </td>
+
+                              {/* CHANGE TYPE */}
+
+                              <td className="px-4 py-3">
+
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black ${badgeClass}`}
+                                >
+                                  {changeType}
+                                </span>
+
+                              </td>
+
+                              {/* ADMIN EMAIL */}
+
+                              <td className="px-4 py-3">
+
+                                <span className="font-medium text-slate-600 break-all">
+                                  {entry.adminEmail ||
+                                    '—'}
+                                </span>
+
+                              </td>
+
+                            </tr>
+
+                          );
+                        }
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+
+              )}
+
+            </div>
+
+            {/* FOOTER */}
+
+            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+
+              <div className="flex items-center gap-2">
+
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+
+                <p className="text-[10px] font-semibold text-slate-400">
+                  Password values are never stored in history.
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closePasswordHistoryModal
+                }
+                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800 transition-all"
+              >
+                Close
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
       )}
 
       {/* =====================================================
@@ -2329,6 +2875,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {passwordModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
@@ -2352,6 +2899,8 @@ const SuperAdminDashboard = () => {
             </div>
 
             <div className="p-6 space-y-4">
+
+              {/* NEW PASSWORD */}
 
               <div>
 
@@ -2407,6 +2956,8 @@ const SuperAdminDashboard = () => {
                 </div>
 
               </div>
+
+              {/* CONFIRM PASSWORD */}
 
               <div>
 
@@ -2501,6 +3052,7 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================
@@ -2508,6 +3060,7 @@ const SuperAdminDashboard = () => {
       ====================================================== */}
 
       {deleteModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
 
           <div className="bg-white border border-rose-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
@@ -2540,11 +3093,15 @@ const SuperAdminDashboard = () => {
               <div>
 
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+
                   Type shop name "
+
                   <strong className="text-slate-800">
                     {deleteModal.shopName}
                   </strong>
+
                   " to confirm:
+
                 </label>
 
                 <input
@@ -2657,6 +3214,7 @@ const SuperAdminDashboard = () => {
           </div>
 
         </div>
+
       )}
 
       {/* =====================================================

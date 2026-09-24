@@ -82,7 +82,9 @@ const loginSuperAdmin = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Super Admin login successful',
+
+      message:
+        'Super Admin login successful',
 
       superAdmin: {
         id: superAdmin._id,
@@ -101,7 +103,8 @@ const loginSuperAdmin = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: 'Server error during Super Admin login',
+      message:
+        'Server error during Super Admin login',
     });
   }
 };
@@ -125,12 +128,17 @@ const logoutSuperAdmin = async (req, res) => {
           ? 'none'
           : 'lax',
 
-      expires: new Date(0),
+      expires:
+        new Date(0),
+
+      maxAge: 0,
     });
 
     return res.status(200).json({
       success: true,
-      message: 'Super Admin logged out successfully',
+
+      message:
+        'Super Admin logged out successfully',
     });
 
   } catch (error) {
@@ -142,7 +150,9 @@ const logoutSuperAdmin = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: 'Server error during logout',
+
+      message:
+        'Server error during logout',
     });
   }
 };
@@ -188,6 +198,7 @@ const createShopAdmin = async (req, res) => {
 
       return res.status(400).json({
         success: false,
+
         message:
           'Shop name, owner name, email and password are required',
       });
@@ -200,16 +211,20 @@ const createShopAdmin = async (req, res) => {
 
       return res.status(400).json({
         success: false,
+
         message:
           'Password must be at least 6 characters',
       });
     }
 
+
     if (
       monthlyCharge === undefined ||
       monthlyCharge === null ||
       monthlyCharge === '' ||
-      !Number.isFinite(Number(monthlyCharge)) ||
+      !Number.isFinite(
+        Number(monthlyCharge)
+      ) ||
       Number(monthlyCharge) < 0
     ) {
 
@@ -217,7 +232,9 @@ const createShopAdmin = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: 'Please enter a valid monthly charge (zero or greater)',
+
+        message:
+          'Please enter a valid monthly charge (zero or greater)',
       });
     }
 
@@ -231,14 +248,17 @@ const createShopAdmin = async (req, res) => {
     // -----------------------------
 
     if (
-      subscriptionPlan !== 'Free Trial' &&
-      subscriptionPlan !== 'Complete'
+      subscriptionPlan !==
+        'Free Trial' &&
+      subscriptionPlan !==
+        'Complete'
     ) {
 
       await session.abortTransaction();
 
       return res.status(400).json({
         success: false,
+
         message:
           'Subscription plan must be Free Trial or Complete',
       });
@@ -250,7 +270,8 @@ const createShopAdmin = async (req, res) => {
     // -----------------------------
 
     if (
-      subscriptionPlan === 'Complete'
+      subscriptionPlan ===
+      'Complete'
     ) {
 
       if (
@@ -264,6 +285,7 @@ const createShopAdmin = async (req, res) => {
 
         return res.status(400).json({
           success: false,
+
           message:
             'Complete plan duration must be at least 1 month',
         });
@@ -277,7 +299,8 @@ const createShopAdmin = async (req, res) => {
 
     const existingAdmin =
       await Admin.findOne({
-        email: normalizedEmail,
+        email:
+          normalizedEmail,
       }).session(session);
 
 
@@ -287,39 +310,49 @@ const createShopAdmin = async (req, res) => {
 
       return res.status(409).json({
         success: false,
+
         message:
           'An admin account with this email already exists',
       });
     }
 
-// -----------------------------
-// SUBSCRIPTION EXPIRY
-// -----------------------------
 
-const now = new Date();
+    // -----------------------------
+    // SUBSCRIPTION EXPIRY
+    // -----------------------------
 
-let subscriptionExpiresAt;
+    const now =
+      new Date();
 
-if (
-  subscriptionPlan === 'Free Trial'
-) {
+    let subscriptionExpiresAt;
 
-  subscriptionExpiresAt =
-    new Date(
-      now.getTime() +
-      7 * 24 * 60 * 60 * 1000
-    );
 
-} else {
+    if (
+      subscriptionPlan ===
+      'Free Trial'
+    ) {
 
-  subscriptionExpiresAt =
-    new Date(now);
+      subscriptionExpiresAt =
+        new Date(
+          now.getTime() +
+          7 *
+            24 *
+            60 *
+            60 *
+            1000
+        );
 
-  subscriptionExpiresAt.setMonth(
-    subscriptionExpiresAt.getMonth() +
-    Number(durationMonths)
-  );
-}
+    } else {
+
+      subscriptionExpiresAt =
+        new Date(now);
+
+      subscriptionExpiresAt.setMonth(
+        subscriptionExpiresAt.getMonth() +
+        Number(durationMonths)
+      );
+    }
+
 
     // -----------------------------
     // CREATE SHOP
@@ -353,7 +386,25 @@ if (
         subscriptionExpiresAt:
           subscriptionExpiresAt,
 
-        subscriptionHistory: [],
+        subscriptionHistory:
+          [],
+
+        // =================================================
+        // IMPORTANT:
+        // INITIAL PASSWORD IS TEMPORARY
+        //
+        // Admin MUST change it on first login.
+        // =================================================
+
+        mustChangePassword:
+          true,
+
+        // New shop starts with no authorized devices.
+        authorizedDevices:
+          [],
+
+        authVersion:
+          0,
       });
 
 
@@ -374,8 +425,13 @@ if (
         shopId:
           shop._id,
 
+        // This is the temporary password.
+        // Admin.js pre-save hook will hash it.
         password:
           password,
+
+        failedLoginAttempts:
+          0,
       });
 
 
@@ -390,7 +446,8 @@ if (
 
     const existingSettings =
       await Settings.findOne({
-        shopId: shop._id,
+        shopId:
+          shop._id,
       }).session(session);
 
 
@@ -408,17 +465,26 @@ if (
     }
 
 
+    // -----------------------------
+    // COMMIT
+    // -----------------------------
+
     await session.commitTransaction();
 
+
+    // -----------------------------
+    // RESPONSE
+    // -----------------------------
 
     return res.status(201).json({
 
       success: true,
 
       message:
-        'Shop and admin created successfully',
+        'Shop and admin created successfully. The admin must change the temporary password on first login.',
 
       shop: {
+
         id:
           shop._id,
 
@@ -442,9 +508,13 @@ if (
 
         subscriptionExpiresAt:
           shop.subscriptionExpiresAt,
+
+        mustChangePassword:
+          shop.mustChangePassword,
       },
 
       admin: {
+
         id:
           admin._id,
 
@@ -464,6 +534,7 @@ if (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while creating shop',
     });
@@ -481,11 +552,16 @@ if (
 
 const suspendShop = async (req, res) => {
   try {
+
     const { shopId } =
       req.params;
 
+
     const shop =
-      await Shop.findById(shopId);
+      await Shop.findById(
+        shopId
+      );
+
 
     if (!shop) {
       return res.status(404).json({
@@ -496,8 +572,10 @@ const suspendShop = async (req, res) => {
       });
     }
 
+
     const suspensionReason =
       'Suspended manually by Super Admin.';
+
 
     // ====================================================
     // SUSPEND SHOP
@@ -512,6 +590,7 @@ const suspendShop = async (req, res) => {
     shop.suspendedAt =
       new Date();
 
+
     // ====================================================
     // REVOKE ALL ACTIVE SESSIONS
     // ====================================================
@@ -521,7 +600,9 @@ const suspendShop = async (req, res) => {
         shop.authVersion
       ) || 0) + 1;
 
+
     await shop.save();
+
 
     return res.status(200).json({
       success: true,
@@ -531,7 +612,9 @@ const suspendShop = async (req, res) => {
 
       suspensionReason,
     });
+
   } catch (error) {
+
     console.error(
       'Suspend Shop Error:',
       error
@@ -556,11 +639,16 @@ const suspendShop = async (req, res) => {
 
 const activateShop = async (req, res) => {
   try {
+
     const { shopId } =
       req.params;
 
+
     const shop =
-      await Shop.findById(shopId);
+      await Shop.findById(
+        shopId
+      );
+
 
     if (!shop) {
       return res.status(404).json({
@@ -570,6 +658,7 @@ const activateShop = async (req, res) => {
           'Shop not found',
       });
     }
+
 
     // ====================================================
     // EXPIRED SUBSCRIPTION CANNOT BE ACTIVATED
@@ -582,6 +671,7 @@ const activateShop = async (req, res) => {
           shop.subscriptionExpiresAt
         )
     ) {
+
       return res.status(400).json({
         success: false,
 
@@ -590,29 +680,16 @@ const activateShop = async (req, res) => {
       });
     }
 
+
     // ====================================================
     // REVOKE OLD SESSIONS
-    //
-    // This is VERY important.
-    //
-    // Example:
-    //
-    // Before suspension:
-    // JWT authVersion = 5
-    //
-    // Suspension:
-    // authVersion = 6
-    //
-    // Activation:
-    // authVersion = 7
-    //
-    // Old JWT version 5 can NEVER become valid again.
     // ====================================================
 
     shop.authVersion =
       (Number(
         shop.authVersion
       ) || 0) + 1;
+
 
     // ====================================================
     // ACTIVATE
@@ -627,12 +704,19 @@ const activateShop = async (req, res) => {
     shop.suspendedAt =
       null;
 
-    // Existing two-device behavior:
+
+    // ====================================================
+    // RESET AUTHORIZED DEVICES
+    //
     // Fresh activation starts with zero devices.
+    // ====================================================
+
     shop.authorizedDevices =
       [];
 
+
     await shop.save();
+
 
     // ====================================================
     // RESET FAILED LOGIN ATTEMPTS
@@ -645,10 +729,12 @@ const activateShop = async (req, res) => {
       },
       {
         $set: {
-          failedLoginAttempts: 0,
+          failedLoginAttempts:
+            0,
         },
       }
     );
+
 
     return res.status(200).json({
       success: true,
@@ -656,7 +742,9 @@ const activateShop = async (req, res) => {
       message:
         'Shop activated successfully. All previous sessions were revoked. The owner must log in again.',
     });
+
   } catch (error) {
+
     console.error(
       'Activate Shop Error:',
       error
@@ -667,9 +755,6 @@ const activateShop = async (req, res) => {
 
       message:
         'Internal server error',
-
-      error:
-        error.message,
     });
   }
 };
@@ -679,54 +764,108 @@ const activateShop = async (req, res) => {
 // UPDATE SHOP MONTHLY CHARGE
 // =====================================================
 
-const updateShopMonthlyCharge = async (req, res) => {
-  try {
-    const { shopId } = req.params;
-    const { monthlyCharge } = req.body;
+const updateShopMonthlyCharge = async (
+  req,
+  res
+) => {
 
-    if (!mongoose.Types.ObjectId.isValid(shopId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid shop ID',
-      });
-    }
+  try {
+
+    const { shopId } =
+      req.params;
+
+    const { monthlyCharge } =
+      req.body;
+
 
     if (
-      monthlyCharge === undefined ||
-      monthlyCharge === null ||
-      monthlyCharge === '' ||
-      !Number.isFinite(Number(monthlyCharge)) ||
-      Number(monthlyCharge) < 0
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      )
     ) {
+
       return res.status(400).json({
         success: false,
-        message: 'Monthly charge must be zero or greater',
+
+        message:
+          'Invalid shop ID',
       });
     }
 
-    const shop = await Shop.findByIdAndUpdate(
-      shopId,
-      { $set: { monthlyCharge: Number(monthlyCharge) } },
-      { returnDocument: 'after' }
-    );
+
+    if (
+      monthlyCharge ===
+        undefined ||
+      monthlyCharge ===
+        null ||
+      monthlyCharge ===
+        '' ||
+      !Number.isFinite(
+        Number(monthlyCharge)
+      ) ||
+      Number(monthlyCharge) < 0
+    ) {
+
+      return res.status(400).json({
+        success: false,
+
+        message:
+          'Monthly charge must be zero or greater',
+      });
+    }
+
+
+    const shop =
+      await Shop.findByIdAndUpdate(
+        shopId,
+
+        {
+          $set: {
+            monthlyCharge:
+              Number(monthlyCharge),
+          },
+        },
+
+        {
+          returnDocument:
+            'after',
+        }
+      );
+
 
     if (!shop) {
+
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
+
 
     return res.status(200).json({
       success: true,
-      message: 'Monthly charge updated successfully',
-      monthlyCharge: shop.monthlyCharge,
+
+      message:
+        'Monthly charge updated successfully',
+
+      monthlyCharge:
+        shop.monthlyCharge,
     });
+
   } catch (error) {
-    console.error('Update Shop Monthly Charge Error:', error);
+
+    console.error(
+      'Update Shop Monthly Charge Error:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: 'Server error while updating monthly charge',
+
+      message:
+        'Server error while updating monthly charge',
     });
   }
 };
@@ -740,14 +879,18 @@ const renewShopSubscription = async (
   req,
   res
 ) => {
+
   try {
+
     const { shopId } =
       req.params;
+
 
     const {
       subscriptionPlan,
       durationMonths,
     } = req.body;
+
 
     // ============================================
     // VALIDATE SHOP ID
@@ -758,11 +901,15 @@ const renewShopSubscription = async (
         shopId
       )
     ) {
+
       return res.status(400).json({
         success: false,
-        message: 'Invalid shop ID',
+
+        message:
+          'Invalid shop ID',
       });
     }
+
 
     // ============================================
     // VALIDATE PLAN
@@ -774,12 +921,15 @@ const renewShopSubscription = async (
       subscriptionPlan !==
         'Complete'
     ) {
+
       return res.status(400).json({
         success: false,
+
         message:
           'Subscription plan must be Free Trial or Complete',
       });
     }
+
 
     // ============================================
     // VALIDATE COMPLETE DURATION
@@ -789,33 +939,44 @@ const renewShopSubscription = async (
       subscriptionPlan ===
       'Complete'
     ) {
+
       if (
         !Number.isInteger(
           Number(durationMonths)
         ) ||
         Number(durationMonths) < 1
       ) {
+
         return res.status(400).json({
           success: false,
+
           message:
             'Complete plan duration must be at least 1 month',
         });
       }
     }
 
+
     // ============================================
     // FIND SHOP
     // ============================================
 
     const shop =
-      await Shop.findById(shopId);
+      await Shop.findById(
+        shopId
+      );
+
 
     if (!shop) {
+
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
+
 
     // ============================================
     // DATES
@@ -824,6 +985,7 @@ const renewShopSubscription = async (
     const now =
       new Date();
 
+
     const previousExpiryDate =
       shop.subscriptionExpiresAt
         ? new Date(
@@ -831,21 +993,23 @@ const renewShopSubscription = async (
           )
         : null;
 
+
     let baseDate =
       now;
 
-    // If current subscription
-    // is still active, extend
-    // from current expiry.
+
     if (
       previousExpiryDate &&
       previousExpiryDate > now
     ) {
+
       baseDate =
         previousExpiryDate;
     }
 
+
     let newExpiryDate;
+
 
     // ============================================
     // FREE TRIAL
@@ -856,6 +1020,7 @@ const renewShopSubscription = async (
       subscriptionPlan ===
       'Free Trial'
     ) {
+
       newExpiryDate =
         new Date(
           baseDate.getTime() +
@@ -867,19 +1032,24 @@ const renewShopSubscription = async (
         );
     }
 
+
     // ============================================
     // COMPLETE PLAN
     // ============================================
 
     else {
+
       newExpiryDate =
-        new Date(baseDate);
+        new Date(
+          baseDate
+        );
 
       newExpiryDate.setMonth(
         newExpiryDate.getMonth() +
         Number(durationMonths)
       );
     }
+
 
     // ============================================
     // SUBSCRIPTION HISTORY
@@ -891,7 +1061,7 @@ const renewShopSubscription = async (
 
       durationMonths:
         subscriptionPlan ===
-        'Free Trial'
+          'Free Trial'
           ? 0
           : Number(durationMonths),
 
@@ -904,6 +1074,7 @@ const renewShopSubscription = async (
       newExpiryDate:
         newExpiryDate,
     });
+
 
     // ============================================
     // UPDATE SUBSCRIPTION
@@ -924,39 +1095,41 @@ const renewShopSubscription = async (
     shop.subscriptionExpiresAt =
       newExpiryDate;
 
+
     // ============================================
-    // IMPORTANT:
     // REVOKE ALL OLD SESSIONS
     // ============================================
 
     shop.authVersion =
-      (Number(shop.authVersion) || 0) +
-      1;
+      (Number(
+        shop.authVersion
+      ) || 0) + 1;
+
 
     // ============================================
-    // OPTIONAL BUT RECOMMENDED:
-    // CLEAR OLD AUTHORIZED DEVICES
+    // CLEAR AUTHORIZED DEVICES
     // ============================================
 
-    shop.authorizedDevices = [];
+    shop.authorizedDevices =
+      [];
 
-    // ============================================
-    // SAVE
-    // ============================================
 
     await shop.save();
+
 
     // ============================================
     // RESPONSE
     // ============================================
 
     return res.status(200).json({
+
       success: true,
 
       message:
         'Subscription renewed successfully. Previous sessions have been revoked. Please log in again.',
 
       shop: {
+
         id:
           shop._id,
 
@@ -978,6 +1151,7 @@ const renewShopSubscription = async (
     });
 
   } catch (error) {
+
     console.error(
       'Renew Subscription Error:',
       error
@@ -985,12 +1159,12 @@ const renewShopSubscription = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while renewing subscription',
     });
   }
 };
-
 
 
 // =====================================================
@@ -1030,7 +1204,9 @@ const permanentlyDeleteShop = async (
 
       return res.status(400).json({
         success: false,
-        message: 'Invalid shop ID',
+
+        message:
+          'Invalid shop ID',
       });
     }
 
@@ -1048,6 +1224,7 @@ const permanentlyDeleteShop = async (
 
       return res.status(400).json({
         success: false,
+
         message:
           'Super Admin password is required to permanently delete a shop',
       });
@@ -1070,6 +1247,7 @@ const permanentlyDeleteShop = async (
 
       return res.status(401).json({
         success: false,
+
         message:
           'Super Admin account not found',
       });
@@ -1092,6 +1270,7 @@ const permanentlyDeleteShop = async (
 
       return res.status(401).json({
         success: false,
+
         message:
           'Incorrect Super Admin password',
       });
@@ -1114,7 +1293,9 @@ const permanentlyDeleteShop = async (
 
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
 
@@ -1125,7 +1306,8 @@ const permanentlyDeleteShop = async (
 
     await Admin.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1139,7 +1321,8 @@ const permanentlyDeleteShop = async (
 
     await Customer.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1153,7 +1336,8 @@ const permanentlyDeleteShop = async (
 
     await Product.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1167,7 +1351,8 @@ const permanentlyDeleteShop = async (
 
     await StockMovement.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1181,7 +1366,8 @@ const permanentlyDeleteShop = async (
 
     await Expense.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1195,7 +1381,8 @@ const permanentlyDeleteShop = async (
 
     await Sale.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1209,7 +1396,8 @@ const permanentlyDeleteShop = async (
 
     await InstallmentPlan.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1223,7 +1411,8 @@ const permanentlyDeleteShop = async (
 
     await Installment.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1237,7 +1426,8 @@ const permanentlyDeleteShop = async (
 
     await Payment.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1251,7 +1441,8 @@ const permanentlyDeleteShop = async (
 
     await Return.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1265,7 +1456,8 @@ const permanentlyDeleteShop = async (
 
     await YearlyAudit.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1279,7 +1471,8 @@ const permanentlyDeleteShop = async (
 
     await Settings.deleteMany(
       {
-        shopId: shop._id,
+        shopId:
+          shop._id,
       },
       {
         session,
@@ -1293,7 +1486,8 @@ const permanentlyDeleteShop = async (
 
     await Shop.deleteOne(
       {
-        _id: shop._id,
+        _id:
+          shop._id,
       },
       {
         session,
@@ -1302,7 +1496,7 @@ const permanentlyDeleteShop = async (
 
 
     // -----------------------------
-    // COMMIT TRANSACTION
+    // COMMIT
     // -----------------------------
 
     await session.commitTransaction();
@@ -1310,6 +1504,7 @@ const permanentlyDeleteShop = async (
 
     return res.status(200).json({
       success: true,
+
       message:
         'Shop and all related data permanently deleted',
     });
@@ -1325,6 +1520,7 @@ const permanentlyDeleteShop = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while permanently deleting shop',
     });
@@ -1350,7 +1546,8 @@ const getAllShops = async (
     const shops =
       await Shop.find()
         .sort({
-          createdAt: -1,
+          createdAt:
+            -1,
         })
         .lean();
 
@@ -1379,7 +1576,10 @@ const getAllShops = async (
       (admin) => {
 
         adminEmailMap.set(
-          String(admin.shopId),
+          String(
+            admin.shopId
+          ),
+
           admin.email
         );
       }
@@ -1394,7 +1594,9 @@ const getAllShops = async (
 
           adminEmail:
             adminEmailMap.get(
-              String(shop._id)
+              String(
+                shop._id
+              )
             ) ||
             shop.email ||
             null,
@@ -1419,6 +1621,7 @@ const getAllShops = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while fetching shops',
     });
@@ -1451,10 +1654,14 @@ const getDashboardStats = async (
           'Active',
 
         subscriptionExpiresAt: {
-          $ne: null,
-          $lte: now,
+          $ne:
+            null,
+
+          $lte:
+            now,
         },
       },
+
       {
         $set: {
           subscriptionStatus:
@@ -1522,6 +1729,7 @@ const getDashboardStats = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while fetching dashboard statistics',
     });
@@ -1531,21 +1739,36 @@ const getDashboardStats = async (
 
 // =====================================================
 // RESET SHOP ADMIN PASSWORD
+//
+// Super Admin sets a TEMPORARY password.
+//
+// The admin MUST change this password on the next
+// successful login.
+//
+// All previous admin sessions are revoked.
+// =====================================================
+
+// =====================================================
+// RESET SHOP ADMIN PASSWORD
+//
+// Super Admin sets a TEMPORARY password.
+//
+// The admin MUST change this password on the next
+// successful login.
+//
+// All previous admin sessions are revoked.
 // =====================================================
 
 const resetShopAdminPassword = async (
   req,
   res
 ) => {
-
   try {
-
     const { shopId } =
       req.params;
 
     const { newPassword } =
       req.body;
-
 
     // -----------------------------
     // VALIDATE SHOP ID
@@ -1556,13 +1779,13 @@ const resetShopAdminPassword = async (
         shopId
       )
     ) {
-
       return res.status(400).json({
         success: false,
-        message: 'Invalid shop ID',
+
+        message:
+          'Invalid shop ID',
       });
     }
-
 
     // -----------------------------
     // VALIDATE PASSWORD
@@ -1570,28 +1793,27 @@ const resetShopAdminPassword = async (
 
     if (
       !newPassword ||
-      !newPassword.trim()
+      !String(newPassword).trim()
     ) {
-
       return res.status(400).json({
         success: false,
+
         message:
           'New password is required',
       });
     }
 
-
     if (
-      newPassword.length < 6
+      String(newPassword).length <
+      6
     ) {
-
       return res.status(400).json({
         success: false,
+
         message:
           'Password must be at least 6 characters',
       });
     }
-
 
     // -----------------------------
     // CHECK SHOP
@@ -1602,15 +1824,14 @@ const resetShopAdminPassword = async (
         shopId
       );
 
-
     if (!shop) {
-
       return res.status(404).json({
         success: false,
-        message: 'Shop not found',
+
+        message:
+          'Shop not found',
       });
     }
-
 
     // -----------------------------
     // FIND ADMIN
@@ -1618,53 +1839,83 @@ const resetShopAdminPassword = async (
 
     const admin =
       await Admin.findOne({
-        shopId: shop._id,
+        shopId:
+          shop._id,
       });
 
-
     if (!admin) {
-
       return res.status(404).json({
         success: false,
+
         message:
           'Admin account for this shop was not found',
       });
     }
 
-
-    // -----------------------------
-    // SET NEW PASSWORD
-    // -----------------------------
+    // =================================================
+    // SET TEMPORARY PASSWORD
     //
-    // Admin model has a pre-save
-    // bcrypt hook.
-    //
-    // Therefore assigning plain text
-    // here is correct.
-    //
-    // The password will be hashed
-    // automatically by Admin.js.
-    //
+    // Admin.js pre-save middleware hashes the password.
+    // =================================================
 
     admin.password =
-      newPassword;
+      String(newPassword);
+
+    admin.failedLoginAttempts =
+      0;
 
     await admin.save();
 
+    // =================================================
+    // RECORD PASSWORD RESET HISTORY
+    // =================================================
+
+    shop.passwordChangeHistory.push({
+      changedBy:
+        'Super Admin',
+
+      changeType:
+        'Super Admin Reset',
+
+      adminEmail:
+        admin.email,
+
+      changedAt:
+        new Date(),
+    });
+
+    // =================================================
+    // FORCE PASSWORD CHANGE
+    // =================================================
+
+    shop.mustChangePassword =
+      true;
+
+    // =================================================
+    // REVOKE ALL EXISTING ADMIN SESSIONS
+    // =================================================
+
+    shop.authVersion =
+      (Number(
+        shop.authVersion
+      ) || 0) + 1;
+
+    await shop.save();
 
     // -----------------------------
     // RESPONSE
     // -----------------------------
 
     return res.status(200).json({
-
       success: true,
 
       message:
-        'Admin password reset successfully',
+        'Temporary admin password set successfully. The admin must change this password on the next login.',
+
+      passwordChangeRequired:
+        true,
 
       shop: {
-
         shopId:
           shop._id,
 
@@ -1673,7 +1924,6 @@ const resetShopAdminPassword = async (
       },
 
       admin: {
-
         id:
           admin._id,
 
@@ -1683,7 +1933,6 @@ const resetShopAdminPassword = async (
     });
 
   } catch (error) {
-
     console.error(
       'Reset Shop Admin Password Error:',
       error
@@ -1691,12 +1940,130 @@ const resetShopAdminPassword = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         'Server error while resetting admin password',
     });
   }
 };
+// =====================================================
+// GET SHOP PASSWORD HISTORY
+// =====================================================
 
+const getShopPasswordHistory = async (
+  req,
+  res
+) => {
+  try {
+    const { shopId } =
+      req.params;
+
+    // -----------------------------
+    // VALIDATE SHOP ID
+    // -----------------------------
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+
+        message:
+          'Invalid shop ID',
+      });
+    }
+
+    // -----------------------------
+    // FIND SHOP
+    // -----------------------------
+
+    const shop =
+      await Shop.findById(
+        shopId
+      )
+        .select(
+          'shopName ownerName email passwordChangeHistory'
+        )
+        .lean();
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+
+        message:
+          'Shop not found',
+      });
+    }
+
+    // -----------------------------
+    // SORT NEWEST FIRST
+    // -----------------------------
+
+    const history =
+      Array.isArray(
+        shop.passwordChangeHistory
+      )
+        ? [
+            ...shop.passwordChangeHistory,
+          ].sort(
+            (a, b) =>
+              new Date(
+                b.changedAt
+              ) -
+              new Date(
+                a.changedAt
+              )
+          )
+        : [];
+
+    // -----------------------------
+    // RESPONSE
+    // -----------------------------
+
+    return res.status(200).json({
+      success: true,
+
+      shop: {
+        id:
+          shop._id,
+
+        shopName:
+          shop.shopName,
+
+        ownerName:
+          shop.ownerName,
+
+        email:
+          shop.email,
+      },
+
+      totalChanges:
+        history.length,
+
+      history,
+    });
+
+  } catch (error) {
+    console.error(
+      'Get Password History Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        'Server error while fetching password history',
+    });
+  }
+};
+
+
+// =====================================================
+// EXPORTS
+// =====================================================
 
 // =====================================================
 // EXPORTS
@@ -1725,4 +2092,6 @@ module.exports = {
   getDashboardStats,
 
   resetShopAdminPassword,
+
+  getShopPasswordHistory,
 };

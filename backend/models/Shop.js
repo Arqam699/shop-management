@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+
+// =====================================================
+// SUBSCRIPTION HISTORY SCHEMA
+// =====================================================
+
 const subscriptionHistorySchema = new mongoose.Schema(
   {
     plan: {
@@ -35,8 +40,61 @@ const subscriptionHistorySchema = new mongoose.Schema(
   }
 );
 
+
+// =====================================================
+// PASSWORD CHANGE HISTORY SCHEMA
+// =====================================================
+
+const passwordChangeHistorySchema =
+  new mongoose.Schema(
+    {
+      changedBy: {
+        type: String,
+        enum: [
+          'Admin',
+          'Super Admin',
+        ],
+        required: true,
+      },
+
+      changeType: {
+        type: String,
+        enum: [
+          'First Login',
+          'Admin Changed',
+          'Super Admin Reset',
+        ],
+        required: true,
+      },
+
+      adminEmail: {
+        type: String,
+        default: '',
+        trim: true,
+        lowercase: true,
+      },
+
+      changedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+
+// =====================================================
+// SHOP SCHEMA
+// =====================================================
+
 const shopSchema = new mongoose.Schema(
   {
+    // =================================================
+    // SHOP BASIC INFORMATION
+    // =================================================
+
     shopName: {
       type: String,
       required: true,
@@ -62,21 +120,39 @@ const shopSchema = new mongoose.Schema(
       default: '',
     },
 
+
+    // =================================================
+    // BILLING
+    // =================================================
+
     monthlyCharge: {
       type: Number,
       min: 0,
       default: 0,
     },
 
+
+    // =================================================
+    // SUBSCRIPTION
+    // =================================================
+
     subscriptionPlan: {
       type: String,
-      enum: ['Free Trial', 'Complete', 'Basic'],
+      enum: [
+        'Free Trial',
+        'Complete',
+        'Basic',
+      ],
       default: 'Free Trial',
     },
 
     subscriptionStatus: {
       type: String,
-      enum: ['Active', 'Expired', 'Suspended'],
+      enum: [
+        'Active',
+        'Expired',
+        'Suspended',
+      ],
       default: 'Active',
     },
 
@@ -97,13 +173,40 @@ const shopSchema = new mongoose.Schema(
     },
 
     subscriptionHistory: {
-      type: [subscriptionHistorySchema],
+      type: [
+        subscriptionHistorySchema,
+      ],
       default: [],
     },
 
-    // ====================================================
-    // MAXIMUM 2 AUTHORIZED DEVICES
-    // ====================================================
+
+    // =================================================
+    // PASSWORD SECURITY
+    // =================================================
+
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+
+    // =================================================
+    // PASSWORD CHANGE HISTORY
+    //
+    // IMPORTANT:
+    // Actual passwords are NEVER stored here.
+    // =================================================
+
+    passwordChangeHistory: {
+      type: [
+        passwordChangeHistorySchema,
+      ],
+      default: [],
+    },
+
+
+    // =================================================
+    // AUTHORIZED DEVICES
+    // =================================================
 
     authorizedDevices: {
       type: [
@@ -127,25 +230,20 @@ const shopSchema = new mongoose.Schema(
       default: [],
     },
 
-    // ====================================================
+
+    // =================================================
     // SESSION REVOCATION VERSION
-    //
-    // Every login JWT contains this value.
-    //
-    // When shop is suspended/activated:
-    // authVersion is incremented.
-    //
-    // All old JWTs then become invalid.
-    // ====================================================
+    // =================================================
 
     authVersion: {
       type: Number,
       default: 0,
     },
 
-    // ====================================================
+
+    // =================================================
     // LOGIN IP HISTORY
-    // ====================================================
+    // =================================================
 
     loginIpHistory: {
       type: [
@@ -184,5 +282,9 @@ const shopSchema = new mongoose.Schema(
   }
 );
 
+
 module.exports =
-  mongoose.model('Shop', shopSchema);
+  mongoose.model(
+    'Shop',
+    shopSchema
+  );

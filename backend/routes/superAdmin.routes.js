@@ -19,6 +19,7 @@ const {
   renewShopSubscription,
   permanentlyDeleteShop,
   resetShopAdminPassword,
+  getShopPasswordHistory,
 } = require('../controllers/superAdminController');
 
 
@@ -58,9 +59,6 @@ router.post(
 // =====================================================
 // SUPER ADMIN ME
 // =====================================================
-// Used by frontend to verify that the Super Admin
-// session/cookie is still valid.
-// =====================================================
 
 router.get(
   '/me',
@@ -70,10 +68,17 @@ router.get(
       success: true,
 
       superAdmin: {
-        id: req.superAdmin._id,
-        name: req.superAdmin.name,
-        email: req.superAdmin.email,
-        role: req.superAdmin.role,
+        id:
+          req.superAdmin._id,
+
+        name:
+          req.superAdmin.name,
+
+        email:
+          req.superAdmin.email,
+
+        role:
+          req.superAdmin.role,
       },
     });
   }
@@ -136,7 +141,7 @@ router.patch(
 
 
 // =====================================================
-// RENEW SUBSCRIPTION
+// UPDATE MONTHLY CHARGE
 // =====================================================
 
 router.patch(
@@ -165,6 +170,17 @@ router.patch(
   '/shops/:shopId/password',
   protectSuperAdmin,
   resetShopAdminPassword
+);
+
+
+// =====================================================
+// GET SHOP PASSWORD HISTORY
+// =====================================================
+
+router.get(
+  '/shops/:shopId/password-history',
+  protectSuperAdmin,
+  getShopPasswordHistory
 );
 
 
