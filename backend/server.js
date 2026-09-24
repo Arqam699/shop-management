@@ -82,7 +82,7 @@ const developmentOrigins = [
 // -----------------------------------------------------
 
 const productionOrigins = [
-  'https://shop-frontend-black-ten.vercel.app',
+  'arzaibpos.vercel.app',
 ];
 
 // -----------------------------------------------------
