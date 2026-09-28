@@ -2,6 +2,19 @@ import axios from 'axios';
 import { getDeviceId } from './deviceIdentity';
 
 // ============================================================
+// FAIL FAST IN PRODUCTION
+// ============================================================
+
+if (
+  import.meta.env.PROD &&
+  !import.meta.env.VITE_API_URL
+) {
+  throw new Error(
+    'VITE_API_URL is required in production.'
+  );
+}
+
+// ============================================================
 // API
 // ============================================================
 
@@ -105,8 +118,14 @@ api.interceptors.response.use(
       code ===
         'SUBSCRIPTION_EXPIRED';
 
+    const isSuperAdminRequest =
+      requestUrl.includes(
+        '/api/super-admin'
+      );
+
     if (
       !isLoginRequest &&
+      !isSuperAdminRequest &&
       (
         shouldLogout ||
         status === 401 ||

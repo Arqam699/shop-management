@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
+import DataTable from '../components/DataTable';
+import useDebounce from '../utils/useDebounce';
 import api from '../utils/api';
 import {
   formatCnicSearchInput,
@@ -31,12 +33,17 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+const PAGE_SIZE = 25;
+
 const Invoices = () => {
   const { settings } = useSettings();
 
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [page, setPage] = useState(1);
   const [confirmConfig, setConfirmConfig] = useState(null);
 
   // Universal Date Filter states
@@ -69,6 +76,16 @@ const Invoices = () => {
   useEffect(() => {
     fetchInvoices();
   }, []);
+
+  // Reset to first page whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    debouncedSearchTerm,
+    filterPreset,
+    customStartDate,
+    customEndDate,
+  ]);
 
   // =====================================================
   // DELETE INVOICE & RESTORE STOCK
@@ -153,13 +170,15 @@ const Invoices = () => {
   // =====================================================
   // FILTERED INVOICES
   // =====================================================
-  const filteredInvoices = invoices.filter((inv) => {
+  const filteredInvoices = useMemo(
+    () =>
+      invoices.filter((inv) => {
     const custName = inv.customer?.fullName?.toLowerCase() || '';
     const sId = inv.saleId?.toLowerCase() || '';
     const prodName = inv.product?.name?.toLowerCase() || '';
     const custCnic = inv.customer?.cnic || inv.customer?.CNIC || '';
     const custMobile = inv.customer?.mobileNumber || inv.customer?.mobile || '';
-    const term = searchTerm.toLowerCase().trim();
+    const term = debouncedSearchTerm.toLowerCase().trim();
 
     const matchesSearch =
       custName.includes(term) ||
@@ -170,8 +189,16 @@ const Invoices = () => {
 
     const matchesDate = isDateInFilter(inv.saleDate || inv.createdAt);
 
-    return matchesSearch && matchesDate;
-  });
+      return matchesSearch && matchesDate;
+    }),
+    [
+      invoices,
+      debouncedSearchTerm,
+      filterPreset,
+      customStartDate,
+      customEndDate,
+    ]
+  );
 
   const totalInvoicedVal = filteredInvoices.reduce(
     (sum, inv) => sum + Number(inv.finalTotal || inv.totalAmount || 0),
@@ -185,6 +212,130 @@ const Invoices = () => {
 
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
+
+  // =====================================================
+  // INVOICES TABLE COLUMNS
+  // =====================================================
+
+  const invoiceColumns = [
+    {
+      key: 'saleId',
+      header: 'Invoice / Bill #',
+      className:
+        'px-5 py-3.5 font-black text-indigo-600 tracking-wider',
+      render: (inv) => inv.saleId || '—',
+    },
+    {
+      key: 'customer',
+      header: 'Customer Details',
+      render: (inv) => (
+        <div>
+          <p className="font-black text-slate-900">
+            {inv.customer?.fullName || 'Walk-in'}
+          </p>
+          <p className="text-[10px] text-slate-400 font-semibold">
+            {inv.customer?.mobileNumber || ''}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'product',
+      header: 'Product Details',
+      className:
+        'px-5 py-3.5 text-slate-700 font-bold truncate max-w-[170px]',
+      render: (inv) =>
+        inv.product?.name || 'Deleted Product',
+    },
+    {
+      key: 'finalTotal',
+      header: 'Final Total',
+      headerClassName: 'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-black text-slate-900',
+      render: (inv) =>
+        formatMoney(
+          inv.finalTotal || inv.totalAmount || 0
+        ),
+    },
+    {
+      key: 'downPayment',
+      header: 'Down Payment',
+      headerClassName: 'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-black text-emerald-600',
+      render: (inv) => (
+        <>+{formatMoney(inv.downPayment || 0)}</>
+      ),
+    },
+    {
+      key: 'remainingBalance',
+      header: 'Financing Dues',
+      headerClassName:
+        'px-5 py-4 text-right text-rose-600 font-black',
+      className:
+        'px-5 py-3.5 text-right font-black text-rose-600 text-sm',
+      render: (inv) =>
+        formatMoney(inv.remainingBalance || 0),
+    },
+    {
+      key: 'paymentType',
+      header: 'Payment Term',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: (inv) => (
+        <span
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
+            inv.paymentType === 'Cash'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+          }`}
+        >
+          {inv.paymentType || 'Cash'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: (inv) => (
+        <div className="flex items-center justify-center gap-1.5">
+          <Link
+            to={`/invoices/${inv._id}`}
+            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
+            title="Open Printable Thermal Slip"
+          >
+            <Eye className="w-4 h-4" />
+          </Link>
+
+          {isDeletionUnlocked ? (
+            <button
+              type="button"
+              onClick={() =>
+                handleDeleteInvoice(
+                  inv._id,
+                  inv.saleId
+                )
+              }
+              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+              title="Cancel Sale & Restore Stock"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-slate-400"
+              title="Deletion Mode is locked in Settings"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   // =====================================================
   // RENDER
@@ -398,125 +549,17 @@ const Invoices = () => {
       {/* =====================================================
           INVOICES LEDGER TABLE
       ====================================================== */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
-            <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
-              Accessing tax invoices database...
-            </span>
-          </div>
-        ) : filteredInvoices.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
-            <FileText className="w-12 h-12 text-slate-300" />
-            <p className="text-sm font-black text-slate-700">No tax invoices found</p>
-            <p className="text-xs text-slate-400 max-w-sm">
-              Try switching filters to "All-Time" or click "New Invoice Checkout" to generate fresh sales receipts.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600 font-medium">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                <tr>
-                  <th className="px-5 py-4">Invoice / Bill #</th>
-                  <th className="px-5 py-4">Customer Details</th>
-                  <th className="px-5 py-4">Product Details</th>
-                  <th className="px-5 py-4 text-right">Final Total</th>
-                  <th className="px-5 py-4 text-right">Down Payment</th>
-                  <th className="px-5 py-4 text-right text-rose-600 font-black">Financing Dues</th>
-                  <th className="px-5 py-4 text-center">Payment Term</th>
-                  <th className="px-5 py-4 text-center">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {filteredInvoices.map((inv) => (
-                  <tr
-                    key={inv._id}
-                    className="hover:bg-slate-50/80 transition-colors"
-                  >
-                    <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
-                      {inv.saleId || '—'}
-                    </td>
-
-                    <td className="px-5 py-3.5">
-                      <div>
-                        <p className="font-black text-slate-900">
-                          {inv.customer?.fullName || 'Walk-in'}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-semibold">
-                          {inv.customer?.mobileNumber || ''}
-                        </p>
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-3.5 text-slate-700 font-bold truncate max-w-[170px]">
-                      {inv.product?.name || 'Deleted Product'}
-                    </td>
-
-                    <td className="px-5 py-3.5 text-right font-black text-slate-900">
-                      {formatMoney(inv.finalTotal || inv.totalAmount || 0)}
-                    </td>
-
-                    <td className="px-5 py-3.5 text-right font-black text-emerald-600">
-                      +{formatMoney(inv.downPayment || 0)}
-                    </td>
-
-                    <td className="px-5 py-3.5 text-right font-black text-rose-600 text-sm">
-                      {formatMoney(inv.remainingBalance || 0)}
-                    </td>
-
-                    <td className="px-5 py-3.5 text-center">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
-                          inv.paymentType === 'Cash'
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                            : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                        }`}
-                      >
-                        {inv.paymentType || 'Cash'}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-3.5 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* View Printable Thermal Slip */}
-                        <Link
-                          to={`/invoices/${inv._id}`}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
-                          title="Open Printable Thermal Slip"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Link>
-
-                        {/* Delete Invoice */}
-                        {isDeletionUnlocked ? (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteInvoice(inv._id, inv.saleId)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
-                            title="Cancel Sale & Restore Stock"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <div
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-slate-400"
-                            title="Deletion Mode is locked in Settings"
-                          >
-                            <Lock className="w-3.5 h-3.5" />
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <DataTable
+        columns={invoiceColumns}
+        rows={filteredInvoices}
+        loading={loading}
+        page={page}
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+        emptyIcon={FileText}
+        emptyTitle="No tax invoices found"
+        emptyHint='Try switching filters to "All-Time" or click "New Invoice Checkout" to generate fresh sales receipts.'
+      />
 
       {/* CONFIRM DELETE MODAL */}
       <ConfirmModal

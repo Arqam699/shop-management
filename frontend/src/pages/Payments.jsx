@@ -1242,6 +1242,7 @@ const Payments = () => {
                     <div className="text-center">
                       {activeCustomerPhoto ? (
                         <img
+                          loading="lazy"
                           src={activeCustomerPhoto}
                           alt="Customer"
                           className="w-12 h-12 object-cover rounded-lg border border-slate-400 mx-auto"
@@ -1258,6 +1259,7 @@ const Payments = () => {
                     <div className="text-center">
                       {activeCustomerFingerprint ? (
                         <img
+                          loading="lazy"
                           src={activeCustomerFingerprint}
                           alt="Fingerprint"
                           className="w-12 h-12 object-contain rounded-lg border border-slate-400 bg-white mx-auto p-0.5"

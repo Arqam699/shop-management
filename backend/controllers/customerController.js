@@ -1,4 +1,8 @@
 const Customer = require('../models/Customer');
+const {
+  getPaginationParams,
+  paginatedResponse,
+} = require('../utils/pagination');
 
 
 // ==========================================
@@ -933,13 +937,36 @@ const getCustomers = async (req, res) => {
     // GET CUSTOMERS
     // ======================================
 
-    const customers =
-      await Customer
+    // ======================================
+    // OPTIONAL PAGINATION (backward compatible)
+    // ?page=1&limit=20 -> { data, pagination }
+    // no params       -> plain array (unchanged)
+    // ======================================
+
+    const pagination =
+      getPaginationParams(req);
+
+    let customersQuery =
+      Customer
         .find(query)
         .sort({
           createdAt: 1
         })
         .lean();
+
+    let totalCustomers = 0;
+
+    if (pagination) {
+      totalCustomers =
+        await Customer.countDocuments(query);
+
+      customersQuery = customersQuery
+        .skip(pagination.skip)
+        .limit(pagination.limit);
+    }
+
+    const customers =
+      await customersQuery;
 
     // ======================================
     // PAYMENT SCORES
@@ -969,6 +996,15 @@ const getCustomers = async (req, res) => {
     // ======================================
     // RESPONSE
     // ======================================
+
+    if (pagination) {
+      return paginatedResponse(
+        res,
+        customersWithScores,
+        totalCustomers,
+        pagination
+      );
+    }
 
     return res.status(200).json({
       success: true,

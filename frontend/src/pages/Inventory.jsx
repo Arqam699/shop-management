@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
+import DataTable from '../components/DataTable';
+import useDebounce from '../utils/useDebounce';
 
 import {
   Plus,
@@ -33,6 +35,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
+const PAGE_SIZE = 25;
+
 const Inventory = () => {
   const { settings } = useSettings();
 
@@ -45,6 +49,9 @@ const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [page, setPage] = useState(1);
 
   // =====================================================
   // INVENTORY INTELLIGENCE
@@ -180,6 +187,18 @@ const Inventory = () => {
     fetchProducts();
     fetchInventoryIntelligence();
   }, []);
+
+  // Reset to first page whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    debouncedSearchTerm,
+    selectedCategory,
+    selectedStatus,
+    filterPreset,
+    customStartDate,
+    customEndDate,
+  ]);
 
   // =====================================================
   // REFRESH INTELLIGENCE
@@ -410,8 +429,9 @@ const Inventory = () => {
   // FILTERED PRODUCTS
   // =====================================================
 
-  const filteredProducts =
-    products.filter((p) => {
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((p) => {
       const name =
         p.name
           ?.toLowerCase() ||
@@ -433,7 +453,7 @@ const Inventory = () => {
         '';
 
       const term =
-        searchTerm
+        debouncedSearchTerm
           .toLowerCase()
           .trim();
 
@@ -459,13 +479,23 @@ const Inventory = () => {
             p.purchaseDate
         );
 
-      return (
-        matchesSearch &&
-        matchesCategory &&
-        matchesStatus &&
-        matchesDate
-      );
-    });
+        return (
+          matchesSearch &&
+          matchesCategory &&
+          matchesStatus &&
+          matchesDate
+        );
+      }),
+    [
+      products,
+      debouncedSearchTerm,
+      selectedCategory,
+      selectedStatus,
+      filterPreset,
+      customStartDate,
+      customEndDate,
+    ]
+  );
 
   // =====================================================
   // EXPORT TO CSV
@@ -767,6 +797,150 @@ const Inventory = () => {
     </div>
   );
 };
+  // =====================================================
+  // INVENTORY TABLE COLUMNS
+  // =====================================================
+
+  const inventoryColumns = [
+    {
+      key: 'sku',
+      header: 'Product ID',
+      className:
+        'px-5 py-3.5 font-black text-indigo-600 tracking-wider',
+      render: (p) => p.sku || '—',
+    },
+    {
+      key: 'name',
+      header: 'Product Name',
+      className:
+        'px-5 py-3.5 font-black text-slate-900',
+      render: (p) => p.name,
+    },
+    {
+      key: 'brandModel',
+      header: 'Brand / Model',
+      className:
+        'px-5 py-3.5 text-slate-600 font-semibold',
+      render: (p) =>
+        [p.brand, p.model]
+          .filter(Boolean)
+          .join(' • ') || '—',
+    },
+    {
+      key: 'category',
+      header: 'Category',
+      render: (p) => (
+        <span className="inline-flex px-2 py-0.5 rounded-md bg-slate-100 font-bold text-[10px] text-slate-600">
+          {p.category || 'General'}
+        </span>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Stock Qty',
+      headerClassName:
+        'px-5 py-4 text-center',
+      className:
+        'px-5 py-3.5 text-center',
+      render: (p) => (
+        <span
+          className={`inline-flex min-w-7 justify-center px-2.5 py-1 rounded-full text-[10px] font-black border ${
+            p.quantity === 0
+              ? 'bg-rose-50 border-rose-200 text-rose-700'
+              : p.quantity <= 3
+              ? 'bg-amber-50 border-amber-200 text-amber-700'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+          }`}
+        >
+          {p.quantity} Units
+        </span>
+      ),
+    },
+    {
+      key: 'purchasePrice',
+      header: 'Purchase Price',
+      headerClassName:
+        'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-medium text-slate-500',
+      render: (p) =>
+        formatMoney(p.purchasePrice),
+    },
+    {
+      key: 'salePrice',
+      header: 'Sale Price',
+      headerClassName:
+        'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-black text-slate-900',
+      render: (p) =>
+        formatMoney(p.salePrice),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      headerClassName:
+        'px-5 py-4 text-center',
+      className:
+        'px-5 py-3.5 text-center',
+      render: (p) => (
+        <span
+          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black border ${
+            p.status === 'Available'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : p.status === 'Low Stock'
+              ? 'bg-amber-50 border-amber-200 text-amber-700'
+              : 'bg-rose-50 border-rose-200 text-rose-700'
+          }`}
+        >
+          {p.status || 'Available'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      headerClassName:
+        'px-5 py-4 text-center',
+      className:
+        'px-5 py-3.5 text-center',
+      render: (p) => (
+        <div className="flex items-center justify-center gap-1.5">
+          <Link
+            to={`/inventory/edit/${p._id}`}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+            title="Edit Product"
+          >
+            <Edit2 className="w-4 h-4" />
+          </Link>
+
+          {isDeletionUnlocked ? (
+            <button
+              type="button"
+              onClick={() =>
+                triggerDeleteConfirmation(
+                  p._id,
+                  p.name
+                )
+              }
+              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+              title="Delete Product"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
+              title="Deletion Mode is locked in Settings"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   // =====================================================
   // RENDER
   // =====================================================
@@ -1696,230 +1870,19 @@ const Inventory = () => {
 
         {/* =====================================================
             INVENTORY DATA TABLE
-        ====================================================== */}
+        ===================================================== */}
 
-        <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
-
-          {loading ? (
-            <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
-
-              <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-
-              <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
-                Accessing stock database...
-              </span>
-
-            </div>
-          ) : filteredProducts.length ===
-            0 ? (
-            <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
-
-              <Package className="w-12 h-12 text-slate-300" />
-
-              <p className="text-sm font-black text-slate-700">
-                No products found
-              </p>
-
-              <p className="text-xs text-slate-400 max-w-sm">
-                No inventory records match the current filters. Click "Add Product" to create new stock items.
-              </p>
-
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-
-              <table className="w-full text-left text-xs text-slate-600 font-medium">
-
-                <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
-
-                  <tr>
-
-                    <th className="px-5 py-4">
-                      Product ID
-                    </th>
-
-                    <th className="px-5 py-4">
-                      Product Name
-                    </th>
-
-                    <th className="px-5 py-4">
-                      Brand / Model
-                    </th>
-
-                    <th className="px-5 py-4">
-                      Category
-                    </th>
-
-                    <th className="px-5 py-4 text-center">
-                      Stock Qty
-                    </th>
-
-                    <th className="px-5 py-4 text-right">
-                      Purchase Price
-                    </th>
-
-                    <th className="px-5 py-4 text-right">
-                      Sale Price
-                    </th>
-
-                    <th className="px-5 py-4 text-center">
-                      Status
-                    </th>
-
-                    <th className="px-5 py-4 text-center">
-                      Actions
-                    </th>
-
-                  </tr>
-
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-
-                  {filteredProducts.map(
-                    (p) => (
-                      <tr
-                        key={
-                          p._id
-                        }
-                        className="hover:bg-slate-50/80 transition-colors"
-                      >
-
-                        <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
-                          {p.sku ||
-                            '—'}
-                        </td>
-
-                        <td className="px-5 py-3.5 font-black text-slate-900">
-                          {p.name}
-                        </td>
-
-                        <td className="px-5 py-3.5 text-slate-600 font-semibold">
-                          {[
-                            p.brand,
-                            p.model,
-                          ]
-                            .filter(
-                              Boolean
-                            )
-                            .join(
-                              ' • '
-                            ) ||
-                            '—'}
-                        </td>
-
-                        <td className="px-5 py-3.5">
-
-                          <span className="inline-flex px-2 py-0.5 rounded-md bg-slate-100 font-bold text-[10px] text-slate-600">
-                            {p.category ||
-                              'General'}
-                          </span>
-
-                        </td>
-
-                        <td className="px-5 py-3.5 text-center">
-
-                          <span
-                            className={`inline-flex min-w-7 justify-center px-2.5 py-1 rounded-full text-[10px] font-black border ${
-                              p.quantity ===
-                              0
-                                ? 'bg-rose-50 border-rose-200 text-rose-700'
-                                : p.quantity <=
-                                  3
-                                ? 'bg-amber-50 border-amber-200 text-amber-700'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                            }`}
-                          >
-                            {
-                              p.quantity
-                            }{' '}
-                            Units
-                          </span>
-
-                        </td>
-
-                        <td className="px-5 py-3.5 text-right font-medium text-slate-500">
-                          {formatMoney(
-                            p.purchasePrice
-                          )}
-                        </td>
-
-                        <td className="px-5 py-3.5 text-right font-black text-slate-900">
-                          {formatMoney(
-                            p.salePrice
-                          )}
-                        </td>
-
-                        <td className="px-5 py-3.5 text-center">
-
-                          <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black border ${
-                              p.status ===
-                              'Available'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                : p.status ===
-                                  'Low Stock'
-                                ? 'bg-amber-50 border-amber-200 text-amber-700'
-                                : 'bg-rose-50 border-rose-200 text-rose-700'
-                            }`}
-                          >
-                            {p.status ||
-                              'Available'}
-                          </span>
-
-                        </td>
-
-                        <td className="px-5 py-3.5 text-center">
-
-                          <div className="flex items-center justify-center gap-1.5">
-
-                            <Link
-                              to={`/inventory/edit/${p._id}`}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                              title="Edit Product"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Link>
-
-                            {isDeletionUnlocked ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  triggerDeleteConfirmation(
-                                    p._id,
-                                    p.name
-                                  )
-                                }
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
-                                title="Delete Product"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <div
-                                className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
-                                title="Deletion Mode is locked in Settings"
-                              >
-                                <Lock className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-                    )
-                  )}
-
-                </tbody>
-
-              </table>
-
-            </div>
-          )}
-
-        </div>
+        <DataTable
+          columns={inventoryColumns}
+          rows={filteredProducts}
+          loading={loading}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          emptyIcon={Package}
+          emptyTitle="No products found"
+          emptyHint='No inventory records match the current filters. Click "Add Product" to create new stock items.'
+        />
 
       </div>
 

@@ -1,4 +1,8 @@
 const Payment = require('../models/Payment');
+const {
+  getPaginationParams,
+  paginatedResponse,
+} = require('../utils/pagination');
 const Installment = require('../models/Installment');
 const InstallmentPlan = require('../models/InstallmentPlan');
 const Settings = require('../models/Settings');
@@ -90,37 +94,84 @@ const calculateInstallmentStatus = (installment) => {
 // ============================================================
 const getPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({
+    // --------------------------------------------------------
+    // OPTIONAL PAGINATION (backward compatible)
+    // ?page=1&limit=20 -> { data, pagination }
+    // no params       -> plain array (unchanged)
+    //
+    // Populate is restricted to the fields the payments UI
+    // actually reads (customer name/phone, sale/plan ids,
+    // product names, installment numbers/amounts).
+    // --------------------------------------------------------
+    const pagination =
+      getPaginationParams(req);
+
+    const paymentsFilter = {
       shopId: req.shopId,
       isArchived: { $ne: true },
-    })
-      .populate('customer')
+    };
+
+    let paymentsQuery = Payment.find(paymentsFilter)
+      .populate('customer', 'fullName mobileNumber cnic')
       .populate({
         path: 'sale',
+        select: 'saleId paymentType finalTotal',
         populate: {
           path: 'product',
+          select: 'name',
         },
       })
       .populate({
         path: 'installmentPlan',
+        select:
+          'planId remainingBalance totalAmount downPayment ' +
+          'treatDownPaymentAsFirstInstallment',
         populate: [
           {
             path: 'product',
+            select: 'name',
           },
           {
             path: 'sale',
+            select: 'saleId paymentType',
             populate: {
               path: 'product',
+              select: 'name',
             },
           },
         ],
       })
-      .populate('installment')
+      .populate(
+        'installment',
+        'installmentNumber amount originalAmount status dueDate'
+      )
       .sort({
         paymentDate: 1,
         createdAt: 1,
       })
       .lean();
+
+    let totalPayments = 0;
+
+    if (pagination) {
+      totalPayments =
+        await Payment.countDocuments(paymentsFilter);
+
+      paymentsQuery = paymentsQuery
+        .skip(pagination.skip)
+        .limit(pagination.limit);
+    }
+
+    const payments = await paymentsQuery;
+
+    if (pagination) {
+      return paginatedResponse(
+        res,
+        payments,
+        totalPayments,
+        pagination
+      );
+    }
 
     return res.status(200).json({
       success: true,

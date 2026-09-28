@@ -43,7 +43,6 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-
 /* =====================================================
    ICON WRAPPER
 ===================================================== */
@@ -101,7 +100,6 @@ const MenuIcon = ({
   );
 };
 
-
 /* =====================================================
    SIDEBAR MENU ITEM
 ===================================================== */
@@ -139,7 +137,6 @@ const SidebarMenuItem = ({
     isOpen ||
     (!isAnyMenuOpen && isChildActive)
   );
-
 
   /* =====================================================
      SIMPLE MENU ITEM
@@ -278,7 +275,6 @@ const SidebarMenuItem = ({
     );
   }
 
-
   /* =====================================================
      MENU WITH CHILDREN
   ===================================================== */
@@ -409,7 +405,6 @@ const SidebarMenuItem = ({
           </>
         )}
       </button>
-
 
       {/* =================================================
           EXPANDED SUBMENU
@@ -575,7 +570,6 @@ const SidebarMenuItem = ({
         </div>
       )}
 
-
       {/* =================================================
           COLLAPSED SUBMENU
       ================================================= */}
@@ -643,7 +637,6 @@ const SidebarMenuItem = ({
 
             </div>
           </div>
-
 
           <div className="space-y-1">
 
@@ -733,16 +726,225 @@ const SidebarMenuItem = ({
   );
 };
 
-
 /* =====================================================
    MAIN LAYOUT
 ===================================================== */
+
+/* =====================================================
+   NAVIGATION ITEMS
+===================================================== */
+
+const navItems = [
+
+  {
+    name: 'Dashboard',
+    path: '/dashboard',
+    icon: LayoutDashboard,
+  },
+
+  {
+    name: ' AI Shop Assistant',
+    path: '/assistant',
+    icon: Bot,
+  },
+
+  {
+    name: 'Due Dates',
+    path: '/due-dates',
+    icon: CalendarRange,
+  },
+
+  {
+    name: 'Inventory',
+    path: '/inventory',
+    icon: Boxes,
+  },
+
+  {
+    name: 'Customers',
+    icon: Users,
+    description: 'Customer Management',
+
+    children: [
+
+      {
+        name: 'Register Customers',
+        path: '/customers/add',
+        icon: UserPlus,
+      },
+
+      {
+        name: 'Customers List',
+        path: '/customers',
+        icon: List,
+      },
+
+      {
+        name: 'Customers Details',
+        path: '/customers/details',
+        icon: UserRound,
+      },
+
+      {
+        name: 'Customers Ledger',
+        path: '/customers/ledger',
+        icon: BookOpen,
+      },
+
+    ],
+  },
+
+  {
+    name: 'Sales',
+    icon: ShoppingCart,
+    description: 'Cash Sales Management',
+
+    children: [
+
+      {
+        name: 'Sales History',
+        path: '/sales',
+        icon: ShoppingCart,
+      },
+
+      {
+        name: 'New Cash Sale',
+        path: '/sales/new?type=cash',
+        icon: Banknote,
+      },
+
+    ],
+  },
+
+  {
+    name: 'Installments',
+    icon: Layers,
+    description: 'Installment Management',
+
+    children: [
+
+      {
+        name: 'Installment Sales',
+        path: '/installments',
+        icon: Layers,
+      },
+
+      {
+        name: 'New Installment Sale',
+        path: '/sales/new?type=installment',
+        icon: CalendarClock,
+      },
+
+    ],
+  },
+
+  {
+    name: 'Payments',
+    path: '/payments',
+    icon: CreditCard,
+  },
+
+  {
+    name: 'Invoices',
+    path: '/invoices',
+    icon: FileText,
+  },
+
+  {
+    name: 'Returns',
+    path: '/returns',
+    icon: RefreshCw,
+  },
+
+  {
+    name: 'Expenses',
+    path: '/expenses',
+    icon: Wallet,
+  },
+
+  {
+    name: 'Yearly Audits',
+    path: '/audits',
+    icon: CalendarRange,
+  },
+  {
+name: 'Backup',
+path: '/backup',
+icon: DatabaseBackup,
+},
+
+  {
+    name: 'Reports',
+    path: '/reports',
+    icon: BarChart3,
+  },
+
+  {
+    name: 'Settings',
+    path: '/settings',
+    icon: Settings,
+  },
+
+];
+
+/* =====================================================
+   ROUTE TITLES (shown as a label in the header)
+===================================================== */
+
+const PAGE_TITLES = {
+  '/dashboard': 'Dashboard',
+  '/assistant': 'AI Shop Assistant',
+  '/due-dates': 'Due Dates',
+  '/inventory': 'Inventory',
+  '/customers': 'Customers List',
+  '/customers/add': 'Register Customer',
+  '/customers/details': 'Customer Details',
+  '/customers/ledger': 'Customer Ledger',
+  '/sales': 'Sales History',
+  '/installments': 'Installment Sales',
+  '/payments': 'Payments',
+  '/invoices': 'Invoices',
+  '/returns': 'Returns',
+  '/expenses': 'Expenses',
+  '/audits': 'Yearly Audits',
+  '/backup': 'Backup',
+  '/reports': 'Reports',
+  '/settings': 'Settings',
+};
+
+const getPageTitle = (pathname, search) => {
+  if (pathname === '/sales/new') {
+    return search.includes('type=installment')
+      ? 'New Installment Sale'
+      : 'New Cash Sale';
+  }
+
+  if (PAGE_TITLES[pathname]) {
+    return PAGE_TITLES[pathname];
+  }
+
+  const prefix = Object.keys(PAGE_TITLES)
+    .sort((a, b) => b.length - a.length)
+    .find((route) =>
+      pathname.startsWith(route + '/')
+    );
+
+  return prefix
+    ? PAGE_TITLES[prefix]
+    : 'Dashboard';
+};
 
 export const Layout = ({ children }) => {
 
   const { admin, logout } = useAuth();
   const { settings } = useSettings();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const pageTitle = getPageTitle(
+    location.pathname,
+    location.search
+  );
 
   const [mobileOpen, setMobileOpen] =
     useState(false);
@@ -755,7 +957,6 @@ export const Layout = ({ children }) => {
 
   const [openMenu, setOpenMenu] =
     useState(null);
-
 
   /* =====================================================
      KEYBOARD
@@ -785,7 +986,6 @@ export const Layout = ({ children }) => {
 
   }, []);
 
-
   /* =====================================================
      LOGOUT
   ===================================================== */
@@ -793,7 +993,6 @@ export const Layout = ({ children }) => {
   const handleLogoutClick = () => {
     setLogoutModalOpen(true);
   };
-
 
   const confirmLogout = async () => {
 
@@ -803,7 +1002,6 @@ export const Layout = ({ children }) => {
 
     navigate('/login');
   };
-
 
   /* =====================================================
      NAVIGATION
@@ -820,7 +1018,6 @@ export const Layout = ({ children }) => {
     }
   };
 
-
   const toggleMenu = (menuName) => {
 
     setOpenMenu((currentMenu) =>
@@ -830,165 +1027,6 @@ export const Layout = ({ children }) => {
     );
 
   };
-
-
-  /* =====================================================
-     NAVIGATION ITEMS
-  ===================================================== */
-
-  const navItems = [
-
-    {
-      name: 'Dashboard',
-      path: '/dashboard',
-      icon: LayoutDashboard,
-    },
-
-    {
-      name: ' AI Shop Assistant',
-      path: '/assistant',
-      icon: Bot,
-    },
-
-    {
-      name: 'Due Dates',
-      path: '/due-dates',
-      icon: CalendarRange,
-    },
-
-    {
-      name: 'Inventory',
-      path: '/inventory',
-      icon: Boxes,
-    },
-
-    {
-      name: 'Customers',
-      icon: Users,
-      description: 'Customer Management',
-
-      children: [
-
-        {
-          name: 'Register Customers',
-          path: '/customers/add',
-          icon: UserPlus,
-        },
-
-        {
-          name: 'Customers List',
-          path: '/customers',
-          icon: List,
-        },
-
-        {
-          name: 'Customers Details',
-          path: '/customers/details',
-          icon: UserRound,
-        },
-
-        {
-          name: 'Customers Ledger',
-          path: '/customers/ledger',
-          icon: BookOpen,
-        },
-
-      ],
-    },
-
-    {
-      name: 'Sales',
-      icon: ShoppingCart,
-      description: 'Cash Sales Management',
-
-      children: [
-
-        {
-          name: 'Sales History',
-          path: '/sales',
-          icon: ShoppingCart,
-        },
-
-        {
-          name: 'New Cash Sale',
-          path: '/sales/new?type=cash',
-          icon: Banknote,
-        },
-
-      ],
-    },
-
-    {
-      name: 'Installments',
-      icon: Layers,
-      description: 'Installment Management',
-
-      children: [
-
-        {
-          name: 'Installment Sales',
-          path: '/installments',
-          icon: Layers,
-        },
-
-        {
-          name: 'New Installment Sale',
-          path: '/sales/new?type=installment',
-          icon: CalendarClock,
-        },
-
-      ],
-    },
-
-    {
-      name: 'Payments',
-      path: '/payments',
-      icon: CreditCard,
-    },
-
-    {
-      name: 'Invoices',
-      path: '/invoices',
-      icon: FileText,
-    },
-
-    {
-      name: 'Returns',
-      path: '/returns',
-      icon: RefreshCw,
-    },
-
-    {
-      name: 'Expenses',
-      path: '/expenses',
-      icon: Wallet,
-    },
-
-    {
-      name: 'Yearly Audits',
-      path: '/audits',
-      icon: CalendarRange,
-    },
-    {
-  name: 'Backup',
-  path: '/backup',
-  icon: DatabaseBackup,
-},
-
-    {
-      name: 'Reports',
-      path: '/reports',
-      icon: BarChart3,
-    },
-
-    {
-      name: 'Settings',
-      path: '/settings',
-      icon: Settings,
-    },
-
-  ];
-
 
   /* =====================================================
      SIDEBAR
@@ -1037,7 +1075,6 @@ export const Layout = ({ children }) => {
           blur-3xl
         "
       />
-
 
       {/* =================================================
           BRAND
@@ -1156,7 +1193,6 @@ export const Layout = ({ children }) => {
 
       </div>
 
-
       {/* =================================================
           NAVIGATION
       ================================================= */}
@@ -1224,7 +1260,6 @@ export const Layout = ({ children }) => {
 
         )}
 
-
         <div className="space-y-1.5">
 
           {navItems.map((item) => (
@@ -1254,7 +1289,6 @@ export const Layout = ({ children }) => {
         </div>
 
       </nav>
-
 
       {/* =================================================
           USER PANEL
@@ -1417,7 +1451,6 @@ export const Layout = ({ children }) => {
     </div>
   );
 
-
   /* =====================================================
      MAIN LAYOUT
   ===================================================== */
@@ -1461,7 +1494,6 @@ export const Layout = ({ children }) => {
       >
         {sidebarContent}
       </aside>
-
 
       {/* =================================================
           MOBILE DRAWER
@@ -1555,7 +1587,6 @@ export const Layout = ({ children }) => {
 
       </div>
 
-
       {/* =================================================
           MAIN CONTENT
       ================================================= */}
@@ -1602,7 +1633,6 @@ export const Layout = ({ children }) => {
           "
         />
 
-
         {/* =================================================
             LOGOUT MODAL
         ================================================= */}
@@ -1616,7 +1646,6 @@ export const Layout = ({ children }) => {
           title="Confirm Logout"
           message="Are you sure you want to log out of your session?"
         />
-
 
         {/* =================================================
             HEADER
@@ -1676,7 +1705,6 @@ export const Layout = ({ children }) => {
               <Menu className="h-5 w-5" />
             </button>
 
-
             {/* DESKTOP COLLAPSE */}
 
             <button
@@ -1731,7 +1759,6 @@ export const Layout = ({ children }) => {
 
             </button>
 
-
             {/* TITLE */}
 
             <div className="min-w-0">
@@ -1766,8 +1793,31 @@ export const Layout = ({ children }) => {
 
             </div>
 
-          </div>
+            {/* CURRENT PAGE LABEL */}
 
+            <span
+              className="
+                hidden
+                shrink-0
+                items-center
+                rounded-full
+                border
+                border-indigo-200
+                bg-indigo-50
+                px-3
+                py-1
+                text-[10px]
+                font-black
+                uppercase
+                tracking-[0.14em]
+                text-indigo-700
+                sm:inline-flex
+              "
+            >
+              {pageTitle}
+            </span>
+
+          </div>
 
           {/* =================================================
               RIGHT SIDE
@@ -1855,7 +1905,6 @@ export const Layout = ({ children }) => {
 
         </header>
 
-
         {/* =================================================
             PAGE CONTENT
         ================================================= */}
@@ -1877,73 +1926,12 @@ export const Layout = ({ children }) => {
 
       </div>
 
-
       {/* =================================================
           ANIMATIONS
       ================================================= */}
 
-      <style>{`
-
-        @keyframes menuPop {
-
-          from {
-            opacity: 0;
-            transform:
-              translateX(-8px)
-              scale(0.97);
-          }
-
-          to {
-            opacity: 1;
-            transform:
-              translateX(0)
-              scale(1);
-          }
-
-        }
-
-
-        @keyframes pageEnter {
-
-          from {
-            opacity: 0;
-            transform:
-              translateY(8px);
-          }
-
-          to {
-            opacity: 1;
-            transform:
-              translateY(0);
-          }
-
-        }
-
-
-        nav::-webkit-scrollbar {
-          width: 5px;
-        }
-
-        nav::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        nav::-webkit-scrollbar-thumb {
-          background:
-            rgba(148, 163, 184, 0.14);
-          border-radius: 999px;
-        }
-
-        nav::-webkit-scrollbar-thumb:hover {
-          background:
-            rgba(96, 165, 250, 0.35);
-        }
-
-      `}</style>
-
     </div>
   );
 };
-
 
 export default Layout;

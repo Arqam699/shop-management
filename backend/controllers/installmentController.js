@@ -1,4 +1,8 @@
 const InstallmentPlan = require('../models/InstallmentPlan');
+const {
+  getPaginationParams,
+  paginatedResponse,
+} = require('../utils/pagination');
 const Installment = require('../models/Installment');
 const Payment = require('../models/Payment');
 const Sale = require('../models/Sale');
@@ -243,16 +247,44 @@ const getInstallmentPlans = async (
   try {
     const shopId = req.shopId;
 
-    const plans =
-      await InstallmentPlan.find({
-        shopId
-      })
-        .populate('customer')
-        .populate('product')
-        .populate('sale')
+    // --------------------------------------------------------
+    // OPTIONAL PAGINATION (backward compatible)
+    // ?page=1&limit=20 -> { data, pagination }
+    // no params       -> plain array (unchanged)
+    //
+    // In paginated mode the overdue refresh + financial
+    // enrichment run only on the requested page.
+    // --------------------------------------------------------
+    const pagination =
+      getPaginationParams(req);
+
+    const plansFilter = {
+      shopId
+    };
+
+    const buildPlansQuery = () =>
+      InstallmentPlan.find(plansFilter)
+        .populate('customer', 'fullName mobileNumber cnic')
+        .populate('product', 'name')
+        .populate('sale', 'saleId paymentType')
         .sort({
           createdAt: -1
         });
+
+    let totalPlans = 0;
+
+    const applyPaging = (q) =>
+      pagination
+        ? q.skip(pagination.skip).limit(pagination.limit)
+        : q;
+
+    if (pagination) {
+      totalPlans =
+        await InstallmentPlan.countDocuments(plansFilter);
+    }
+
+    const plans =
+      await applyPaging(buildPlansQuery());
 
     await Promise.all(
       plans.map((plan) =>
@@ -264,15 +296,7 @@ const getInstallmentPlans = async (
     );
 
     const refreshedPlans =
-      await InstallmentPlan.find({
-        shopId
-      })
-        .populate('customer')
-        .populate('product')
-        .populate('sale')
-        .sort({
-          createdAt: -1
-        })
+      await applyPaging(buildPlansQuery())
         .lean();
 
     // ========================================================
@@ -304,6 +328,15 @@ const getInstallmentPlans = async (
 
       plan.installmentScheduleTotal =
         totals.scheduledTotal;
+    }
+
+    if (pagination) {
+      return paginatedResponse(
+        res,
+        refreshedPlans,
+        totalPlans,
+        pagination
+      );
     }
 
     return res.status(200).json({

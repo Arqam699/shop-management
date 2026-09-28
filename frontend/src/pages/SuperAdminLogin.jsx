@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../utils/api';
 import {
   ShieldCheck,
   Mail,
@@ -16,10 +17,6 @@ import {
   EyeOff,
 } from 'lucide-react';
 
-const API_URL = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000'
-).replace(/\/$/, '');
-
 const SuperAdminLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,22 +32,24 @@ const SuperAdminLogin = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/super-admin/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
+      const response = await api.post(
+        '/api/super-admin/login',
+        {
           email: email.trim(),
           password,
-        }),
-      });
+        }
+      );
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Super Admin login failed');
+      // axios only resolves on 2xx — same as the old
+      // response.ok check. An explicit success: false
+      // payload is still treated as a failed login.
+      if (data && data.success === false) {
+        throw new Error(
+          data.message ||
+            'Super Admin login failed'
+        );
       }
 
       navigate('/super-admin/dashboard', {
@@ -58,7 +57,11 @@ const SuperAdminLogin = () => {
       });
     } catch (error) {
       console.error('Super Admin Login Error:', error);
-      setError(error.message || 'Super Admin login failed');
+      setError(
+        error.response?.data?.message ||
+          error.message ||
+          'Super Admin login failed'
+      );
     } finally {
       setLoading(false);
     }

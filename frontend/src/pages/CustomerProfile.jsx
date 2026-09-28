@@ -1221,6 +1221,7 @@ const CustomerProfile = () => {
 
           {fingerprintSrc ? (
             <img
+              loading="lazy"
               src={fingerprintSrc}
               alt={`${personLabel} Fingerprint`}
             />
@@ -1245,6 +1246,7 @@ const CustomerProfile = () => {
 
           {photoSrc ? (
             <img
+              loading="lazy"
               src={photoSrc}
               alt={`${personLabel} Photo`}
             />

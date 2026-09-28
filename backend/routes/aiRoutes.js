@@ -4,6 +4,7 @@ const express = require('express');
 const {
   handleAiChat,
   getAiHistory,
+  getAiUsage,
 } = require('../controllers/aiController');
 
 const {
@@ -30,6 +31,16 @@ router.get(
   '/history',
   protect,
   getAiHistory
+);
+
+// ========================================================
+// TODAY'S SMART (LLM) USAGE
+// ========================================================
+
+router.get(
+  '/usage',
+  protect,
+  getAiUsage
 );
 
 module.exports = router;

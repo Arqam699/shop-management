@@ -164,8 +164,8 @@ const getDashboardStats = async (
       Sale.find({
         shopId,
       })
-        .populate('customer')
-        .populate('product')
+        .populate('customer', 'fullName mobileNumber')
+        .populate('product', 'name model purchasePrice')
         .sort({
           createdAt: 1,
         })
@@ -178,8 +178,8 @@ const getDashboardStats = async (
       InstallmentPlan.find({
         shopId,
       })
-        .populate('customer')
-        .populate('product')
+        .populate('customer', 'fullName mobileNumber mobile cnic')
+        .populate('product', 'name model')
         .sort({
           createdAt: 1,
         })
@@ -195,10 +195,10 @@ const getDashboardStats = async (
           $ne: true,
         },
       })
-        .populate('customer')
-        .populate('sale')
-        .populate('installmentPlan')
-        .populate('installment')
+        .populate('customer', 'fullName mobileNumber')
+        .populate('sale', 'saleId')
+        .populate('installmentPlan', 'planId')
+        .populate('installment', 'installmentNumber')
         .sort({
           createdAt: 1,
         })
@@ -866,11 +866,15 @@ const getDashboardStats = async (
             {
               path:
                 'customer',
+              select:
+                'fullName mobileNumber',
             },
 
             {
               path:
                 'product',
+              select:
+                'name',
             },
           ],
         })

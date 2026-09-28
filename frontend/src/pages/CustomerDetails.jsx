@@ -432,6 +432,7 @@ const getPaymentScore = (customer) => {
                     <div className="shrink-0">
                       {photo ? (
                         <img
+                          loading="lazy"
                           src={photo}
                           alt={name || 'Customer'}
                           className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-sm"

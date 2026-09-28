@@ -104,26 +104,6 @@ const EXCLUDED_FIELDS = new Set([
 ]);
 
 // ============================================================
-// BACKUP-ONLY FIELDS
-// ============================================================
-
-const BACKUP_ONLY_FIELDS = new Set([
-  'backupCustomerName',
-  'backupCustomerId',
-  'backupInvoiceNumber',
-  'backupProductName',
-  'backupProductId',
-  'backupInstallmentPlanId',
-  'backupSaleId',
-  'backupInstallmentId',
-  'backupPlanDurationMonths',
-  'backupPlanDownPayment',
-  'backupPlanTotalAmount',
-  'backupPlanInstallmentAmount',
-  'backupPlanTotalInstallments',
-]);
-
-// ============================================================
 // ENVIRONMENT
 // ============================================================
 
@@ -347,7 +327,7 @@ const isValidBackupDate = (date) => {
 // ============================================================
 
 const formatFieldName = (key) => {
-  return String(key)
+  const cleaned = String(key)
     .replace(
       /([a-z])([A-Z])/g,
       '$1 $2'
@@ -360,12 +340,17 @@ const formatFieldName = (key) => {
       /\s+/g,
       ' '
     )
-    .replace(
-      /^./,
-      (char) =>
-        char.toUpperCase()
-    )
     .trim();
+
+  if (cleaned.toLowerCase() === 'id') {
+    return 'ID';
+  }
+
+  return cleaned.replace(
+    /^./,
+    (char) =>
+      char.toUpperCase()
+  );
 };
 
 // ============================================================
@@ -480,11 +465,15 @@ const cleanObject = (
   value,
   currentKey = ''
 ) => {
+  // Human-readable backup: hide empty values entirely.
+  // (0 and false are meaningful and are kept.)
+
   if (
     value === null ||
-    value === undefined
+    value === undefined ||
+    value === ''
   ) {
-    return value;
+    return undefined;
   }
 
   const lowerKey =
@@ -583,6 +572,10 @@ const cleanObject = (
   if (
     Array.isArray(value)
   ) {
+    if (!value.length) {
+      return undefined;
+    }
+
     return value
       .map((item) =>
         cleanObject(
@@ -1075,6 +1068,56 @@ const getCustomerName = (
     'Unknown Customer'
   );
 };
+const getCustomerMobile = (
+  customer
+) => {
+  if (!customer) {
+    return 'Not Available';
+  }
+
+  return (
+    getFirstValue(
+      customer,
+      [
+        'mobileNumber',
+        'phone',
+        'mobile',
+        'phoneNumber',
+        'contact',
+      ]
+    ) ||
+    'Not Available'
+  );
+};
+
+// ============================================================
+// STRIP RESOLVED REFS
+//
+// Jab reference successfully resolve ho jaye (naam mil jaye),
+// to raw ObjectId field hata do — backup* fields me readable
+// info pehle se mojood hai. Resolve na ho to raw ID rehne do.
+// ============================================================
+
+const stripResolvedRefs = (
+  record,
+  resolved = []
+) => {
+  for (
+    const [
+      found,
+      keys,
+    ] of resolved
+  ) {
+    if (found) {
+      for (const key of keys) {
+        delete record[key];
+      }
+    }
+  }
+
+  return record;
+};
+
 
 // ============================================================
 // PRODUCT NAME
@@ -1188,32 +1231,45 @@ const enrichSales = (
           productId
         );
 
-      return {
-        ...sale,
-
+      const enriched = {
         backupCustomerName:
           getCustomerName(
             customer
           ),
 
-        backupCustomerId:
-          customerId ||
-          'Not Available',
+        backupCustomerMobile:
+          getCustomerMobile(
+            customer
+          ),
 
         backupProductName:
           getProductName(
             product
           ),
 
-        backupProductId:
-          productId ||
-          'Not Available',
-
         backupInvoiceNumber:
           getInvoiceNumber(
             sale
           ),
+
+        ...sale,
+
+        backupCustomerId:
+          customerId ||
+          'Not Available',
+
+        backupProductId:
+          productId ||
+          'Not Available',
       };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [customer, ['customer', 'customerId']],
+          [product, ['product', 'productId']],
+        ]
+      );
     }
   );
 };
@@ -1246,6 +1302,15 @@ const enrichInstallmentPlans = (
           ]
         );
 
+      const productId =
+        getReferenceId(
+          plan,
+          [
+            'productId',
+            'product',
+          ]
+        );
+
       const customer =
         findByIdFromMap(
           maps.customers,
@@ -1258,62 +1323,34 @@ const enrichInstallmentPlans = (
           saleId
         );
 
-      const durationMonths =
-        getFirstValue(
-          plan,
-          [
-            'durationMonths',
-            'months',
-            'duration',
-          ]
+      const product =
+        findByIdFromMap(
+          maps.products,
+          productId
         );
 
-      const downPayment =
-        getFirstValue(
-          plan,
-          [
-            'downPayment',
-            'advancePayment',
-          ]
-        );
-
-      const totalAmount =
-        getFirstValue(
-          plan,
-          [
-            'totalAmount',
-            'grandTotal',
-            'amount',
-          ]
-        );
-
-      const installmentAmount =
-        getFirstValue(
-          plan,
-          [
-            'installmentAmount',
-            'monthlyInstallment',
-            'perInstallment',
-          ]
-        );
-
-      const totalInstallments =
-        getFirstValue(
-          plan,
-          [
-            'totalInstallments',
-            'numberOfInstallments',
-            'installmentsCount',
-          ]
-        );
-
-      return {
-        ...plan,
-
+      const enriched = {
         backupCustomerName:
           getCustomerName(
             customer
           ),
+
+        backupCustomerMobile:
+          getCustomerMobile(
+            customer
+          ),
+
+        backupProductName:
+          getProductName(
+            product
+          ),
+
+        backupInvoiceNumber:
+          getInvoiceNumber(
+            sale
+          ),
+
+        ...plan,
 
         backupCustomerId:
           customerId ||
@@ -1323,31 +1360,24 @@ const enrichInstallmentPlans = (
           saleId ||
           'Not Available',
 
-        backupInvoiceNumber:
-          getInvoiceNumber(
-            sale
-          ),
+        backupProductId:
+          productId ||
+          'Not Available',
 
         backupInstallmentPlanId:
           getIdString(
             plan?._id
           ),
-
-        backupPlanDurationMonths:
-          durationMonths,
-
-        backupPlanDownPayment:
-          downPayment,
-
-        backupPlanTotalAmount:
-          totalAmount,
-
-        backupPlanInstallmentAmount:
-          installmentAmount,
-
-        backupPlanTotalInstallments:
-          totalInstallments,
       };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [customer, ['customer', 'customerId']],
+          [sale, ['sale', 'saleId']],
+          [product, ['product', 'productId']],
+        ]
+      );
     }
   );
 };
@@ -1362,6 +1392,26 @@ const enrichInstallments = (
 ) => {
   return installments.map(
     (installment) => {
+      const planId =
+        getReferenceId(
+          installment,
+          [
+            'installmentPlanId',
+            'installmentPlan',
+            'planId',
+            'plan',
+          ]
+        );
+
+      const plan =
+        findByIdFromMap(
+          maps.installmentPlans,
+          planId
+        );
+
+      // Installment me direct customer/sale nahi hota —
+      // plan ke through resolve karo.
+
       const customerId =
         getReferenceId(
           installment,
@@ -1369,6 +1419,17 @@ const enrichInstallments = (
             'customerId',
             'customer',
           ]
+        ) ||
+        (
+          plan
+            ? getReferenceId(
+              plan,
+              [
+                'customerId',
+                'customer',
+              ]
+            )
+            : ''
         );
 
       const saleId =
@@ -1378,16 +1439,17 @@ const enrichInstallments = (
             'saleId',
             'sale',
           ]
-        );
-
-      const planId =
-        getReferenceId(
-          installment,
-          [
-            'installmentPlanId',
-            'planId',
-            'plan',
-          ]
+        ) ||
+        (
+          plan
+            ? getReferenceId(
+              plan,
+              [
+                'saleId',
+                'sale',
+              ]
+            )
+            : ''
         );
 
       const customer =
@@ -1402,13 +1464,23 @@ const enrichInstallments = (
           saleId
         );
 
-      return {
-        ...installment,
-
+      const enriched = {
         backupCustomerName:
           getCustomerName(
             customer
           ),
+
+        backupCustomerMobile:
+          getCustomerMobile(
+            customer
+          ),
+
+        backupInvoiceNumber:
+          getInvoiceNumber(
+            sale
+          ),
+
+        ...installment,
 
         backupCustomerId:
           customerId ||
@@ -1417,11 +1489,6 @@ const enrichInstallments = (
         backupSaleId:
           saleId ||
           'Not Available',
-
-        backupInvoiceNumber:
-          getInvoiceNumber(
-            sale
-          ),
 
         backupInstallmentPlanId:
           planId ||
@@ -1432,6 +1499,15 @@ const enrichInstallments = (
             installment?._id
           ),
       };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [customer, ['customer', 'customerId']],
+          [sale, ['sale', 'saleId']],
+          [plan, ['installmentPlan', 'installmentPlanId', 'planId', 'plan']],
+        ]
+      );
     }
   );
 };
@@ -1485,13 +1561,29 @@ const enrichPayments = (
           saleId
         );
 
-      return {
-        ...payment,
+      const installment =
+        findByIdFromMap(
+          maps.installments,
+          installmentId
+        );
 
+      const enriched = {
         backupCustomerName:
           getCustomerName(
             customer
           ),
+
+        backupCustomerMobile:
+          getCustomerMobile(
+            customer
+          ),
+
+        backupInvoiceNumber:
+          getInvoiceNumber(
+            sale
+          ),
+
+        ...payment,
 
         backupCustomerId:
           customerId ||
@@ -1501,18 +1593,174 @@ const enrichPayments = (
           saleId ||
           'Not Available',
 
+        backupInstallmentId:
+          installmentId ||
+          'Not Available',
+      };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [customer, ['customer', 'customerId']],
+          [sale, ['sale', 'saleId']],
+          [installment, ['installment', 'installmentId']],
+        ]
+      );
+    }
+  );
+};
+
+// ============================================================
+// ENRICH RETURNS
+// ============================================================
+
+const enrichReturns = (
+  returns = [],
+  maps
+) => {
+  return returns.map(
+    (ret) => {
+      const customerId =
+        getReferenceId(
+          ret,
+          [
+            'customerId',
+            'customer',
+          ]
+        );
+
+      const saleId =
+        getReferenceId(
+          ret,
+          [
+            'saleId',
+            'sale',
+          ]
+        );
+
+      const productId =
+        getReferenceId(
+          ret,
+          [
+            'productId',
+            'product',
+          ]
+        );
+
+      const customer =
+        findByIdFromMap(
+          maps.customers,
+          customerId
+        );
+
+      const sale =
+        findByIdFromMap(
+          maps.sales,
+          saleId
+        );
+
+      const product =
+        findByIdFromMap(
+          maps.products,
+          productId
+        );
+
+      const enriched = {
+        backupCustomerName:
+          getCustomerName(
+            customer
+          ),
+
+        backupCustomerMobile:
+          getCustomerMobile(
+            customer
+          ),
+
+        backupProductName:
+          getProductName(
+            product
+          ),
+
         backupInvoiceNumber:
           getInvoiceNumber(
             sale
           ),
 
-        backupInstallmentId:
-          installmentId ||
+        ...ret,
+
+        backupCustomerId:
+          customerId ||
+          'Not Available',
+
+        backupSaleId:
+          saleId ||
+          'Not Available',
+
+        backupProductId:
+          productId ||
           'Not Available',
       };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [customer, ['customer', 'customerId']],
+          [sale, ['sale', 'saleId']],
+          [product, ['product', 'productId']],
+        ]
+      );
     }
   );
 };
+
+// ============================================================
+// ENRICH STOCK MOVEMENTS
+// ============================================================
+
+const enrichStockMovements = (
+  movements = [],
+  maps
+) => {
+  return movements.map(
+    (movement) => {
+      const productId =
+        getReferenceId(
+          movement,
+          [
+            'productId',
+            'product',
+          ]
+        );
+
+      const product =
+        findByIdFromMap(
+          maps.products,
+          productId
+        );
+
+      const enriched = {
+        backupProductName:
+          getProductName(
+            product
+          ),
+
+        ...movement,
+
+        backupProductId:
+          productId ||
+          'Not Available',
+      };
+
+      return stripResolvedRefs(
+        enriched,
+        [
+          [product, ['product', 'productId']],
+        ]
+      );
+    }
+  );
+};
+
 
 // ============================================================
 // CREATE COLLECTION TEXT
@@ -1576,6 +1824,11 @@ const createCollectionText = (
           record
         );
 
+      // Har record me same shopId dohraya jata — insan ke
+      // parhne ke liye shor hai, is liye display se hata do.
+
+      delete cleaned.shopId;
+
       text += objectToText(
         cleaned
       );
@@ -1605,7 +1858,7 @@ const createShopText = (
   );
 
   const cleaned =
-    cleanObject(
+    cleanShopForBackup(
       shop
     );
 
@@ -1614,6 +1867,9 @@ const createShopText = (
   );
 
   text += '\n';
+
+  text += 'Note: Subscription / renewal / IP / device details are ';
+  text += 'superadmin-only and are excluded from this backup.\n';
 
   return text;
 };
@@ -1670,6 +1926,8 @@ EXCLUDED DATA
 - Fingerprint images
 - Live/captured biometric images
 - Fingerprint buffers
+- Shop subscription / renewal history (superadmin-only)
+- Shop login IPs and device details (superadmin-only)
 
 IMPORTANT
 ---------
@@ -1807,21 +2065,7 @@ const createBackupSummaryText = (
 const loadShopData = async (
   shopId
 ) => {
-  console.log('');
-  console.log(
-    '============================================================'
-  );
-  console.log(
-    '[BACKUP] STARTING SHOP DATA LOAD'
-  );
-  console.log(
-    '============================================================'
-  );
-
-  console.log(
-    '[BACKUP] Received shopId:',
-    shopId
-  );
+  console.log('[BACKUP] Loading shop data...');
 
   const shopObjId =
     toObjectId(
@@ -1862,10 +2106,7 @@ const loadShopData = async (
     ) ||
     'Unknown Shop';
 
-  console.log(
-    '[BACKUP] Shop found:',
-    shopName
-  );
+  console.log(`[BACKUP] Shop: ${shopName}`);
 
   // ==========================================================
   // DATA
@@ -1885,10 +2126,6 @@ const loadShopData = async (
       BACKUP_MODELS
     )
   ) {
-    console.log(
-      `[BACKUP] Loading: ${key}`
-    );
-
     try {
       const schemaPaths =
         Model.schema?.paths ||
@@ -1967,11 +2204,7 @@ const loadShopData = async (
         }
       }
 
-      console.log(
-        `[BACKUP] ${key}: ${
-          data[key].length
-        } records`
-      );
+
     } catch (error) {
       console.error(
         `[BACKUP] Failed collection ${key}:`,
@@ -2053,6 +2286,18 @@ const loadShopData = async (
       maps
     );
 
+  data.returns =
+    enrichReturns(
+      data.returns || [],
+      maps
+    );
+
+  data.stockMovements =
+    enrichStockMovements(
+      data.stockMovements || [],
+      maps
+    );
+
   // ==========================================================
   // CLEAN
   // ==========================================================
@@ -2081,15 +2326,11 @@ const loadShopData = async (
             record !== null
         );
 
-    console.log(
-      `[BACKUP] Cleaned ${key}: ${
-        cleanedData[key].length
-      } records`
-    );
+
   }
 
   const cleanedShop =
-    cleanObject(
+    cleanShopForBackup(
       shop
     );
 
@@ -2105,7 +2346,7 @@ const loadShopData = async (
   }
 
   console.log(
-    `[BACKUP] TOTAL RECORDS: ${totalRecords}`
+    `[BACKUP] Done. Total records: ${totalRecords}`
   );
 
   return {
@@ -2117,6 +2358,42 @@ const loadShopData = async (
   };
 };
 
+
+// ============================================================
+// SHOP SENSITIVE FIELDS
+//
+// Subscription / renewal / IP / device / auth internals are
+// SUPERADMIN-only and NEVER go into the shop backup TXT.
+// ============================================================
+
+const SHOP_SENSITIVE_FIELDS = new Set([
+  'subscriptionplan',
+  'subscriptionstatus',
+  'suspensionreason',
+  'suspendedat',
+  'subscriptionexpiresat',
+  'subscriptionhistory',
+  'mustchangepassword',
+  'passwordchangehistory',
+  'authorizeddevices',
+  'authversion',
+  'loginiphistory',
+  'lastloginip',
+  'lastloginat',
+]);
+
+const cleanShopForBackup = (shop) => {
+  const cleaned = cleanObject(shop) || {};
+  const out = {};
+
+  for (const [key, value] of Object.entries(cleaned)) {
+    if (!SHOP_SENSITIVE_FIELDS.has(String(key).toLowerCase())) {
+      out[key] = value;
+    }
+  }
+
+  return out;
+};
 // ============================================================
 // CREATE METADATA
 // ============================================================

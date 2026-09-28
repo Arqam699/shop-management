@@ -2,12 +2,18 @@ const mongoose = require('mongoose');
 
 const localService = require('../services/localSearchService');
 const AiChatHistory = require('../models/AiChatHistory');
+const aiAgentService = require('../services/aiAgentService');
 
 const executeQuery =
   typeof localService === 'function'
     ? localService
     : localService.processLocalQuery ||
       localService.default;
+
+// Local engine's "I don't understand" signal. When the local
+// answer contains this, the query escalates to the LLM agent.
+const LOCAL_NOT_UNDERSTOOD_MARKER =
+  'exact data route nahi mila';
 
 // ============================================================
 // PAKISTAN DATE
@@ -28,7 +34,7 @@ const getPakistanDate = () => {
 
 const handleAiChat = async (req, res) => {
   try {
-    const { message } = req.body || {};
+    const { message, confirmedAction } = req.body || {};
 
     // ========================================================
     // SHOP ID FROM PROTECTED AUTH CONTEXT
@@ -103,6 +109,44 @@ const handleAiChat = async (req, res) => {
     );
 
     // ========================================================
+    // CONFIRMED WRITE ACTION (from AI agent confirmation card)
+    // ========================================================
+
+    if (confirmedAction && confirmedAction.tool) {
+      const actionResult =
+        await aiAgentService.executeConfirmedAction({
+          shopId: shop._id,
+          tool: confirmedAction.tool,
+          args: confirmedAction.args || {},
+        });
+
+      const confirmedAnswer = actionResult.message;
+
+      try {
+        await AiChatHistory.create({
+          shopId: shop._id,
+          userMessage:
+            'Confirmed: ' +
+            String(confirmedAction.summary || confirmedAction.tool),
+          assistantResponse: confirmedAnswer,
+          historyDate: getPakistanDate(),
+          source: 'confirmed',
+        });
+      } catch (historyError) {
+        console.error(
+          'AI History Save Error:',
+          historyError
+        );
+      }
+
+      return res.status(200).json({
+        success: actionResult.success,
+        answer: confirmedAnswer,
+        pendingAction: null,
+      });
+    }
+
+    // ========================================================
     // MESSAGE VALIDATION
     // ========================================================
 
@@ -127,46 +171,170 @@ const handleAiChat = async (req, res) => {
     }
 
     const cleanMessage = message.trim();
-
     // ========================================================
-    // LOCAL AI QUERY
+    // LOCAL-FIRST ROUTING (SaaS cost control)
+    // The free rule-based engine answers everything it
+    // understands. Groq (paid tokens) runs ONLY when local
+    // cannot route the query. A per-shop daily quota protects
+    // the Groq budget from any single heavy shop.
     // ========================================================
 
-    const answer = await executeQuery({
-      message: cleanMessage,
-      shopId: shop._id,
-    });
-
-    const finalAnswer =
-      typeof answer === 'string'
-        ? answer
-        : JSON.stringify(answer);
-
-    // ========================================================
-    // SAVE HISTORY
-    // ========================================================
+    let localAnswer = '';
+    let localUnderstood = false;
 
     try {
-      await AiChatHistory.create({
+      const localRaw = await executeQuery({
+        message: cleanMessage,
         shopId: shop._id,
-        userMessage: cleanMessage,
-        assistantResponse: finalAnswer,
-        historyDate: getPakistanDate(),
       });
-    } catch (historyError) {
-      console.error(
-        'AI History Save Error:',
-        historyError
+
+      localAnswer =
+        typeof localRaw === 'string'
+          ? localRaw
+          : JSON.stringify(localRaw);
+
+      localUnderstood = !localAnswer.includes(
+        LOCAL_NOT_UNDERSTOOD_MARKER
       );
+    } catch (localError) {
+      console.error(
+        'Local query error:',
+        localError.message
+      );
+      localUnderstood = false;
+    }
+
+    const saveHistory = async (
+      userMsg,
+      assistantMsg,
+      src
+    ) => {
+      try {
+        await AiChatHistory.create({
+          shopId: shop._id,
+          userMessage: userMsg,
+          assistantResponse: assistantMsg,
+          historyDate: getPakistanDate(),
+          source: src,
+        });
+      } catch (historyError) {
+        console.error(
+          'AI History Save Error:',
+          historyError
+        );
+      }
+    };
+
+    // Local understood -> free answer, zero Groq tokens spent.
+    if (localUnderstood) {
+      await saveHistory(
+        cleanMessage,
+        localAnswer,
+        'local'
+      );
+
+      return res.status(200).json({
+        success: true,
+        answer: localAnswer,
+        source: 'local',
+      });
     }
 
     // ========================================================
-    // RESPONSE
+    // PER-SHOP DAILY GROQ QUOTA
     // ========================================================
+
+    const dailyLimit = parseInt(
+      process.env.AI_DAILY_LIMIT || '50',
+      10
+    );
+
+    if (dailyLimit > 0) {
+      const llmUsedToday =
+        await AiChatHistory.countDocuments({
+          shopId: shop._id,
+          historyDate: getPakistanDate(),
+          source: 'llm',
+        });
+
+      if (llmUsedToday >= dailyLimit) {
+        return res.status(200).json({
+          success: true,
+          answer:
+            `Aaj ke smart sawalat ki limit (${dailyLimit}) mukammal ho gayi hai. ` +
+            `Kal dobara try karein — aam sawalat (sale, khata, stock, installment) ke jawab ab bhi milte rahenge.`,
+          source: 'limit',
+        });
+      }
+    }
+
+    // ========================================================
+    // LLM AI AGENT (Groq) — only for queries local can't route
+    // ========================================================
+
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const agentHistory =
+          await AiChatHistory.find({
+            shopId: shop._id,
+          })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean();
+
+        agentHistory.reverse();
+
+        const agentResult =
+          await aiAgentService.runAiAgent({
+            message: cleanMessage,
+            shopId: shop._id,
+            history: agentHistory,
+          });
+
+        if (agentResult) {
+          const agentAnswer =
+            agentResult.answer ||
+            agentResult.pendingAction?.summary ||
+            '';
+
+          await saveHistory(
+            cleanMessage,
+            agentAnswer,
+            'llm'
+          );
+
+          return res.status(200).json({
+            success: true,
+            answer: agentAnswer,
+            pendingAction:
+              agentResult.pendingAction || null,
+            source: 'llm',
+          });
+        }
+      } catch (agentError) {
+        console.error(
+          'AI agent failed, using local guide:',
+          agentError.message
+        );
+      }
+    }
+
+    // No key, or agent failed -> local's helpful guide answer.
+    if (!localAnswer) {
+      localAnswer =
+        'Mujhe aapka sawal samajh nahi aya. Dobara try karein.';
+    }
+
+    await saveHistory(
+      cleanMessage,
+      localAnswer,
+      'local'
+    );
 
     return res.status(200).json({
       success: true,
-      answer: finalAnswer,
+      answer: localAnswer,
+      source: 'local',
     });
 
   } catch (error) {
@@ -253,7 +421,63 @@ const getAiHistory = async (req, res) => {
   }
 };
 
+// ============================================================
+// GET TODAY'S SMART (LLM) USAGE
+// ============================================================
+
+const getAiUsage = async (req, res) => {
+  try {
+    const shopId =
+      req.shopId ||
+      req.admin?.shopId ||
+      req.shop?._id;
+
+    if (
+      !shopId ||
+      !mongoose.Types.ObjectId.isValid(
+        String(shopId)
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Unauthorized: Shop context missing.',
+      });
+    }
+
+    const limit = parseInt(
+      process.env.AI_DAILY_LIMIT || '50',
+      10
+    );
+
+    const used = await AiChatHistory.countDocuments({
+      shopId,
+      historyDate: getPakistanDate(),
+      source: 'llm',
+    });
+
+    return res.status(200).json({
+      success: true,
+      used,
+      limit: limit > 0 ? limit : null,
+      remaining:
+        limit > 0 ? Math.max(0, limit - used) : null,
+    });
+  } catch (error) {
+    console.error(
+      'Get AI Usage Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Usage load nahi ho saka.',
+    });
+  }
+};
+
 module.exports = {
   handleAiChat,
   getAiHistory,
+  getAiUsage,
 };

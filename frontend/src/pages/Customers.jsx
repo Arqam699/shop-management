@@ -8,6 +8,8 @@ import {
 } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
 import ConfirmModal from '../components/ConfirmModal';
+import DataTable from '../components/DataTable';
+import useDebounce from '../utils/useDebounce';
 import toast from 'react-hot-toast';
 
 import {
@@ -44,6 +46,8 @@ import {
   Award,
 } from 'lucide-react';
 
+const PAGE_SIZE = 25;
+
 const FINGERPRINT_AGENT_URL = 'http://127.0.0.1:9000';
 
 const Customers = () => {
@@ -52,6 +56,9 @@ const Customers = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [page, setPage] = useState(1);
 
   // =====================================================
   // CUSTOMER SECTION
@@ -151,6 +158,16 @@ const Customers = () => {
   useEffect(() => {
     fetchCustomers();
   }, []);
+
+  // Reset to first page whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    debouncedSearchTerm,
+    filterPreset,
+    customStartDate,
+    customEndDate,
+  ]);
 
   // =====================================================
   // SECTION CHANGE
@@ -708,12 +725,14 @@ const Customers = () => {
   };
 
   // Filtered customers list
-  const filteredCustomers = customers.filter((customer) => {
+  const filteredCustomers = useMemo(
+    () =>
+      customers.filter((customer) => {
     const name = String(customer?.fullName || '').toLowerCase();
     const id = String(customer?.customerId || '').toLowerCase();
     const phone = String(customer?.mobileNumber || '').toLowerCase();
     const cnic = String(customer?.cnic || customer?.CNIC || '').replace(/\D/g, '');
-    const term = String(searchTerm || '').toLowerCase();
+    const term = String(debouncedSearchTerm || '').toLowerCase();
     const termNormalized = term.replace(/\D/g, '');
 
     const matchesSearch =
@@ -723,8 +742,16 @@ const Customers = () => {
       matchesMobileSearch(phone, term) ||
       matchesCnicSearch(cnic, termNormalized);
 
-    return matchesSearch && isDateInFilter(customer?.createdAt);
-  });
+      return matchesSearch && isDateInFilter(customer?.createdAt);
+    }),
+    [
+      customers,
+      debouncedSearchTerm,
+      filterPreset,
+      customStartDate,
+      customEndDate,
+    ]
+  );
 
   const formatCurrency = (amount) =>
     `${settings?.currency || 'PKR'} ${Number(amount || 0).toLocaleString('en-PK')}`;
@@ -1418,6 +1445,147 @@ const Customers = () => {
   );
 
   // =====================================================
+  // CUSTOMER TABLE COLUMNS
+  // =====================================================
+
+  const customerColumns = [
+    {
+      key: 'customerId',
+      header: "Cust ID",
+      headerClassName: 'px-6 py-4',
+      className:
+        'px-6 py-4 font-black text-indigo-600 tracking-wider whitespace-nowrap',
+      render: (customer) => {
+        const isFingerprintMatch =
+          fingerprintResult?.matched &&
+          String(fingerprintResult?.customer?._id) ===
+            String(customer._id);
+
+        return (
+          <>
+            {customer.customerId}
+            {isFingerprintMatch && (
+              <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black">
+                <Fingerprint className="w-2.5 h-2.5" />
+                MATCH
+              </span>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: 'fullName',
+      header: 'Customer Name & Score',
+      headerClassName: 'px-6 py-4',
+      className: 'px-6 py-4',
+      render: (customer) => (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <span className="font-black text-slate-900">
+            {customer.fullName}
+          </span>
+          <PaymentScoreBadge
+            paymentScore={customer.paymentScore}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'fatherName',
+      header: "Father's Name",
+      headerClassName: 'px-6 py-4',
+      className:
+        'px-6 py-4 text-slate-600 font-bold',
+      render: (customer) =>
+        customer.fatherName || '-',
+    },
+    {
+      key: 'mobileNumber',
+      header: 'Mobile Number',
+      headerClassName: 'px-6 py-4',
+      className:
+        'px-6 py-4 text-slate-800 font-bold whitespace-nowrap',
+      render: (customer) =>
+        customer.mobileNumber,
+    },
+    {
+      key: 'cnic',
+      header: 'CNIC',
+      headerClassName: 'px-6 py-4',
+      className:
+        'px-6 py-4 text-slate-500 font-medium tracking-wide whitespace-nowrap',
+      render: (customer) =>
+        customer.cnic || '-',
+    },
+    {
+      key: 'city',
+      header: 'City',
+      headerClassName: 'px-6 py-4',
+      className: 'px-6 py-4 text-slate-600',
+      render: (customer) =>
+        customer.city || '-',
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      headerClassName:
+        'px-6 py-4 text-center',
+      className:
+        'px-6 py-4 text-center whitespace-nowrap',
+      render: (customer) => (
+        <div className="flex items-center justify-center gap-1.5">
+          <Link
+            to={`/customers/edit/${customer._id}`}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+            title="Edit Customer Details"
+          >
+            <Edit2 className="w-4 h-4" />
+          </Link>
+
+          {isDeletionUnlocked ? (
+            <button
+              type="button"
+              onClick={() =>
+                triggerDeleteConfirmation(
+                  customer._id,
+                  customer.fullName
+                )
+              }
+              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+              title="Delete Customer Profile"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
+              title="Deletion Mode is locked in Settings"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const getCustomerRowClassName = (
+    customer
+  ) => {
+    const isFingerprintMatch =
+      fingerprintResult?.matched &&
+      String(
+        fingerprintResult?.customer?._id
+      ) === String(customer._id);
+
+    return `transition-colors ${
+      isFingerprintMatch
+        ? 'bg-emerald-50/70 ring-1 ring-inset ring-emerald-300'
+        : 'hover:bg-slate-50/80'
+    }`;
+  };
+
+  // =====================================================
   // CUSTOMER LIST RENDER
   // =====================================================
   const renderCustomerList = () => (
@@ -1490,133 +1658,18 @@ const Customers = () => {
       </div>
 
       {/* CUSTOMER DATA TABLE */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
-            <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
-              Accessing customer ledger...
-            </span>
-          </div>
-        ) : filteredCustomers.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
-            <UserCheck className="w-12 h-12 text-slate-300" />
-            <p className="text-sm font-black text-slate-700">No customers found</p>
-            <p className="text-xs text-slate-400">
-              Try switching filters to "All-Time" or click "Register Customer".
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600 font-medium">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                <tr>
-                  <th className="px-6 py-4">Cust ID</th>
-                  <th className="px-6 py-4">Customer Name & Score</th>
-                  <th className="px-6 py-4">Father's Name</th>
-                  <th className="px-6 py-4">Mobile Number</th>
-                  <th className="px-6 py-4">CNIC</th>
-                  <th className="px-6 py-4">City</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {filteredCustomers.map((customer) => {
-                  const isFingerprintMatch =
-                    fingerprintResult?.matched &&
-                    String(fingerprintResult?.customer?._id) === String(customer._id);
-
-                  return (
-                    <tr
-                      key={customer._id}
-                      className={`transition-colors ${
-                        isFingerprintMatch
-                          ? 'bg-emerald-50/70 ring-1 ring-inset ring-emerald-300'
-                          : 'hover:bg-slate-50/80'
-                      }`}
-                    >
-                      <td className="px-6 py-4 font-black text-indigo-600 tracking-wider whitespace-nowrap">
-                        {customer.customerId}
-                        {isFingerprintMatch && (
-                          <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black">
-                            <Fingerprint className="w-2.5 h-2.5" />
-                            MATCH
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Full Name With Attached Payment Score */}
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                          <span className="font-black text-slate-900">
-                            {customer.fullName}
-                          </span>
-                          <PaymentScoreBadge paymentScore={customer.paymentScore} />
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-600 font-bold">
-                        {customer.fatherName || '-'}
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-800 font-bold whitespace-nowrap">
-                        {customer.mobileNumber}
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-500 font-medium tracking-wide whitespace-nowrap">
-                        {customer.cnic || '-'}
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-600">
-                        {customer.city || '-'}
-                      </td>
-
-                      <td className="px-6 py-4 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-
-                          {/* Edit Customer */}
-                          <Link
-                            to={`/customers/edit/${customer._id}`}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                            title="Edit Customer Details"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Link>
-
-                          {/* Delete */}
-                          {isDeletionUnlocked ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                triggerDeleteConfirmation(
-                                  customer._id,
-                                  customer.fullName
-                                )
-                              }
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
-                              title="Delete Customer Profile"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <div
-                              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
-                              title="Deletion Mode is locked in Settings"
-                            >
-                              <Lock className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <DataTable
+        columns={customerColumns}
+        rows={filteredCustomers}
+        loading={loading}
+        page={page}
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+        getRowClassName={getCustomerRowClassName}
+        emptyIcon={UserCheck}
+        emptyTitle="No customers found"
+        emptyHint='Try switching filters to "All-Time" or click "Register Customer".'
+      />
     </>
   );
 

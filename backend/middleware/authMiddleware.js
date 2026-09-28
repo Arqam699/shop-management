@@ -55,12 +55,28 @@ const protect = async (req, res, next) => {
     );
 
     // ====================================================
-    // FIND ADMIN
+    // FIND ADMIN + SHOP IN PARALLEL
+    //
+    // The shop lookup starts immediately using the shopId
+    // embedded in the JWT. After the admin resolves we confirm
+    // which shopId wins (admin.shopId takes precedence, exactly
+    // as before) and re-fetch only in the rare case they differ.
     // ====================================================
 
-    req.admin = await Admin.findById(
-      decoded.userId
-    ).select('-password');
+    const [
+      fetchedAdmin,
+      shopFromToken,
+    ] = await Promise.all([
+      Admin.findById(
+        decoded.userId
+      ).select('-password'),
+
+      decoded.shopId
+        ? Shop.findById(decoded.shopId)
+        : Promise.resolve(null),
+    ]);
+
+    req.admin = fetchedAdmin;
 
     if (!req.admin) {
       clearAuthCookie(res);
@@ -96,8 +112,15 @@ const protect = async (req, res, next) => {
     // FIND SHOP
     // ====================================================
 
-    const shop =
-      await Shop.findById(req.shopId);
+    let shop = shopFromToken;
+
+    if (
+      String(req.shopId) !==
+      String(decoded.shopId)
+    ) {
+      shop =
+        await Shop.findById(req.shopId);
+    }
 
     if (!shop) {
       clearAuthCookie(res);

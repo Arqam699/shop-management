@@ -696,23 +696,61 @@ const resolveCustomer = async (
 
   /* ------------------------------------------------------------
      EXACT PHONE / CNIC / CUSTOMER ID
+     Handles: 03001234567, 0300-1234567, 3520212345671,
+     35202-1234567-1 — chahe DB me dashes hon ya na hon.
   ------------------------------------------------------------ */
 
-  const numericMatches =
-    raw.match(/\b\d{7,15}\b/g) || [];
+  const digitGroups =
+    raw.match(/\b\d[\d\- ]{5,20}\d\b/g) || [];
 
-  if (numericMatches.length) {
-    for (const number of numericMatches) {
+  const candidateNumbers = [];
+
+  for (const g of digitGroups) {
+    const digits = g.replace(/\D/g, '');
+
+    if (
+      digits.length >= 7 &&
+      digits.length <= 15 &&
+      !candidateNumbers.includes(digits)
+    ) {
+      candidateNumbers.push(digits);
+    }
+  }
+
+  /* CNIC (13) aur mobile (11) ke dashed variants bhi try karo,
+     taake DB me kisi bhi format me stored ho to mil jaye. */
+
+  const numberVariants = (digits) => {
+    const v = [digits];
+
+    if (digits.length === 13) {
+      v.push(
+        `${digits.slice(0, 5)}-${digits.slice(5, 12)}-${digits.slice(12)}`
+      );
+    }
+
+    if (digits.length === 11 && digits[0] === '0') {
+      v.push(`${digits.slice(0, 4)}-${digits.slice(4)}`);
+    }
+
+    return [...new Set(v)];
+  };
+
+  if (candidateNumbers.length) {
+    for (const number of candidateNumbers) {
+      const variants = numberVariants(number);
+
       const exact =
         await Customer.findOne({
           shopId: shopObjId,
           $or: [
-            { mobileNumber: number },
-            { phone: number },
-            { mobile: number },
-            { contact: number },
-            { phoneNumber: number },
-            { cnic: number },
+            { mobileNumber: { $in: variants } },
+            { alternateMobileNumber: { $in: variants } },
+            { phone: { $in: variants } },
+            { mobile: { $in: variants } },
+            { contact: { $in: variants } },
+            { phoneNumber: { $in: variants } },
+            { cnic: { $in: variants } },
             { customerId: number },
           ],
         }).lean();
@@ -1064,11 +1102,253 @@ const hasAny = (
     text.includes(word)
   );
 
+/* ============================================================================
+   LOCAL NLP LAYER — synonyms + typo tolerance
+   Goal: resolve as much as possible locally so Groq quota is barely touched.
+   - applySynonyms: whole-word replacement of alternate Roman-Urdu/typo words
+   - fuzzyFixText: Levenshtein-based correction, used ONLY on retry when the
+     first pass found no match (so it can never corrupt a working query).
+============================================================================ */
+
+const SYNONYMS = {
+  sale: ['sel', 'sela', 'farokht', 'farokhat'],
+  profit: ['nafa'],
+  nuksaan: ['nuqsan'],
+  customer: ['gahak', 'gahuk'],
+  payment: ['wasooli', 'wasuli', 'adaigi', 'adaegi'],
+  stock: ['stok'],
+  rent: ['kiraya', 'kiraaya'],
+  salary: ['tankhwah', 'tankha'],
+  udhaar: ['udhar'],
+  khata: ['khataa', 'khatha'],
+};
+
+const applySynonyms = (text) => {
+  let out = text;
+  for (const [canonical, variants] of Object.entries(SYNONYMS)) {
+    for (const v of variants) {
+      out = out.replace(new RegExp(`\\b${v}\\b`, 'g'), canonical);
+    }
+  }
+  return out;
+};
+
+const levenshtein = (a, b) => {
+  if (a === b) return 0;
+  const al = a.length;
+  const bl = b.length;
+  if (!al) return bl;
+  if (!bl) return al;
+  let prev = new Array(bl + 1);
+  let curr = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    const tmp = prev;
+    prev = curr;
+    curr = tmp;
+  }
+  return prev[bl];
+};
+
+/* Canonical business words the fuzzy matcher may correct towards.
+   Deliberately contains NO customer/product-like words. */
+const FUZZY_VOCAB = [
+  'sale', 'sales', 'profit', 'munafa', 'faida', 'kamai', 'margin',
+  'nuksaan', 'stock', 'inventory', 'customer', 'customers', 'khata',
+  'hisab', 'payment', 'payments', 'collection', 'qist', 'installment',
+  'expense', 'expenses', 'kharcha', 'rent', 'salary', 'bijli',
+  'udhaar', 'receivable', 'balance', 'baqaya', 'overdue', 'defaulter',
+  'return', 'returns', 'refund', 'cashflow', 'cash', 'briefing',
+  'summary', 'top', 'selling', 'low', 'today', 'month', 'week',
+  'year', 'hafta', 'paisa',
+  'aakhri',
+  'aaya',
+  'aayi',
+  'agli',
+  'arrears',
+  'available',
+  'baki',
+  'baqayajat',
+  'baqi',
+  'becha',
+  'bechi',
+  'belong',
+  'best',
+  'bika',
+  'biki',
+  'bikri',
+  'bill',
+  'bills',
+  'business',
+  'buyer',
+  'client',
+  'collections',
+  'complete',
+  'const',
+  'createdat',
+  'daily',
+  'date',
+  'defaulters',
+  'demand',
+  'detail',
+  'details',
+  'dikhao',
+  'dukan',
+  'earning',
+  'electricity',
+  'expence',
+  'expences',
+  'flow',
+  'gaya',
+  'grahak',
+  'gross',
+  'hain',
+  'high',
+  'hisaab',
+  'history',
+  'huay',
+  'imei',
+  'installments',
+  'item',
+  'items',
+  'jaat',
+  'jama',
+  'kaun',
+  'kharch',
+  'kharchay',
+  'kharche',
+  'khatam',
+  'khate',
+  'kist',
+  'kistain',
+  'kiston',
+  'kitab',
+  'kitna',
+  'kitne',
+  'kitni',
+  'kiya',
+  'last',
+  'late',
+  'latest',
+  'lena',
+  'list',
+  'loss',
+  'lowstock',
+  'maal',
+  'market',
+  'model',
+  'money',
+  'monthly',
+  'most',
+  'nahi',
+  'next',
+  'null',
+  'number',
+  'nuqsan',
+  'outstanding',
+  'over',
+  'overall',
+  'overview',
+  'paid',
+  'paymentdate',
+  'pending',
+  'petrol',
+  'pichli',
+  'pieces',
+  'popular',
+  'product',
+  'products',
+  'puri',
+  'qistain',
+  'qiston',
+  'quantity',
+  'receivables',
+  'receive',
+  'received',
+  'recent',
+  'record',
+  'refunds',
+  'remaining',
+  'report',
+  'returned',
+  'revenue',
+  'sari',
+  'schedule',
+  'seller',
+  'sellers',
+  'serial',
+  'shop',
+  'show',
+  'sold',
+  'tamam',
+  'topselling',
+  'total',
+  'udhar',
+  'undefined',
+  'verify',
+  'wali',
+  'wapas',
+  'zyada',
+];
+
+const fuzzyFixText = (message) => {
+  const words = clean(message).split(/\s+/);
+  let changed = false;
+  const fixed = words.map((w) => {
+    const lw = w.toLowerCase().replace(/[^a-z]/g, '');
+    if (lw.length < 4 || /^\d+$/.test(lw)) return w;
+    if (FUZZY_VOCAB.includes(lw)) return w;
+    let best = null;
+    let bestD = Infinity;
+    for (const v of FUZZY_VOCAB) {
+      if (Math.abs(v.length - lw.length) > 2) continue;
+      const d = levenshtein(lw, v);
+      if (d < bestD) {
+        bestD = d;
+        best = v;
+      }
+    }
+    const maxD = 2;
+    if (best && bestD > 0 && bestD <= maxD) {
+      changed = true;
+      return best;
+    }
+    return w;
+  });
+  return changed ? fixed.join(' ') : null;
+};
+
+
+/* Common filler words — protected from correction, never modified. */
+
+const STOPWORDS = [
+  'mera', 'meri', 'mere', 'apna', 'apni', 'apne', 'mujhe', 'humein',
+  'kitna', 'kitni', 'kitne', 'kaun', 'kya', 'kab', 'kahan', 'kaise',
+  'wala', 'wali', 'wale', 'ye', 'yeh', 'wo', 'woh', 'hai', 'hain',
+  'tha', 'thi', 'thay', 'ho', 'gaya', 'gayi', 'gaye', 'hua', 'hui',
+  'huay', 'zyada', 'kam', 'sab', 'sara', 'sari', 'tamam', 'kul',
+  'aur', 'ya', 'bhi', 'nahi', 'na', 'ne', 'dikhayen', 'dikhain',
+  'batayen', 'batain', 'batao', 'dekhao', 'wala', 'taraf', 'liye',
+];
+
+for (const w of STOPWORDS) {
+  if (!FUZZY_VOCAB.includes(w)) {
+    FUZZY_VOCAB.push(w);
+  }
+}
+const NO_MATCH_MARKER = 'exact data route nahi mila';
+
+
 const buildQueryPlan = (
   rawText
 ) => {
   const text =
-    normalize(rawText);
+    applySynonyms(normalize(rawText));
 
   const plan = {
     target: 'shop',
@@ -1100,9 +1380,14 @@ const buildQueryPlan = (
       'grahak',
       'client',
       'buyer',
+      'khata',
+      'khate',
+      'khata dikhao',
+      'hisab kitab',
       'customer history',
       'customer record',
-    ])
+    ]) ||
+    /\b\d[\d\- ]{8,20}\d\b/.test(text)
   ) {
     plan.wantsCustomer = true;
   }
@@ -1226,6 +1511,14 @@ const buildQueryPlan = (
       'cash sales',
       'installment sale',
       'installment sales',
+      'recent sales',
+      'recent sale',
+      'aakhri sales',
+      'aakhri sale',
+      'pichli sales',
+      'pichli sale',
+      'last sales',
+      'latest sales',
     ])
   ) {
     plan.target = 'sales';
@@ -1300,6 +1593,10 @@ const buildQueryPlan = (
       'remaining balance',
       'baqi balance',
       'baqi paisa',
+      'baqaya',
+      'baqaya jaat',
+      'baqayajat',
+      'kul baqaya',
     ])
   ) {
     plan.target = 'receivable';
@@ -1368,6 +1665,7 @@ const buildQueryPlan = (
     hasAny(text, [
       'top selling',
       'top sellers',
+      'top products',
       'best seller',
       'best selling',
       'sab se zyada bika',
@@ -1436,6 +1734,12 @@ const buildQueryPlan = (
       'margin',
       'net profit',
       'gross profit',
+      'nuksaan',
+      'nuqsan',
+      'loss',
+      'net loss',
+      'profit loss',
+      'profit aur loss',
     ])
   ) {
     plan.target = 'profit';
@@ -1521,9 +1825,12 @@ const buildQueryPlan = (
    * should remain PRODUCT.
    */
 
+  /* Only fall back to product-360 when no specific report target matched. */
+
   if (
     plan.wantsProduct &&
-    !plan.wantsCustomer
+    !plan.wantsCustomer &&
+    plan.target === 'shop'
   ) {
     plan.target = 'product';
     plan.action = '360';
@@ -4279,7 +4586,7 @@ const buildProfitReport =
    25. MASTER QUERY PROCESSOR
 ============================================================================ */
 
-const processLocalQuery =
+const runLocalPipeline =
   async ({
     message,
     shopId,
@@ -4294,6 +4601,53 @@ const processLocalQuery =
 
       const text =
         normalize(rawText);
+
+      /* ========================================================
+         GREETING (free — never spends Groq quota)
+      ======================================================== */
+
+      if (
+        text.length <= 24 &&
+        /^(hi+|hello+|hey+|salam|assalam|assalamualaikum|aoa|adaab|yo|good\s?(morning|afternoon|evening))[\s!.,]*$/.test(
+          text
+        )
+      ) {
+        return [
+          `👋 Assalam-o-Alaikum! Main aapka Shop AI Assistant hoon.`,
+          '',
+          `Main aapki madad kar sakta hoon:`,
+          `• Aaj / is mahine ki sales`,
+          `• Customer ka khata aur udhaar`,
+          `• Naam, mobile number ya CNIC se customer search`,
+          `• Installment schedule aur due qistein`,
+          `• Stock aur low-stock alerts`,
+          `• Payment history`,
+          '',
+          `Bas apna sawal likhein! (Main read-only hoon — sirf data dekh sakta hoon)`,
+        ].join('\n');
+      }
+      /* ========================================================
+         WRITE INTENT -> READ-ONLY REFUSAL (free, no Groq quota)
+      ======================================================== */
+
+      if (
+        /\b(add\s+(a\s+|new\s+)?customer|create\s+(a\s+|new\s+)?customer|naya\s+customer|customer\s+(add|bana|banao|create)|record\s+(a\s+)?payment|payment\s*(lo|le|lena|lene|record)|(wasool|jama)\s*kar\w*|add\s+(an?\s+)?expense|expense\s*(dal|dalo|add|record|karo)|kharcha\s*(dal|dalo|add))\b/.test(
+          text
+        )
+      ) {
+        return [
+          `🔒 Read-only mode`,
+          '',
+          `Main sirf data dekh sakta hoon — kuch add, create ya record nahi kar sakta.`,
+          '',
+          `Aap ye pooch sakte hain:`,
+          `• Customer ka khata aur baqaya (naam / mobile / CNIC se)`,
+          `• Aaj / is mahine ki sales`,
+          `• Due installments`,
+          `• Stock aur low-stock items`,
+          `• Payment history`,
+        ].join('\n');
+      }
 
       /* ========================================================
          SHOP ID VALIDATION
@@ -4427,7 +4781,7 @@ const processLocalQuery =
                   )}`
               ),
             '',
-            `Please exact naam, mobile number ya customer ID dein.`,
+            `Please exact naam, mobile number, CNIC ya customer ID dein.`,
           ].join('\n');
         }
       }
@@ -4619,7 +4973,8 @@ const processLocalQuery =
       if (
         customer &&
         !product &&
-        plan.target === 'customer'
+        (plan.target === 'customer' ||
+          plan.target === 'shop')
       ) {
         return await buildCustomer360(
           customer,
@@ -4888,6 +5243,50 @@ const processLocalQuery =
         }`,
       ].join('\n');
     }
+  };
+
+/* ============================================================================
+   PUBLIC ENTRY — local-first with one fuzzy retry for typos / new words
+   First pass runs untouched (synonyms only). If nothing matched, retry once
+   with typo correction. The retry can never corrupt a working query because
+   it only runs when the first pass found no match at all.
+============================================================================ */
+
+const processLocalQuery =
+  async ({
+    message,
+    shopId,
+  }) => {
+    const first =
+      await runLocalPipeline({
+        message,
+        shopId,
+      });
+
+    if (
+      typeof first === 'string' &&
+      first.includes(NO_MATCH_MARKER)
+    ) {
+      const fixed =
+        fuzzyFixText(message);
+
+      if (fixed) {
+        const second =
+          await runLocalPipeline({
+            message: fixed,
+            shopId,
+          });
+
+        if (
+          typeof second === 'string' &&
+          !second.includes(NO_MATCH_MARKER)
+        ) {
+          return second;
+        }
+      }
+    }
+
+    return first;
   };
 
 /* ============================================================================

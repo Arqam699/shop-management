@@ -3,12 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 
-// Production mein console logs ko disable karne ke liye
+// Silence noisy logs in production, but keep
+// warnings and errors visible for debugging.
 if (import.meta.env.PROD) {
   window.console.log = () => {};
-  window.console.info = () => {};
-  window.console.warn = () => {};
-  window.console.error = () => {};
   window.console.debug = () => {};
 }
 

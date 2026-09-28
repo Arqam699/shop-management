@@ -445,6 +445,7 @@ const InvoiceDetails = () => {
               <div className="text-center">
                 {customerPhoto ? (
                   <img
+                    loading="lazy"
                     src={customerPhoto}
                     alt="Customer"
                     className="w-12 h-12 object-cover rounded-lg border border-slate-400 mx-auto"
@@ -460,6 +461,7 @@ const InvoiceDetails = () => {
               <div className="text-center">
                 {customerFingerprint ? (
                   <img
+                    loading="lazy"
                     src={customerFingerprint}
                     alt="Fingerprint"
                     className="w-12 h-12 object-contain rounded-lg border border-slate-400 bg-white mx-auto p-0.5"

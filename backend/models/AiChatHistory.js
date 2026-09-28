@@ -27,6 +27,13 @@ const AiChatHistorySchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+
+    // Which engine answered: 'local' (free), 'llm' (Groq tokens),
+    // 'confirmed' (write action), 'limit' not stored.
+    source: {
+      type: String,
+      enum: ['local', 'llm', 'confirmed'],
+    },
   },
   {
     timestamps: true,
@@ -38,6 +45,13 @@ AiChatHistorySchema.index({
   shopId: 1,
   historyDate: 1,
   createdAt: 1,
+});
+
+// Fast per-shop daily Groq quota counting
+AiChatHistorySchema.index({
+  shopId: 1,
+  historyDate: 1,
+  source: 1,
 });
 
 module.exports = mongoose.model(

@@ -62,6 +62,9 @@ const stockMovementSchema = new mongoose.Schema(
   }
 );
 
+stockMovementSchema.index({ shopId: 1, reference: 1 });
+stockMovementSchema.index({ shopId: 1, product: 1, createdAt: 1 });
+
 module.exports = mongoose.model(
   'StockMovement',
   stockMovementSchema

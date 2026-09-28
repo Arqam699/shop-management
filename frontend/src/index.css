@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =====================================================
+   LAYOUT KEYFRAMES & NAV SCROLLBAR
+   (moved from the inline <style> block in Layout.jsx so
+   the animation definitions are parsed once, globally)
+===================================================== */
+
+@keyframes menuPop {
+  from {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+nav::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+}
+
+nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.35);
+}

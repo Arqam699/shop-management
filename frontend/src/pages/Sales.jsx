@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import {
@@ -9,6 +9,8 @@ import {
 import { useSettings } from '../context/SettingsContext';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
+import DataTable from '../components/DataTable';
+import useDebounce from '../utils/useDebounce';
 
 import {
   Plus,
@@ -30,12 +32,17 @@ import {
   Package,
 } from 'lucide-react';
 
+const PAGE_SIZE = 25;
+
 const Sales = () => {
   const { settings } = useSettings();
 
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [page, setPage] = useState(1);
 
   // =====================================================
   // CASH SALE MENU
@@ -81,6 +88,16 @@ const Sales = () => {
   useEffect(() => {
     fetchSales();
   }, []);
+
+  // Reset to first page whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    debouncedSearchTerm,
+    filterPreset,
+    customStartDate,
+    customEndDate,
+  ]);
 
   // =====================================================
   // DELETE CONFIRMATION
@@ -175,13 +192,15 @@ const Sales = () => {
   // =====================================================
   // SEARCH + DATE FILTER
   // =====================================================
-  const filteredSales = sales.filter((sale) => {
+  const filteredSales = useMemo(
+    () =>
+      sales.filter((sale) => {
     const custName = sale.customer?.fullName?.toLowerCase() || '';
     const custPhone = sale.customer?.mobileNumber || '';
     const custCnic = sale.customer?.cnic || sale.customer?.CNIC || '';
     const sId = sale.saleId?.toLowerCase() || '';
     const prodName = sale.product?.name?.toLowerCase() || '';
-    const term = searchTerm.toLowerCase().trim();
+    const term = debouncedSearchTerm.toLowerCase().trim();
 
     const matchesSearch =
       custName.includes(term) ||
@@ -193,8 +212,16 @@ const Sales = () => {
 
     const matchesDate = isDateInFilter(sale.saleDate || sale.createdAt);
 
-    return matchesSearch && matchesDate;
-  });
+      return matchesSearch && matchesDate;
+    }),
+    [
+      sales,
+      debouncedSearchTerm,
+      filterPreset,
+      customStartDate,
+      customEndDate,
+    ]
+  );
 
   const totalCashSalesVal = filteredSales.reduce(
     (sum, s) => sum + Number(s.finalTotal || 0),
@@ -203,6 +230,153 @@ const Sales = () => {
 
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
+
+  // =====================================================
+  // CASH SALES TABLE COLUMNS
+  // =====================================================
+
+  const salesColumns = [
+    {
+      key: 'saleId',
+      header: 'Invoice / Bill #',
+      className:
+        'px-5 py-3.5 font-black text-indigo-600 tracking-wider',
+      render: (sale) => sale.saleId,
+    },
+    {
+      key: 'customer',
+      header: 'Customer Details',
+      render: (sale) => (
+        <div>
+          <p className="font-black text-slate-900">
+            {sale.customer?.fullName || 'Walk-in'}
+          </p>
+          <p className="text-[10px] text-slate-400 font-semibold">
+            {sale.customer?.mobileNumber || ''}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'product',
+      header: 'Product Details',
+      render: (sale) => (
+        <>
+          <p className="font-bold text-slate-800 truncate max-w-[150px]">
+            {sale.product?.name || 'Deleted Product'}
+          </p>
+          <p className="text-[10px] text-slate-400 font-semibold">
+            {[sale.product?.brand, sale.product?.model]
+              .filter(Boolean)
+              .join(' • ')}
+          </p>
+        </>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Qty',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: (sale) => (
+        <span className="inline-flex min-w-7 justify-center px-2 py-0.5 rounded-md bg-slate-100 font-black text-[10px] text-slate-700">
+          {sale.quantity}
+        </span>
+      ),
+    },
+    {
+      key: 'subtotal',
+      header: 'Subtotal',
+      headerClassName: 'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-semibold text-slate-600',
+      render: (sale) => formatMoney(sale.subtotal),
+    },
+    {
+      key: 'discount',
+      header: 'Discount',
+      headerClassName:
+        'px-5 py-4 text-right text-rose-600',
+      className:
+        'px-5 py-3.5 text-right font-black text-rose-600',
+      render: (sale) => (
+        <>-{formatMoney(sale.discount)}</>
+      ),
+    },
+    {
+      key: 'finalTotal',
+      header: 'Final Total',
+      headerClassName: 'px-5 py-4 text-right',
+      className:
+        'px-5 py-3.5 text-right font-black text-slate-900 text-sm',
+      render: (sale) => formatMoney(sale.finalTotal),
+    },
+    {
+      key: 'term',
+      header: 'Term',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: () => (
+        <span className="inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black border bg-emerald-50 border-emerald-200 text-emerald-700">
+          Cash
+        </span>
+      ),
+    },
+    {
+      key: 'date',
+      header: 'Date',
+      className:
+        'px-5 py-3.5 text-slate-500 font-semibold whitespace-nowrap',
+      render: (sale) =>
+        new Date(
+          sale.saleDate || sale.createdAt
+        ).toLocaleDateString('en-PK', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        }),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: (sale) => (
+        <div className="flex items-center justify-center gap-1.5">
+          <Link
+            to={`/sales/edit/${sale._id}`}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+            title="Edit Cash Sale"
+          >
+            <Edit2 className="w-4 h-4" />
+          </Link>
+
+          {isDeletionUnlocked ? (
+            <button
+              type="button"
+              onClick={() =>
+                triggerDeleteConfirmation(
+                  sale._id,
+                  sale.saleId
+                )
+              }
+              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+              title="Delete Cash Sale & Restore Stock"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
+              title="Deletion Mode is locked in Settings"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   // =====================================================
   // RENDER
@@ -427,129 +601,17 @@ const Sales = () => {
         {/* =====================================================
             CASH SALES TABLE
         ====================================================== */}
-        <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
-              <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-400 text-xs font-black uppercase tracking-wider">
-                Accessing cash sales history...
-              </span>
-            </div>
-          ) : filteredSales.length === 0 ? (
-            <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
-              <ShoppingCart className="w-12 h-12 text-slate-300" />
-              <p className="text-sm font-black text-slate-700">No cash sales logged</p>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-600 font-medium">
-                <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                  <tr>
-                    <th className="px-5 py-4">Invoice / Bill #</th>
-                    <th className="px-5 py-4">Customer Details</th>
-                    <th className="px-5 py-4">Product Details</th>
-                    <th className="px-5 py-4 text-center">Qty</th>
-                    <th className="px-5 py-4 text-right">Subtotal</th>
-                    <th className="px-5 py-4 text-right text-rose-600">Discount</th>
-                    <th className="px-5 py-4 text-right">Final Total</th>
-                    <th className="px-5 py-4 text-center">Term</th>
-                    <th className="px-5 py-4">Date</th>
-                    <th className="px-5 py-4 text-center">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {filteredSales.map((sale) => (
-                    <tr key={sale._id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
-                        {sale.saleId}
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <div>
-                          <p className="font-black text-slate-900">{sale.customer?.fullName || 'Walk-in'}</p>
-                          <p className="text-[10px] text-slate-400 font-semibold">{sale.customer?.mobileNumber || ''}</p>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <p className="font-bold text-slate-800 truncate max-w-[150px]">{sale.product?.name || 'Deleted Product'}</p>
-                        <p className="text-[10px] text-slate-400 font-semibold">{[sale.product?.brand, sale.product?.model].filter(Boolean).join(' • ')}</p>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-center">
-                        <span className="inline-flex min-w-7 justify-center px-2 py-0.5 rounded-md bg-slate-100 font-black text-[10px] text-slate-700">
-                          {sale.quantity}
-                        </span>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-right font-semibold text-slate-600">
-                        {formatMoney(sale.subtotal)}
-                      </td>
-
-                      <td className="px-5 py-3.5 text-right font-black text-rose-600">
-                        -{formatMoney(sale.discount)}
-                      </td>
-
-                      <td className="px-5 py-3.5 text-right font-black text-slate-900 text-sm">
-                        {formatMoney(sale.finalTotal)}
-                      </td>
-
-                      <td className="px-5 py-3.5 text-center">
-                        <span className="inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black border bg-emerald-50 border-emerald-200 text-emerald-700">
-                          Cash
-                        </span>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-slate-500 font-semibold whitespace-nowrap">
-                        {new Date(sale.saleDate || sale.createdAt).toLocaleDateString('en-PK', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </td>
-
-                      <td className="px-5 py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Edit Sale */}
-                          <Link
-                            to={`/sales/edit/${sale._id}`}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                            title="Edit Cash Sale"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Link>
-
-                          {/* Delete Sale */}
-                          {isDeletionUnlocked ? (
-                            <button
-                              type="button"
-                              onClick={() => triggerDeleteConfirmation(sale._id, sale.saleId)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
-                              title="Delete Cash Sale & Restore Stock"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <div
-                              className="inline-flex items-center gap-1 px-1.5 py-1 rounded text-slate-400"
-                              title="Deletion Mode is locked in Settings"
-                            >
-                              <Lock className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <DataTable
+          columns={salesColumns}
+          rows={filteredSales}
+          loading={loading}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          emptyIcon={ShoppingCart}
+          emptyTitle="No cash sales logged"
+          emptyHint='Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.'
+        />
 
       </div>
 

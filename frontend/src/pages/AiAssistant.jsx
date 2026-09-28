@@ -31,6 +31,8 @@ import {
   Radio,
   Layers3,
   ArrowRight,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 
 /* ============================================================
@@ -195,7 +197,7 @@ const formatTime = (dateValue) => {
 
 export default function AiAssistant() {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [aiUsage, setAiUsage] = useState({ loading: true });  const [input, setInput] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -222,6 +224,38 @@ export default function AiAssistant() {
       year: 'numeric',
     }).format(new Date());
   }, []);
+
+  /* ============================================================
+     SMART (LLM) USAGE — per-shop daily quota meter
+  ============================================================ */
+
+  const fetchAiUsage = async () => {
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await api.get(
+        '/api/ai/usage',
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = response.data;
+
+      if (data?.success) {
+        setAiUsage({
+          used: data.used ?? 0,
+          limit: data.limit,
+          remaining: data.remaining,
+        });
+      }
+    } catch (error) {
+      // Show an error state on the pill instead of hiding it
+      setAiUsage({ error: true });
+    }
+  };
 
   /* ============================================================
      HISTORY
@@ -299,6 +333,7 @@ export default function AiAssistant() {
 
   useEffect(() => {
     loadHistory();
+    fetchAiUsage();
   }, []);
 
   /* ============================================================
@@ -432,25 +467,38 @@ export default function AiAssistant() {
       const data = response.data;
 
       if (data.success) {
+        const pendingAction =
+          data.pendingAction || null;
+
         const assistantMessage = {
           id: `assistant-${Date.now()}`,
           sender: 'assistant',
           text:
-            typeof data.answer === 'string'
+            typeof data.answer === 'string' &&
+            data.answer
               ? data.answer
-              : JSON.stringify(
-                  data.answer,
-                  null,
-                  2
-                ),
+              : pendingAction
+                ? pendingAction.summary
+                : JSON.stringify(
+                    data.answer,
+                    null,
+                    2
+                  ),
           createdAt:
             new Date().toISOString(),
+          pendingAction,
+          actionState: pendingAction
+            ? 'pending'
+            : undefined,
+          source: data.source || 'local',
         };
 
         setMessages((prev) => [
           ...prev,
           assistantMessage,
         ]);
+
+        fetchAiUsage();
       } else {
         setMessages((prev) => [
           ...prev,
@@ -494,6 +542,124 @@ export default function AiAssistant() {
         inputRef.current?.focus();
       }, 100);
     }
+  };
+
+  /* ============================================================
+     CONFIRM / CANCEL PENDING AI ACTION
+  ============================================================ */
+
+  const handleConfirmAction = async (message) => {
+    if (
+      loading ||
+      !message?.pendingAction ||
+      message.actionState !== 'pending'
+    ) {
+      return;
+    }
+
+    setMessages((prev) =>
+      prev.map((item) =>
+        item.id === message.id
+          ? { ...item, actionState: 'confirmed' }
+          : item
+      )
+    );
+
+    setLoading(true);
+
+    try {
+      const token =
+        localStorage.getItem('token');
+
+      const response = await api.post(
+        '/api/ai/chat',
+        {
+          confirmedAction: {
+            tool:
+              message.pendingAction.action.tool,
+            args:
+              message.pendingAction.action.args,
+            summary:
+              message.pendingAction.summary,
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = response.data;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          sender: 'assistant',
+          text:
+            data.answer ||
+            data.message ||
+            'Action complete ho gaya.',
+          createdAt:
+            new Date().toISOString(),
+        },
+      ]);
+    } catch (error) {
+      console.error(
+        'AI Action Confirm Error:',
+        error
+      );
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          sender: 'assistant',
+          text:
+            error?.response?.data?.answer ||
+            error?.response?.data?.message ||
+            'Action execute nahi ho saka. Dobara try karein.',
+          createdAt:
+            new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setLoading(false);
+
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  const handleCancelAction = (message) => {
+    if (
+      loading ||
+      !message?.pendingAction ||
+      message.actionState !== 'pending'
+    ) {
+      return;
+    }
+
+    setMessages((prev) =>
+      prev.map((item) =>
+        item.id === message.id
+          ? { ...item, actionState: 'cancelled' }
+          : item
+      )
+    );
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `assistant-${Date.now()}`,
+        sender: 'assistant',
+        text: 'Theek hai, action cancel kar diya hai.',
+        createdAt:
+          new Date().toISOString(),
+      },
+    ]);
   };
 
   /* ============================================================
@@ -836,7 +1002,7 @@ export default function AiAssistant() {
               />
 
               <span className="text-[8px] font-bold text-emerald-600">
-                READ ONLY
+                AI AGENT
               </span>
 
             </div>
@@ -1190,7 +1356,7 @@ export default function AiAssistant() {
 
                     <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-wider text-slate-400">
                       <Layers3 size={9} />
-                      Read Only
+                      Smart Actions
                     </div>
 
                   </div>
@@ -1253,6 +1419,72 @@ export default function AiAssistant() {
                     </div>
 
                     <div className="flex items-center gap-2">
+
+                      {aiUsage ? (
+                        <div
+                          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 shadow-sm ${
+                            aiUsage.remaining ===
+                              0
+                              ? 'border-amber-200 bg-amber-50'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                          title={
+                            aiUsage.loading
+                              ? 'Smart usage load ho raha hai…'
+                              : aiUsage.error
+                                ? 'Usage load nahi ho saka — backend check karein'
+                                : aiUsage.remaining ===
+                                  0
+                                  ? 'Aaj ki smart limit khatam — basic sawal (sale, khata, stock) ab bhi muft me chalte rahenge'
+                                  : `Aaj ${aiUsage.remaining} smart sawal baqi — basic sawal hamesha muft`
+                          }
+                        >
+
+                          <Zap
+                            size={11}
+                            className={
+                              aiUsage.remaining ===
+                                0 ||
+                              aiUsage.error
+                                ? 'text-amber-500'
+                                : 'text-indigo-500'
+                            }
+                          />
+
+                          <span className="text-[8px] font-bold text-slate-600">
+                            {aiUsage.loading
+                              ? 'Smart …'
+                              : aiUsage.error
+                                ? 'Smart —'
+                                : `Smart ${aiUsage.used}/${aiUsage.limit}`}
+                          </span>
+
+                          {!aiUsage.loading &&
+                          !aiUsage.error ? (
+                            <span className="h-1 w-10 overflow-hidden rounded-full bg-slate-100">
+
+                              <span
+                                className={`block h-full rounded-full ${
+                                  aiUsage.remaining ===
+                                    0
+                                    ? 'bg-amber-400'
+                                    : 'bg-indigo-500'
+                                }`}
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    (aiUsage.used /
+                                      aiUsage.limit) *
+                                      100
+                                  )}%`,
+                                }}
+                              />
+
+                            </span>
+                          ) : null}
+
+                        </div>
+                      ) : null}
 
                       <button
                         type="button"
@@ -1365,6 +1597,38 @@ export default function AiAssistant() {
                                     : 'AI ASSISTANT'}
                                 </span>
 
+                                {!isUser &&
+                                  message.source && (
+                                    <span
+                                      className={`rounded-full px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[.1em] ${
+                                        message.source ===
+                                          'llm'
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : message.source ===
+                                            'limit'
+                                            ? 'bg-amber-100 text-amber-700'
+                                            : 'bg-slate-100 text-slate-500'
+                                      }`}
+                                      title={
+                                        message.source ===
+                                          'llm'
+                                          ? 'Smart LLM engine (Groq)'
+                                          : message.source ===
+                                            'limit'
+                                            ? 'Daily smart-question limit reached — resets tomorrow'
+                                            : 'Basic rule-based engine — free, no AI tokens used'
+                                      }
+                                    >
+                                      {message.source ===
+                                        'llm'
+                                        ? 'Smart'
+                                        : message.source ===
+                                          'limit'
+                                          ? 'Limit'
+                                          : 'Basic'}
+                                    </span>
+                                  )}
+
                                 {message.createdAt && (
                                   <>
                                     <span className="h-0.5 w-0.5 rounded-full bg-slate-300" />
@@ -1391,6 +1655,100 @@ export default function AiAssistant() {
                               >
                                 {message.text}
                               </div>
+                              {/* ACTION CONFIRMATION CARD */}
+
+                              {!isUser &&
+                                message.pendingAction &&
+                                message.actionState ===
+                                  'pending' && (
+                                  <div className="ai-card mt-3 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50/60 shadow-[0_8px_25px_rgba(217,119,6,.08)]">
+
+                                    <div className="flex items-start gap-3 p-4">
+
+                                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                                        <ShieldCheck size={16} />
+                                      </div>
+
+                                      <div className="min-w-0 flex-1">
+
+                                        <p className="text-[8px] font-bold uppercase tracking-[.14em] text-amber-600">
+                                          Confirmation required
+                                        </p>
+
+                                        <p className="mt-1.5 text-[12px] font-medium leading-6 text-slate-700">
+                                          {
+                                            message.pendingAction
+                                              .summary
+                                          }
+                                        </p>
+
+                                      </div>
+
+                                    </div>
+
+                                    <div className="flex gap-2 border-t border-amber-100 bg-white/60 px-4 py-3">
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleConfirmAction(
+                                            message
+                                          )
+                                        }
+                                        disabled={loading}
+                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-emerald-600 active:scale-[.98] disabled:opacity-40"
+                                      >
+                                        <CheckCircle2 size={13} />
+                                        Confirm
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleCancelAction(
+                                            message
+                                          )
+                                        }
+                                        disabled={loading}
+                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-bold text-slate-500 shadow-sm transition hover:bg-slate-50 active:scale-[.98] disabled:opacity-40"
+                                      >
+                                        <XCircle size={13} />
+                                        Cancel
+                                      </button>
+
+                                    </div>
+                                  </div>
+                                )}
+
+                              {!isUser &&
+                                message.pendingAction &&
+                                message.actionState !==
+                                  'pending' && (
+                                  <div className="mt-2 flex items-center gap-1.5 px-1">
+                                    {message.actionState ===
+                                    'confirmed' ? (
+                                      <>
+                                        <CheckCircle2
+                                          size={10}
+                                          className="text-emerald-500"
+                                        />
+                                        <span className="text-[8px] font-semibold text-emerald-600">
+                                          Action confirmed & executed
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <XCircle
+                                          size={10}
+                                          className="text-slate-400"
+                                        />
+                                        <span className="text-[8px] font-semibold text-slate-400">
+                                          Action cancelled
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
 
                             </div>
 
@@ -1482,6 +1840,65 @@ export default function AiAssistant() {
         </main>
 
         {/* ================================================================
+            AI USAGE METER (slim, always visible)
+        ================================================================= */}
+
+        {aiUsage ? (
+          <div
+            className="relative z-30 shrink-0 border-t border-slate-200/70 bg-white/90 px-3 py-1 backdrop-blur-xl sm:px-6 lg:px-8"
+            title={
+              aiUsage.loading
+                ? 'Smart usage load ho raha hai'
+                : aiUsage.error
+                  ? 'Usage load nahi ho saka'
+                  : 'Aaj ' + aiUsage.remaining + ' smart sawal baqi — basic sawal hamesha muft'
+            }
+          >
+
+            <div className="mx-auto flex w-full max-w-[1350px] items-center gap-2">
+
+              <Zap
+                size={10}
+                className={
+                  aiUsage.remaining === 0 || aiUsage.error
+                    ? 'shrink-0 text-amber-500'
+                    : 'shrink-0 text-indigo-500'
+                }
+              />
+
+              <span className="shrink-0 text-[9px] font-bold tabular-nums text-slate-600">
+                {aiUsage.loading
+                  ? 'Smart …'
+                  : aiUsage.error
+                    ? 'Smart —'
+                    : `Smart ${aiUsage.used}/${aiUsage.limit}`}
+              </span>
+
+              {!aiUsage.loading && !aiUsage.error ? (
+                <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      aiUsage.remaining === 0 ? 'bg-amber-400' : 'bg-indigo-500'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, (aiUsage.used / aiUsage.limit) * 100)}%`,
+                    }}
+                  />
+
+                </div>
+              ) : null}
+
+              <span className="hidden shrink-0 text-[8px] text-slate-400 sm:block">
+                basic muft
+              </span>
+
+            </div>
+
+          </div>
+        ) : null}
+
+        {/* ================================================================
             INPUT FOOTER
         ================================================================= */}
 
@@ -1562,7 +1979,7 @@ export default function AiAssistant() {
                 />
 
                 <span className="text-[7px] font-medium uppercase tracking-[.08em] text-slate-400 sm:text-[8px]">
-                  Read-only AI
+                  Smart actions enabled
                 </span>
 
               </span>

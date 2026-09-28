@@ -1321,6 +1321,7 @@ const getPaymentScore = (customer) => {
 
     return (
       <img
+        loading="lazy"
         src={src}
         alt={alt || ''}
         className={className}

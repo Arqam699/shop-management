@@ -3,6 +3,8 @@ const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const cron = require('node-cron');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 // =====================================================
 // ROUTES
@@ -113,21 +115,6 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
-// -----------------------------------------------------
-// CORS DEBUG
-// -----------------------------------------------------
-
-console.log('');
-console.log('=====================================================');
-console.log('[CORS] Allowed Origins:');
-
-Array.from(allowedOrigins).forEach((origin) => {
-  console.log(` - ${origin}`);
-});
-
-console.log('=====================================================');
-console.log('');
-
 // =====================================================
 // CORS OPTIONS
 // =====================================================
@@ -224,6 +211,49 @@ app.use(
 );
 
 app.use(cookieParser());
+
+// =====================================================
+// HELMET (security headers)
+// =====================================================
+
+app.use(helmet());
+
+// =====================================================
+// RATE LIMITING
+//
+// trust proxy is already enabled in production above,
+// so rate limiting sees the real client IP behind Vercel.
+// =====================================================
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message:
+      'Too many auth attempts. Please try again in 15 minutes.',
+  },
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message:
+      'Too many requests. Please try again in 15 minutes.',
+  },
+});
+
+// General limiter for the whole API...
+app.use('/api', apiLimiter);
+
+// ...plus a strict limiter on auth endpoints.
+app.use('/api/auth', authLimiter);
 
 // =====================================================
 // SECURITY HEADERS
@@ -467,54 +497,54 @@ const seedAdminAccount = async () => {
       .trim()
       .toLowerCase();
 
-    const adminPassword =
-      process.env.ADMIN_PASSWORD ||
-      'SecureAdminPassword123';
-
-    let admin = await Admin.findOne({
+    const admin = await Admin.findOne({
       email: adminEmail,
     });
 
     // =================================================
-    // CREATE ADMIN IF NOT EXISTS
+    // ADMIN ALREADY EXISTS -> NEVER TOUCH IT
+    //
+    // The seeder must NEVER overwrite an existing admin's
+    // password from the environment. Password changes go
+    // through the change-password flow only.
     // =================================================
 
-    if (!admin) {
-      admin = new Admin({
-        email: adminEmail,
-        password: adminPassword,
-      });
+    if (admin) {
+      return;
+    }
 
-      await admin.save();
+    // =================================================
+    // CREATE ADMIN IF NOT EXISTS
+    //
+    // Requires ADMIN_PASSWORD from the environment.
+    // There is intentionally NO hardcoded fallback
+    // password — seeding with a known default would be
+    // a critical security hole.
+    // =================================================
 
-      console.log(
-        `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
+    const adminPassword =
+      process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+      console.warn(
+        '[SEED SKIP] No admin account found and ' +
+        'ADMIN_PASSWORD is not set. Skipping admin ' +
+        'creation — set ADMIN_PASSWORD to seed the ' +
+        'initial admin account.'
       );
 
       return;
     }
 
-    // =================================================
-    // SYNC PASSWORD WITH ENV
-    // =================================================
+    const newAdmin = new Admin({
+      email: adminEmail,
+      password: adminPassword,
+    });
 
-    const isMatch =
-      await admin.comparePassword(
-        adminPassword
-      );
-
-    if (!isMatch) {
-      admin.password = adminPassword;
-
-      await admin.save();
-
-      console.log(
-        `[SEED UPDATE] Password synced from .env for: ${adminEmail}`
-      );
-    }
+    await newAdmin.save();
 
     console.log(
-      `[SEED READY] Admin account already exists: ${adminEmail}`
+      `[SEED SUCCESS] Admin account initialized: ${adminEmail}`
     );
   } catch (err) {
     console.error(
@@ -548,11 +578,7 @@ const initializeAutomaticBackupScheduler = () => {
 
   if (process.env.VERCEL === '1') {
     console.log(
-      '[BACKUP] Vercel detected.'
-    );
-
-    console.log(
-      '[BACKUP] Automatic local cron scheduler skipped.'
+      '[BACKUP] Vercel: local cron skipped.'
     );
 
     return null;
@@ -577,77 +603,23 @@ const initializeAutomaticBackupScheduler = () => {
   backupScheduler = cron.schedule(
     '59 23 * * *',
     async () => {
-      console.log('');
-
-      console.log(
-        '====================================================='
-      );
-
-      console.log(
-        '[BACKUP] Automatic daily backup started.'
-      );
-
-      console.log(
-        '[BACKUP] Timezone: Asia/Karachi'
-      );
-
-      console.log(
-        '[BACKUP] Scheduled time: 11:59 PM'
-      );
-
-      console.log(
-        '====================================================='
-      );
+      console.log('[BACKUP] Daily auto-backup started.');
 
       try {
         const result =
           await runAutomaticDailyBackups();
 
-        console.log('');
-
         console.log(
-          '====================================================='
+          `[BACKUP] Daily auto-backup done. ` +
+          `Shops: ${result?.total ?? 0}, ` +
+          `OK: ${result?.success ?? 0}, ` +
+          `Failed: ${result?.failed ?? 0}`
         );
-
-        console.log(
-          '[BACKUP] Automatic daily backup finished.'
-        );
-
-        console.log(
-          `[BACKUP] Total Shops: ${result?.total ?? 0}`
-        );
-
-        console.log(
-          `[BACKUP] Successful: ${result?.success ?? 0}`
-        );
-
-        console.log(
-          `[BACKUP] Failed: ${result?.failed ?? 0}`
-        );
-
-        console.log(
-          '====================================================='
-        );
-
-        console.log('');
       } catch (error) {
-        console.error('');
-
         console.error(
-          '====================================================='
+          '[BACKUP] Daily auto-backup ERROR:',
+          error.message || error
         );
-
-        console.error(
-          '[BACKUP] Automatic backup ERROR:'
-        );
-
-        console.error(error);
-
-        console.error(
-          '====================================================='
-        );
-
-        console.error('');
       }
     },
     {
@@ -655,33 +627,9 @@ const initializeAutomaticBackupScheduler = () => {
     }
   );
 
-  console.log('');
-
   console.log(
-    '====================================================='
+    '[BACKUP] Daily auto-backup: 11:59 PM (Asia/Karachi)'
   );
-
-  console.log(
-    '[BACKUP] Automatic daily backup scheduler initialized.'
-  );
-
-  console.log(
-    '[BACKUP] Schedule: Every day at 11:59 PM'
-  );
-
-  console.log(
-    '[BACKUP] Timezone: Asia/Karachi'
-  );
-
-  console.log(
-    '[BACKUP] Status: ACTIVE'
-  );
-
-  console.log(
-    '====================================================='
-  );
-
-  console.log('');
 
   return backupScheduler;
 };
@@ -768,10 +716,6 @@ const startServer = async () => {
 
     await connectDB();
 
-    console.log(
-      'MongoDB connection is ready.'
-    );
-
     // =================================================
     // 2. BACKUP STORAGE INITIALIZATION
     // =================================================
@@ -788,11 +732,7 @@ const startServer = async () => {
           await initializeBackupStorage();
 
         console.log(
-          '[BACKUP] Local storage initialized:'
-        );
-
-        console.log(
-          backupPaths
+          `[BACKUP] Folder: ${backupPaths.backupDir}`
         );
       } catch (backupError) {
         // Do not crash the complete application
@@ -848,39 +788,12 @@ const startServer = async () => {
         );
 
         console.log(
-          `Server executing in ${
-            process.env.NODE_ENV ||
-            'development'
-          } mode`
-        );
-
-        console.log(
-          `Server running on port ${PORT}`
-        );
-
-        console.log(
-          `API: http://localhost:${PORT}`
+          `Server running -> http://localhost:${PORT}`
         );
 
         if (process.env.VERCEL === '1') {
           console.log(
-            '[VERCEL] Running in Vercel environment.'
-          );
-
-          console.log(
-            '[BACKUP] Local Desktop backup initialization: SKIPPED'
-          );
-
-          console.log(
-            '[BACKUP] Automatic local cron: SKIPPED'
-          );
-        } else {
-          console.log(
-            '[BACKUP] Automatic daily backup: ACTIVE'
-          );
-
-          console.log(
-            '[BACKUP] Next scheduled time: 11:59 PM Asia/Karachi'
+            '[VERCEL] Cloud mode: local backup & cron skipped.'
           );
         }
 

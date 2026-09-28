@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
 } from 'react';
 
@@ -87,8 +88,29 @@ export const AuthProvider = ({
             const authData =
               response.data.data;
 
+            // Only push a new object when the payload
+            // actually changed — keeps the background
+            // session poll from re-rendering the app.
+
             setAdmin(
-              authData
+              (previousAdmin) => {
+                const previousKey =
+                  previousAdmin
+                    ? JSON.stringify(
+                        previousAdmin
+                      )
+                    : null;
+
+                const nextKey =
+                  JSON.stringify(
+                    authData
+                  );
+
+                return previousKey ===
+                  nextKey
+                  ? previousAdmin
+                  : authData;
+              }
             );
 
             if (!silent) {
@@ -234,7 +256,7 @@ export const AuthProvider = ({
   // ======================================================
   // AUTOMATIC SESSION MONITOR
   //
-  // Every 10 seconds.
+  // Every 60 seconds. Skipped while the tab is hidden.
   //
   // This also detects:
   // - Suspension
@@ -250,10 +272,14 @@ export const AuthProvider = ({
 
     const interval =
       setInterval(() => {
+        if (document.hidden) {
+          return;
+        }
+
         checkAuthStatus({
           silent: true,
         });
-      }, 10000);
+      }, 60000);
 
     return () => {
       clearInterval(
@@ -303,10 +329,8 @@ export const AuthProvider = ({
   // LOGIN
   // ======================================================
 
-  const login = async (
-    email,
-    password
-  ) => {
+  const login = useCallback(
+    async (email, password) => {
     try {
       const response =
         await api.post(
@@ -402,17 +426,16 @@ export const AuthProvider = ({
           '',
       };
     }
-  };
+    },
+    []
+  );
 
   // ======================================================
   // CHANGE PASSWORD
   // ======================================================
 
-  const changePassword =
-    async (
-      newPassword,
-      confirmPassword
-    ) => {
+  const changePassword = useCallback(
+    async (newPassword, confirmPassword) => {
       try {
         const response =
           await api.patch(
@@ -567,13 +590,16 @@ export const AuthProvider = ({
             'Unable to change password. Please try again.',
         };
       }
-    };
+    },
+    [checkAuthStatus, clearAuthState]
+  );
 
   // ======================================================
   // LOGOUT
   // ======================================================
 
-  const logout = async () => {
+  const logout = useCallback(
+    async () => {
     if (
       logoutInProgress.current
     ) {
@@ -602,7 +628,39 @@ export const AuthProvider = ({
       logoutInProgress.current =
         false;
     }
-  };
+    },
+    []
+  );
+
+  // ======================================================
+  // CONTEXT VALUE (memoized — stable identity unless
+  // one of the values actually changes)
+  // ======================================================
+
+  const contextValue = useMemo(
+    () => ({
+      admin,
+      loading,
+      login,
+      logout,
+      changePassword,
+      checkAuthStatus,
+      sessionMessage,
+      suspensionReason,
+      clearAuthState,
+    }),
+    [
+      admin,
+      loading,
+      login,
+      logout,
+      changePassword,
+      checkAuthStatus,
+      sessionMessage,
+      suspensionReason,
+      clearAuthState,
+    ]
+  );
 
   // ======================================================
   // CONTEXT
@@ -610,25 +668,7 @@ export const AuthProvider = ({
 
   return (
     <AuthContext.Provider
-      value={{
-        admin,
-
-        loading,
-
-        login,
-
-        logout,
-
-        changePassword,
-
-        checkAuthStatus,
-
-        sessionMessage,
-
-        suspensionReason,
-
-        clearAuthState,
-      }}
+      value={contextValue}
     >
       {children}
     </AuthContext.Provider>

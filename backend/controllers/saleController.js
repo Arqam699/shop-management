@@ -6,6 +6,11 @@ const Installment = require('../models/Installment');
 const Settings = require('../models/Settings');
 const Customer = require('../models/Customer');
 const Payment = require('../models/Payment');
+const Counter = require('../models/Counter');
+const {
+  getPaginationParams,
+  paginatedResponse,
+} = require('../utils/pagination');
 
 // ============================================================
 // HELPERS
@@ -127,7 +132,49 @@ const checkDeletionMode = async (shopId) => {
 // SALE ID
 // ============================================================
 
-const generateSaleID = async (shopId) => {
+// ============================================================
+// ATOMIC SEQUENCE
+//
+// Hands out the next sequence number for a per-shop counter
+// with a single atomic findOneAndUpdate ($inc).
+//
+// FIRST USE ONLY: the counter is seeded from the highest ID
+// already stored in the database, so previously issued IDs
+// are never reused (saleId / planId have unique indexes).
+// After seeding, every call is one atomic $inc — no more
+// full-collection scans.
+// ============================================================
+
+const getNextSequence = async (
+  key,
+  seedMaxNumber
+) => {
+  const existing =
+    await Counter.findById(key)
+      .select('seq')
+      .lean();
+
+  if (!existing) {
+    const seed = await seedMaxNumber();
+
+    await Counter.findOneAndUpdate(
+      { _id: key },
+      { $setOnInsert: { seq: seed } },
+      { upsert: true }
+    );
+  }
+
+  const counter =
+    await Counter.findOneAndUpdate(
+      { _id: key },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+
+  return counter.seq;
+};
+
+const getMaxSaleNumber = async (shopId) => {
   const sales = await Sale.find({
     shopId
   })
@@ -149,14 +196,23 @@ const generateSaleID = async (shopId) => {
     }
   }
 
-  return `SALE-${String(maxNumber + 1).padStart(4, '0')}`;
+  return maxNumber;
+};
+
+const generateSaleID = async (shopId) => {
+  const seq = await getNextSequence(
+    `sale_${shopId}`,
+    () => getMaxSaleNumber(shopId)
+  );
+
+  return `SALE-${String(seq).padStart(4, '0')}`;
 };
 
 // ============================================================
 // PLAN ID
 // ============================================================
 
-const generatePlanID = async (shopId) => {
+const getMaxPlanNumber = async (shopId) => {
   const plans = await InstallmentPlan.find({
     shopId
   })
@@ -178,7 +234,16 @@ const generatePlanID = async (shopId) => {
     }
   }
 
-  return String(maxNumber + 1).padStart(2, '0');
+  return maxNumber;
+};
+
+const generatePlanID = async (shopId) => {
+  const seq = await getNextSequence(
+    `plan_${shopId}`,
+    () => getMaxPlanNumber(shopId)
+  );
+
+  return String(seq).padStart(2, '0');
 };
 
 // ============================================================
@@ -1354,14 +1419,45 @@ const getSales = async (req, res) => {
         'Installment';
     }
 
-    const sales =
-      await Sale.find(filter)
-        .populate('customer')
-        .populate('product')
+    // --------------------------------------------------------
+    // OPTIONAL PAGINATION (backward compatible)
+    // ?page=1&limit=20 -> { data, pagination }
+    // no params       -> plain array (unchanged)
+    // --------------------------------------------------------
+    const pagination =
+      getPaginationParams(req);
+
+    let salesQuery =
+      Sale.find(filter)
+        .populate('customer', 'fullName mobileNumber cnic')
+        .populate('product', 'name brand model')
         .sort({
           createdAt: -1
         })
         .lean();
+
+    let totalSales = 0;
+
+    if (pagination) {
+      totalSales =
+        await Sale.countDocuments(filter);
+
+      salesQuery = salesQuery
+        .skip(pagination.skip)
+        .limit(pagination.limit);
+    }
+
+    const sales =
+      await salesQuery;
+
+    if (pagination) {
+      return paginatedResponse(
+        res,
+        sales,
+        totalSales,
+        pagination
+      );
+    }
 
     return res.status(200).json({
       success: true,

@@ -1,5 +1,9 @@
 
 const Product = require('../models/Product');
+const {
+  getPaginationParams,
+  paginatedResponse,
+} = require('../utils/pagination');
 const StockMovement = require('../models/StockMovement');
 const Settings = require('../models/Settings');
 
@@ -161,12 +165,43 @@ const getProducts = async (req, res) => {
       ];
     }
 
-    const products =
-      await Product.find(query)
+    // --------------------------------------------------------
+    // OPTIONAL PAGINATION (backward compatible)
+    // ?page=1&limit=20 -> { data, pagination }
+    // no params       -> plain array (unchanged)
+    // --------------------------------------------------------
+    const pagination =
+      getPaginationParams(req);
+
+    let productsQuery =
+      Product.find(query)
         .sort({
           createdAt: 1,
         })
         .lean();
+
+    let totalProducts = 0;
+
+    if (pagination) {
+      totalProducts =
+        await Product.countDocuments(query);
+
+      productsQuery = productsQuery
+        .skip(pagination.skip)
+        .limit(pagination.limit);
+    }
+
+    const products =
+      await productsQuery;
+
+    if (pagination) {
+      return paginatedResponse(
+        res,
+        products,
+        totalProducts,
+        pagination
+      );
+    }
 
     return res.status(200).json({
       success: true,

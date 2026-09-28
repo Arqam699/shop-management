@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 
 import ConfirmModal from '../components/ConfirmModal';
 
+import api from '../utils/api';
+
 import {
   X,
   ShieldCheck,
@@ -18,10 +20,6 @@ import {
   MessageCircle,
   KeyRound,
 } from 'lucide-react';
-
-const API_URL = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000'
-).replace(/\/+$/, '');
 
 const DEFAULT_STATS = {
   totalShops: 0,
@@ -139,44 +137,62 @@ const SuperAdminDashboard = () => {
     });
   };
 
-  const fetchJson = async (url, options = {}) => {
-    const response = await fetch(url, {
-      ...options,
-      credentials: 'include',
-    });
+  // Same (path, options) contract as the old fetch-based
+  // helper, now backed by the shared axios client so the
+  // base URL, credentials and interceptors stay in one place.
+  const fetchJson = async (path, options = {}) => {
+    const method = (
+      options.method || 'GET'
+    ).toLowerCase();
 
-    let data = {};
+    let payload;
+
+    if (options.body) {
+      try {
+        payload = JSON.parse(options.body);
+      } catch {
+        payload = options.body;
+      }
+    }
 
     try {
-      data = await response.json();
-    } catch {
-      data = {};
-    }
+      const response = await api.request({
+        url: path,
+        method,
+        data: payload,
+      });
 
-    if (response.status === 401) {
-      handleUnauthorized();
+      return response.data ?? {};
+    } catch (error) {
+      const status =
+        error.response?.status;
 
-      const error = new Error(
+      const data =
+        error.response?.data || {};
+
+      if (status === 401) {
+        handleUnauthorized();
+
+        const authError = new Error(
+          data.message ||
+            'Super Admin session expired. Please login again.'
+        );
+
+        authError.status = 401;
+
+        throw authError;
+      }
+
+      const requestError = new Error(
         data.message ||
-          'Super Admin session expired. Please login again.'
+          error.message ||
+          'Something went wrong.'
       );
 
-      error.status = 401;
+      requestError.status = status;
 
-      throw error;
+      throw requestError;
     }
-
-    if (!response.ok) {
-      const error = new Error(
-        data.message || 'Something went wrong.'
-      );
-
-      error.status = response.status;
-
-      throw error;
-    }
-
-    return data;
   };
 
   // =====================================================
@@ -189,7 +205,7 @@ const SuperAdminDashboard = () => {
       setError('');
 
       const data = await fetchJson(
-        `${API_URL}/api/super-admin/me`,
+        `/api/super-admin/me`,
         {
           method: 'GET',
         }
@@ -235,7 +251,7 @@ const SuperAdminDashboard = () => {
       setError('');
 
       const statsData = await fetchJson(
-        `${API_URL}/api/super-admin/dashboard`,
+        `/api/super-admin/dashboard`,
         {
           method: 'GET',
         }
@@ -246,7 +262,7 @@ const SuperAdminDashboard = () => {
       );
 
       const shopsData = await fetchJson(
-        `${API_URL}/api/super-admin/shops`,
+        `/api/super-admin/shops`,
         {
           method: 'GET',
         }
@@ -403,7 +419,7 @@ const SuperAdminDashboard = () => {
       }
 
       await fetchJson(
-        `${API_URL}/api/super-admin/shops`,
+        `/api/super-admin/shops`,
         {
           method: 'POST',
           headers: {
@@ -481,7 +497,7 @@ const SuperAdminDashboard = () => {
       setError('');
 
       await fetchJson(
-        `${API_URL}/api/super-admin/shops/${chargeModal.shopId}/monthly-charge`,
+        `/api/super-admin/shops/${chargeModal.shopId}/monthly-charge`,
         {
           method: 'PATCH',
           headers: {
@@ -536,7 +552,7 @@ const SuperAdminDashboard = () => {
           setError('');
 
           await fetchJson(
-            `${API_URL}/api/super-admin/shops/${shopId}/suspend`,
+            `/api/super-admin/shops/${shopId}/suspend`,
             {
               method: 'PATCH',
             }
@@ -591,7 +607,7 @@ const SuperAdminDashboard = () => {
           // --------------------------------------------
 
           await fetchJson(
-            `${API_URL}/api/super-admin/shops/${shopId}/activate`,
+            `/api/super-admin/shops/${shopId}/activate`,
             {
               method: 'PATCH',
             }
@@ -800,7 +816,7 @@ const SuperAdminDashboard = () => {
       }
 
       await fetchJson(
-        `${API_URL}/api/super-admin/shops/${renewModal.shopId}/subscription`,
+        `/api/super-admin/shops/${renewModal.shopId}/subscription`,
         {
           method: 'PATCH',
           headers: {
@@ -886,7 +902,7 @@ const SuperAdminDashboard = () => {
       });
 
       const data = await fetchJson(
-        `${API_URL}/api/super-admin/shops/${shop.shopId}/password-history`,
+        `/api/super-admin/shops/${shop.shopId}/password-history`,
         {
           method: 'GET',
         }
@@ -986,7 +1002,7 @@ const SuperAdminDashboard = () => {
       setActionLoading('delete-shop');
 
       await fetchJson(
-        `${API_URL}/api/super-admin/shops/${deleteModal.shopId}`,
+        `/api/super-admin/shops/${deleteModal.shopId}`,
         {
           method: 'DELETE',
           headers: {
@@ -1075,7 +1091,7 @@ const SuperAdminDashboard = () => {
       setActionLoading('reset-password');
 
       await fetchJson(
-        `${API_URL}/api/super-admin/shops/${passwordModal.shopId}/password`,
+        `/api/super-admin/shops/${passwordModal.shopId}/password`,
         {
           method: 'PATCH',
           headers: {
@@ -1122,11 +1138,10 @@ const SuperAdminDashboard = () => {
 
   const handleLogout = async () => {
     try {
-      await fetch(
-        `${API_URL}/api/super-admin/logout`,
+      await fetchJson(
+        '/api/super-admin/logout',
         {
           method: 'POST',
-          credentials: 'include',
         }
       );
     } catch (error) {

@@ -807,6 +807,7 @@ const AddEditCustomer = () => {
           <div className="p-3.5 rounded-2xl bg-white border border-emerald-200 flex items-center gap-4 animate-[pageEnter_0.2s_ease-out]">
             <div className="w-20 h-24 rounded-xl border border-slate-200 bg-slate-50 p-1 flex items-center justify-center shrink-0">
               <img
+                loading="lazy"
                 src={getImageSource(fingerprintImage)}
                 alt={`${label} biometric`}
                 className="w-full h-full object-contain"
@@ -880,6 +881,7 @@ const AddEditCustomer = () => {
           <div className="p-3.5 rounded-2xl bg-white border border-blue-200 flex items-center gap-4 animate-[pageEnter_0.2s_ease-out]">
             <div className="w-24 h-24 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
               <img
+                loading="lazy"
                 src={getImageSource(liveImage)}
                 alt={`${label} live`}
                 className="w-full h-full object-cover"
@@ -1433,6 +1435,7 @@ const AddEditCustomer = () => {
 
                 {photoPreview && (
                   <img
+                    loading="lazy"
                     src={photoPreview}
                     alt="Snapshot preview"
                     className="absolute inset-0 w-full h-full object-contain"

@@ -3,6 +3,8 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
 } from 'react';
 
 import api from '../utils/api';
@@ -35,7 +37,7 @@ export const SettingsProvider = ({ children }) => {
   // ==========================================
   // FETCH SETTINGS
   // ==========================================
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     if (!admin) {
       setLoading(false);
 
@@ -73,7 +75,7 @@ export const SettingsProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [admin]);
 
 
   // ==========================================
@@ -87,7 +89,7 @@ export const SettingsProvider = ({ children }) => {
   // ==========================================
   // UPDATE NORMAL SETTINGS
   // ==========================================
-  const updateSettings = async (updatedData) => {
+  const updateSettings = useCallback(async (updatedData) => {
     try {
       const response = await api.put(
         '/api/settings',
@@ -117,13 +119,13 @@ export const SettingsProvider = ({ children }) => {
           'Server error saving settings',
       };
     }
-  };
+  }, []);
 
 
   // ==========================================
   // ENABLE DELETION MODE
   // ==========================================
-  const enableDeletionMode = async (password) => {
+  const enableDeletionMode = useCallback(async (password) => {
     try {
       const response = await api.post(
         '/api/settings/deletion-mode/enable',
@@ -156,13 +158,13 @@ export const SettingsProvider = ({ children }) => {
           'Server error enabling deletion mode',
       };
     }
-  };
+  }, []);
 
 
   // ==========================================
   // DISABLE DELETION MODE
   // ==========================================
-  const disableDeletionMode = async (password) => {
+  const disableDeletionMode = useCallback(async (password) => {
     try {
       const response = await api.post(
         '/api/settings/deletion-mode/disable',
@@ -195,26 +197,38 @@ export const SettingsProvider = ({ children }) => {
           'Server error disabling deletion mode',
       };
     }
-  };
+  }, []);
 
+
+  // ==========================================
+  // CONTEXT VALUE (memoized — stable identity unless
+  // one of the values actually changes)
+  // ==========================================
+  const contextValue = useMemo(
+    () => ({
+      settings,
+      updateSettings,
+      enableDeletionMode,
+      disableDeletionMode,
+      refreshSettings: fetchSettings,
+      loading,
+    }),
+    [
+      settings,
+      updateSettings,
+      enableDeletionMode,
+      disableDeletionMode,
+      fetchSettings,
+      loading,
+    ]
+  );
 
   // ==========================================
   // CONTEXT
   // ==========================================
   return (
     <SettingsContext.Provider
-      value={{
-        settings,
-
-        updateSettings,
-
-        enableDeletionMode,
-        disableDeletionMode,
-
-        refreshSettings: fetchSettings,
-
-        loading,
-      }}
+      value={contextValue}
     >
       {children}
     </SettingsContext.Provider>

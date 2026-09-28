@@ -149,5 +149,7 @@ paymentSchema.index({
 
 paymentSchema.index({ shopId: 1, paymentDate: -1 });
 paymentSchema.index({ shopId: 1, isArchived: 1, paymentDate: -1 });
+paymentSchema.index({ shopId: 1, sale: 1 });
+paymentSchema.index({ shopId: 1, customer: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

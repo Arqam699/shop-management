@@ -59,6 +59,7 @@ const productSchema = new mongoose.Schema(
 );
 
 productSchema.index({ shopId: 1, sku: 1 }, { unique: true });
+productSchema.index({ shopId: 1, createdAt: -1 });
 
 // Pre-save hook to calculate status
 productSchema.pre('save', function () {
