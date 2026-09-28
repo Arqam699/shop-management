@@ -459,12 +459,15 @@ const SettingsPage = () => {
 
               </div>
 
-              {/* SHOP NAME */}
+              {/* BRAND NAME */}
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Shop Name{' '}
+                <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Brand / Shop Name{' '}
                   <span className="text-rose-500">*</span>
+                  <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-[9px] font-black tracking-widest">
+                    BRAND
+                  </span>
                 </label>
 
                 <input
@@ -472,9 +475,49 @@ const SettingsPage = () => {
                   name="shopName"
                   value={formData.shopName || ''}
                   onChange={handleChange}
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                  className="w-full h-11 border-2 border-amber-200 rounded-xl px-4 text-xs sm:text-sm font-black uppercase tracking-widest bg-amber-50/50 focus:bg-white focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10 transition-all"
                   required
                 />
+              </div>
+
+              {/* BRAND TAGLINE */}
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Brand Tagline{' '}
+                  <span className="normal-case font-bold text-slate-400">
+                    (brand name ke neeche stylish print hogi)
+                  </span>
+                </label>
+
+                <input
+                  type="text"
+                  name="brandTagline"
+                  value={formData.brandTagline || ''}
+                  onChange={handleChange}
+                  placeholder="e.g. Quality Electronics Since 2010"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                />
+              </div>
+
+              {/* LIVE BRAND PREVIEW */}
+
+              <div className="rounded-2xl border-2 border-dashed border-amber-200 bg-white p-4 text-center">
+                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1.5">
+                  Slip Preview
+                </p>
+                <p className="text-xl font-black uppercase tracking-[0.18em] text-slate-900 leading-tight">
+                  {formData.shopName || 'Your Brand Name'}
+                </p>
+                {formData.brandTagline ? (
+                  <p className="text-[10px] font-bold italic uppercase tracking-[0.3em] text-slate-500 mt-0.5">
+                    {formData.brandTagline}
+                  </p>
+                ) : (
+                  <p className="text-[10px] italic text-slate-300 mt-0.5">
+                    Tagline yahan likhein...
+                  </p>
+                )}
               </div>
 
               {/* ADDRESS */}

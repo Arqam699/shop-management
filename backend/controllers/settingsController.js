@@ -104,6 +104,7 @@ const updateSettings = async (
     void allowGlobalDeletion;
     void deletionModeExpiresAt;
 
+
     Object.assign(
       settings,
       safeSettings

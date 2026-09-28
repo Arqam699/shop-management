@@ -13,6 +13,9 @@ import {
   CreditCard,
   Search,
   Printer,
+  RectangleVertical,
+  RectangleHorizontal,
+  Scissors,
   X,
   ShieldCheck,
   Trash2,
@@ -396,15 +399,37 @@ const Payments = () => {
     return Object.values(invoiceGroupsMap);
   }, [filteredPayments]);
 
+  // =========================================================
+  // PRINT MODE: portrait / landscape A4, half = A4 top-half only
+  // =========================================================
+  const [printOrientation, setPrintOrientation] = useState(() => {
+    try {
+      return localStorage.getItem('pos_payment_orientation') || 'portrait';
+    } catch {
+      return 'portrait';
+    }
+  });
+
+  const handleOrientationChange = (mode) => {
+    setPrintOrientation(mode);
+    try {
+      localStorage.setItem('pos_payment_orientation', mode);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
   const handlePrint = () => {
   const receipt = document.getElementById('printable-receipt-content');
 
   if (receipt) {
     const MM_TO_PX = 3.779527559;
 
-    // A4 page height = 297mm
-    // 5mm top + 5mm bottom margin
-    const A4_PRINTABLE_HEIGHT_PX = 287 * MM_TO_PX;
+    // A4 printable height: 287mm portrait / 200mm landscape
+    // (5mm top + 5mm bottom margin)
+    const PRINTABLE_HEIGHT_MM =
+      printOrientation === 'half' ? 140 : printOrientation === 'landscape' ? 200 : 287;
+    const A4_PRINTABLE_HEIGHT_PX = PRINTABLE_HEIGHT_MM * MM_TO_PX;
 
     const contentHeight = receipt.scrollHeight;
 
@@ -1164,6 +1189,45 @@ const Payments = () => {
               </span>
 
               <div className="flex items-center gap-2">
+                <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('portrait')}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                      printOrientation === 'portrait'
+                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <RectangleVertical className="w-3.5 h-3.5" />
+                    <span>Portrait</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('landscape')}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                      printOrientation === 'landscape'
+                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <RectangleHorizontal className="w-3.5 h-3.5" />
+                    <span>Landscape</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('half')}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                      printOrientation === 'half'
+                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    <span>Half Page</span>
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -1190,9 +1254,15 @@ const Payments = () => {
             >
               {/* SHOP HEADER */}
               <div className="text-center pb-2 border-b-2 border-dashed border-slate-400 space-y-0.5">
-                <h3 className="text-base font-black tracking-wider uppercase">
+                {/* BRAND NAME — auto-styled, prominent */}
+                <h3 className="text-2xl font-black uppercase tracking-[0.18em] text-slate-900 leading-tight">
                   {settings?.shopName || 'Electronics Shop'}
                 </h3>
+                {settings?.brandTagline && (
+                  <p className="text-[10px] font-bold italic uppercase tracking-[0.3em] text-slate-500">
+                    {settings.brandTagline}
+                  </p>
+                )}
                 {settings?.shopAddress && (
                   <p className="text-[10px] text-slate-600 font-bold">{settings.shopAddress}</p>
                 )}
@@ -1461,7 +1531,7 @@ const Payments = () => {
       <style>{`
       @media print {
   @page {
-    size: A4 portrait;
+    size: ${printOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
     margin: 5mm;
   }
 
@@ -1549,9 +1619,9 @@ const Payments = () => {
   top: auto !important;
 
   /* Receipt width */
-  width: 80mm !important;
-  min-width: 80mm !important;
-  max-width: 80mm !important;
+  width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
+  min-width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
+  max-width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
 
   /* IMPORTANT: margin auto */
   margin-left: auto !important;

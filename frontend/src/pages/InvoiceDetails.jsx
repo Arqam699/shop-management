@@ -6,6 +6,9 @@ import { useSettings } from '../context/SettingsContext';
 import {
   ArrowLeft,
   Printer,
+  RectangleVertical,
+  RectangleHorizontal,
+  Scissors,
   RefreshCw,
   X,
   AlertCircle,
@@ -85,6 +88,26 @@ const InvoiceDetails = () => {
   // =========================================================
   const handlePrint = () => {
     window.print();
+  };
+
+  // =========================================================
+  // PRINT MODE: portrait = 80mm slip, landscape = A4 wide, half = A4 top-half only
+  // =========================================================
+  const [printOrientation, setPrintOrientation] = useState(() => {
+    try {
+      return localStorage.getItem('pos_invoice_orientation') || 'portrait';
+    } catch {
+      return 'portrait';
+    }
+  });
+
+  const handleOrientationChange = (mode) => {
+    setPrintOrientation(mode);
+    try {
+      localStorage.setItem('pos_invoice_orientation', mode);
+    } catch {
+      /* storage unavailable */
+    }
   };
 
   // =========================================================
@@ -337,6 +360,45 @@ const InvoiceDetails = () => {
             </>
           )}
 
+          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 no-print">
+            <button
+              type="button"
+              onClick={() => handleOrientationChange('portrait')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                printOrientation === 'portrait'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <RectangleVertical className="w-3.5 h-3.5" />
+              <span>Portrait</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOrientationChange('landscape')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                printOrientation === 'landscape'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <RectangleHorizontal className="w-3.5 h-3.5" />
+              <span>Landscape</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOrientationChange('half')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                printOrientation === 'half'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              <span>Half Page</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handlePrint}
@@ -357,9 +419,15 @@ const InvoiceDetails = () => {
       >
         {/* SHOP HEADER */}
         <div className="text-center space-y-1 pb-3 border-b-2 border-dashed border-slate-300">
-          <h1 className="text-base font-black tracking-wider uppercase">
+          {/* BRAND NAME — auto-styled, prominent */}
+          <h1 className="text-2xl font-black uppercase tracking-[0.18em] text-slate-900 leading-tight">
             {settings?.shopName || 'Electronics Shop'}
           </h1>
+          {settings?.brandTagline && (
+            <p className="text-[10px] font-bold italic uppercase tracking-[0.3em] text-slate-500">
+              {settings.brandTagline}
+            </p>
+          )}
           {settings?.shopAddress && (
             <p className="text-[10px] text-slate-500 font-bold">
               {settings.shopAddress}
@@ -755,8 +823,8 @@ const InvoiceDetails = () => {
       <style>{`
         @media print {
           @page {
-            size: 80mm auto;
-            margin: 3mm 4mm;
+            size: ${printOrientation === 'landscape' ? 'A4 landscape' : printOrientation === 'half' ? 'A4 portrait' : '80mm auto'};
+            margin: ${printOrientation === 'portrait' ? '3mm 4mm' : '8mm'};
           }
 
           html, body {
@@ -786,14 +854,14 @@ const InvoiceDetails = () => {
             left: 50% !important;
             top: 0 !important;
             width: 100% !important;
-            max-width: 80mm !important;
+            max-width: ${printOrientation === 'landscape' ? '100%' : '80mm'} !important;
             margin: 0 !important;
             transform: translateX(-50%) !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;
             color: #000000 !important;
-            font-size: 8.5px !important;
+            font-size: ${printOrientation === 'landscape' ? '10px' : '8.5px'} !important;
           }
 
           img {

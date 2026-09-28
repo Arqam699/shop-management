@@ -32,6 +32,17 @@ const settingsSchema = new mongoose.Schema(
       default: 'admin@shop.com',
     },
 
+
+    // ============================================================
+    // Brand tagline printed stylishly under the shop name
+    // on invoices & payment slips. Example:
+    // "Quality Electronics Since 2010"
+    // ============================================================
+    brandTagline: {
+      type: String,
+      default: '',
+    },
+
     currency: {
       type: String,
       default: 'Rs.',
