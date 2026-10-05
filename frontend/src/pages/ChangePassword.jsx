@@ -79,7 +79,7 @@ const ChangePassword = () => {
     newPassword.length;
 
   const hasMinLength =
-    passwordLength >= 6;
+    passwordLength >= 12;
 
   const passwordsMatch =
     newPassword.length > 0 &&
@@ -108,9 +108,9 @@ const ChangePassword = () => {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 12) {
       setErrorMsg(
-        'Password must contain at least 6 characters.'
+        'Password must contain at least 12 characters.'
       );
 
       return;
@@ -357,7 +357,7 @@ const ChangePassword = () => {
                 </div>
 
                 <span className="text-[11px] font-bold text-slate-300">
-                  Minimum 6 characters
+                  Minimum 12 characters
                 </span>
 
               </div>
@@ -608,11 +608,11 @@ const ChangePassword = () => {
                     }`}
                   >
                     {newPassword.length === 0
-                      ? 'Minimum 6 characters'
+                      ? 'Minimum 12 characters'
                       : hasMinLength
                       ? '✓ Password length is valid'
-                      : `${6 - newPassword.length} more character${
-                          6 - newPassword.length === 1
+                      : `${12 - newPassword.length} more character${
+                          12 - newPassword.length === 1
                             ? ''
                             : 's'
                         } required`}
@@ -721,7 +721,7 @@ const ChangePassword = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/20 flex items-center justify-center gap-2 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="fixed bottom-4 right-4 z-50 h-12 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-6 text-xs font-black text-white shadow-lg shadow-blue-950/20 flex items-center justify-center gap-2 transition-shadow duration-200 hover:shadow-xl active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
 
                   {isSubmitting ? (

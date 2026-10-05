@@ -144,7 +144,7 @@ const Returns = () => {
       </section>
 
       {/* SEARCH TOOLBAR */}
-      <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm">
+      <section className="premium-card p-4 sm:p-5">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -158,7 +158,7 @@ const Returns = () => {
       </section>
 
       {/* RETURNS TABLE */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+      <div className="premium-card overflow-hidden">
         {loading ? (
           <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />

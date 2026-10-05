@@ -479,7 +479,7 @@ const Sales = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           
           {/* Filtered Sales Count */}
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+          <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
             <div className="flex items-start justify-between">
               <div>
@@ -500,7 +500,7 @@ const Sales = () => {
           </div>
 
           {/* Total Cash Revenue */}
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-emerald-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+          <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
             <div className="flex items-start justify-between">
               <div>
@@ -525,7 +525,7 @@ const Sales = () => {
         {/* =====================================================
             SEARCH & DATE FILTERS TOOLBAR
         ====================================================== */}
-        <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
+        <section className="premium-card p-4 sm:p-5 space-y-4">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input

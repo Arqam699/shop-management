@@ -19,6 +19,7 @@ import {
   EyeOff,
   MessageCircle,
   KeyRound,
+  RotateCcw,
 } from 'lucide-react';
 
 const DEFAULT_STATS = {
@@ -363,9 +364,9 @@ const SuperAdminDashboard = () => {
       return;
     }
 
-    if (adminPassword.length < 6) {
+    if (adminPassword.length < 12) {
       setError(
-        'Admin password must be at least 6 characters.'
+        'Admin password must be at least 12 characters.'
       );
 
       return;
@@ -678,9 +679,8 @@ const SuperAdminDashboard = () => {
             ) {
               whatsappMessage =
                 `Assalam o Alaikum,\n\n` +
-                `Ap ki shop is liye suspend hoi kyun ke 3rd device se login karne ki koshish ki gayi thi.\n\n` +
-                `Ap ki shop par sirf 2 devices se login allowed hai. 3rd device se login allowed nahi hai.\n\n` +
-                `Meharbani kar ke ainda 3rd device se login na karein, warna ap ki shop dobara suspend ho sakti hai.\n\n` +
+                `Purani device policy ke tehat ap ki shop suspend hui thi. Ab shop par 3 authorized devices allowed hain; is limit se zyada device ka login reject hoga, lekin shop suspend nahi hogi.\n\n` +
+                `Agar devices reset karne hon to Super Admin dashboard se Clear Authorized Devices use karein. Is se current sessions logout honge aur devices dobara login kar sakenge.\n\n` +
                 `Ap ka Email: ${email}\n\n` +
                 `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
                 `Shukriya.`;
@@ -752,6 +752,42 @@ const SuperAdminDashboard = () => {
             error.message ||
               'Failed to activate shop.'
           );
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
+  };
+
+  const handleClearDevices = (shop) => {
+    const deviceCount = Number(shop.authorizedDeviceCount || 0);
+
+    if (!deviceCount) {
+      toast('This shop has no authorized devices to clear.');
+      return;
+    }
+
+    setConfirmConfig({
+      title: 'Clear Authorized Devices',
+      message:
+        `Clear ${deviceCount} authorized device(s) for ${shop.shopName}? ` +
+        'This will sign out all current shop sessions. The shop will stay active; devices can sign in again afterward.',
+      onConfirm: async () => {
+        try {
+          setActionLoading(shop.shopId);
+          setError('');
+
+          const result = await fetchJson(
+            `/api/super-admin/shops/${shop.shopId}/authorized-devices/clear`,
+            { method: 'PATCH' }
+          );
+
+          toast.success(result.message || 'Authorized devices cleared.');
+          await fetchDashboardData();
+        } catch (error) {
+          console.error('Clear Authorized Devices Error:', error);
+          if (error.status === 401) return;
+          setError(error.message || 'Failed to clear authorized devices.');
         } finally {
           setActionLoading(null);
         }
@@ -1072,10 +1108,10 @@ const SuperAdminDashboard = () => {
 
     if (
       !newPassword.trim() ||
-      newPassword.length < 6
+      newPassword.length < 12
     ) {
       setError(
-        'Password must be at least 6 characters.'
+        'Password must be at least 12 characters.'
       );
 
       return;
@@ -1332,7 +1368,7 @@ const SuperAdminDashboard = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="premium-card p-5 relative overflow-hidden">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
@@ -1352,7 +1388,7 @@ const SuperAdminDashboard = () => {
 
           </div>
 
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="premium-card p-5 relative overflow-hidden">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
 
@@ -1372,7 +1408,7 @@ const SuperAdminDashboard = () => {
 
           </div>
 
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="premium-card p-5 relative overflow-hidden">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
 
@@ -1392,7 +1428,7 @@ const SuperAdminDashboard = () => {
 
           </div>
 
-          <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="premium-card p-5 relative overflow-hidden">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
 
@@ -1418,7 +1454,7 @@ const SuperAdminDashboard = () => {
             SHOPS TABLE
         ====================================================== */}
 
-        <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+        <div className="premium-card overflow-hidden">
 
           <div className="p-5 sm:p-6 border-b border-slate-100">
 
@@ -1627,6 +1663,17 @@ const SuperAdminDashboard = () => {
                               {shop.loginIpHistory
                                 ?.length || 0}
                               )
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isLoading || !shop.authorizedDeviceCount}
+                              onClick={() => handleClearDevices(shop)}
+                              title="Clear registered devices and revoke shop sessions"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-black hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Devices ({shop.authorizedDeviceCount || 0})
                             </button>
 
                             {/* SUSPEND / ACTIVATE */}
@@ -1899,7 +1946,7 @@ const SuperAdminDashboard = () => {
                         e.target.value
                       )
                     }
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 12 characters"
                     className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
                   />
 
@@ -2937,7 +2984,7 @@ const SuperAdminDashboard = () => {
                         e.target.value
                       )
                     }
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 12 characters"
                     className="w-full h-11 border border-slate-200 rounded-xl px-4 pr-11 text-xs font-bold bg-slate-50 focus:bg-white"
                   />
 

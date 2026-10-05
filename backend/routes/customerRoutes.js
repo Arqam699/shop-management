@@ -43,25 +43,7 @@ router.route('/')
 // This route MUST be before /:id
 router.post(
   '/fingerprint/templates',
-
-  // Temporary debugging middleware
-  (req, res, next) => {
-    console.log('');
-    console.log('========================================');
-    console.log('🔥 FINGERPRINT TEMPLATE ROUTE HIT');
-    console.log('========================================');
-    console.log('Method:', req.method);
-    console.log('URL:', req.originalUrl);
-    console.log('========================================');
-    console.log('');
-
-    next();
-  },
-
-  // Authentication
   protect,
-
-  // Controller
   getFingerprintTemplates
 );
 

@@ -4,7 +4,6 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const cron = require('node-cron');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
 // =====================================================
 // ROUTES
@@ -107,9 +106,18 @@ const configuredOrigins = [
 
 const allowedOrigins = new Set(
   [
-    ...developmentOrigins,
-    ...productionOrigins,
-    ...configuredOrigins,
+    ...(process.env.NODE_ENV === 'production'
+      ? [
+          ...productionOrigins,
+          ...configuredOrigins.filter((origin) => {
+            try {
+              return new URL(origin).protocol === 'https:';
+            } catch {
+              return false;
+            }
+          }),
+        ]
+      : developmentOrigins),
   ]
     .map(normalizeOrigin)
     .filter(Boolean)
@@ -203,12 +211,14 @@ app.use(
   })
 );
 
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '10mb',
-  })
-);
+// -----------------------------------------------------
+// NOTE:
+// The API is JSON-only (the React client always sends
+// application/json via Axios). urlencoded parsing is intentionally
+// disabled because a cross-site HTML <form> can only send
+// urlencoded/multipart/text-plain WITHOUT a CORS preflight — so
+// removing this parser closes one CSRF vector.
+// -----------------------------------------------------
 
 app.use(cookieParser());
 
@@ -217,43 +227,6 @@ app.use(cookieParser());
 // =====================================================
 
 app.use(helmet());
-
-// =====================================================
-// RATE LIMITING
-//
-// trust proxy is already enabled in production above,
-// so rate limiting sees the real client IP behind Vercel.
-// =====================================================
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message:
-      'Too many auth attempts. Please try again in 15 minutes.',
-  },
-});
-
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message:
-      'Too many requests. Please try again in 15 minutes.',
-  },
-});
-
-// General limiter for the whole API...
-app.use('/api', apiLimiter);
-
-// ...plus a strict limiter on auth endpoints.
-app.use('/api/auth', authLimiter);
 
 // =====================================================
 // SECURITY HEADERS
@@ -277,6 +250,79 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// =====================================================
+// CSRF / ORIGIN GUARD
+// =====================================================
+//
+// Cookies are SameSite=None in production (required for the
+// cross-site Vercel setup), which means the browser attaches them
+// to cross-site requests. To stop classic CSRF, every
+// state-changing request must come from an allowed origin.
+//
+// Browsers always send an Origin header for POST/PUT/PATCH/DELETE,
+// so a missing Origin means a non-browser client (curl,
+// server-to-server) which is not a CSRF vector.
+// =====================================================
+
+const csrfGuard = (req, res, next) => {
+  const method = String(req.method || '').toUpperCase();
+
+  const stateChanging =
+    method === 'POST' ||
+    method === 'PUT' ||
+    method === 'PATCH' ||
+    method === 'DELETE';
+
+  if (!stateChanging) {
+    return next();
+  }
+
+  const origin = normalizeOrigin(req.get('origin'));
+
+  if (origin) {
+    if (allowedOrigins.has(origin)) {
+      return next();
+    }
+
+    console.error(`[CSRF BLOCKED] Origin: ${origin}`);
+
+    return res.status(403).json({
+      success: false,
+      code: 'CSRF_ORIGIN_BLOCKED',
+      message: 'Request blocked: untrusted origin.',
+    });
+  }
+
+  const referer = req.get('referer');
+
+  if (referer) {
+    try {
+      const refererOrigin = normalizeOrigin(
+        new URL(referer).origin
+      );
+
+      if (allowedOrigins.has(refererOrigin)) {
+        return next();
+      }
+    } catch (error) {
+      // Malformed Referer header — fall through to block.
+    }
+
+    console.error(`[CSRF BLOCKED] Referer: ${referer}`);
+
+    return res.status(403).json({
+      success: false,
+      code: 'CSRF_ORIGIN_BLOCKED',
+      message: 'Request blocked: untrusted referer.',
+    });
+  }
+
+  // No Origin and no Referer: non-browser client.
+  return next();
+};
+
+app.use(csrfGuard);
 
 // =====================================================
 // HEALTH CHECK
@@ -536,6 +582,15 @@ const seedAdminAccount = async () => {
       return;
     }
 
+    if (
+      adminPassword.length < 12 ||
+      Buffer.byteLength(adminPassword, 'utf8') > 72
+    ) {
+      throw new Error(
+        'ADMIN_PASSWORD must be at least 12 characters and at most 72 UTF-8 bytes.'
+      );
+    }
+
     const newAdmin = new Admin({
       email: adminEmail,
       password: adminPassword,
@@ -638,8 +693,11 @@ const initializeAutomaticBackupScheduler = () => {
 // 404 HANDLER
 // =====================================================
 
-app.all(
-  '/{*any}',
+// NOTE:
+// Express 4 does not understand the Express 5 wildcard syntax
+// ('/{*any}'). A plain app.use() fallback catches every unmatched
+// request reliably and still returns JSON (not Express' HTML 404).
+app.use(
   (req, res) => {
     return res.status(404).json({
       success: false,
@@ -691,8 +749,9 @@ app.use(
     ).json({
       success: false,
       message:
-        err.message ||
-        'An unexpected application error occurred.',
+        process.env.NODE_ENV === 'production'
+          ? 'An unexpected application error occurred.'
+          : err.message || 'An unexpected application error occurred.',
     });
   }
 );
@@ -710,6 +769,20 @@ const PORT =
 
 const startServer = async () => {
   try {
+    const jwtSecret = process.env.JWT_SECRET || '';
+    const isPlaceholderSecret =
+      /^(replace|change|your|example)[_-]/i.test(jwtSecret);
+
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (Buffer.byteLength(jwtSecret, 'utf8') < 32 ||
+        isPlaceholderSecret)
+    ) {
+      throw new Error(
+        'Production requires a JWT_SECRET with at least 32 random bytes.'
+      );
+    }
+
     // =================================================
     // 1. DATABASE CONNECTION
     // =================================================

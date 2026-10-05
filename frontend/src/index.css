@@ -1,12 +1,37 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* =====================================================
+   MODERN PREMIUM UI EXTENSIONS
+   ===================================================== */
+
+@layer base {
+  body {
+    @apply antialiased text-slate-900 selection:bg-blue-100 selection:text-blue-700;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+}
+
+@layer components {
+  .premium-card {
+    @apply bg-white border border-slate-200/60 rounded-2xl shadow-sm
+           transition-all duration-300 hover:shadow-md hover:border-blue-200/50
+           hover:-translate-y-0.5;
+  }
+
+  .premium-button {
+    @apply px-4 py-2 rounded-xl font-semibold transition-all duration-200
+           active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .glass-panel {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm;
+  }
+}
 
 /* =====================================================
    LAYOUT KEYFRAMES & NAV SCROLLBAR
-   (moved from the inline <style> block in Layout.jsx so
-   the animation definitions are parsed once, globally)
-===================================================== */
+   ===================================================== */
 
 @keyframes menuPop {
   from {
@@ -23,13 +48,45 @@
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes submenuDrop {
+  from {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  @apply relative overflow-hidden bg-slate-200;
+}
+.skeleton::after {
+  content: "";
+  @apply absolute inset-0 animate-[shimmer_2s_infinite];
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  background-size: 200% 100%;
 }
 
 nav::-webkit-scrollbar {

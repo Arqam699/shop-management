@@ -22,10 +22,21 @@ const createSuperAdmin = async () => {
       return;
     }
 
+    const initialPassword = process.env.SUPER_ADMIN_PASSWORD;
+    if (
+      typeof initialPassword !== 'string' ||
+      initialPassword.length < 12 ||
+      Buffer.byteLength(initialPassword, 'utf8') > 72
+    ) {
+      throw new Error(
+        'SUPER_ADMIN_PASSWORD must be at least 12 characters and at most 72 UTF-8 bytes'
+      );
+    }
+
     const superAdmin = await SuperAdmin.create({
       name: process.env.SUPER_ADMIN_NAME,
       email: process.env.SUPER_ADMIN_EMAIL,
-      password: process.env.SUPER_ADMIN_PASSWORD,
+      password: initialPassword,
     });
 
     console.log('Super Admin created successfully');

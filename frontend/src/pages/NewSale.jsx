@@ -204,9 +204,9 @@ const NewSale = () => {
       .toLowerCase()
       .replace(/\s+/g, ' ');
 
-    if (!search) {
-      return customers.slice(0, 20);
-    }
+    // Keep the picker closed until the user starts searching. Showing the
+    // first customers on focus makes the sale form unnecessarily crowded.
+    if (!search) return [];
 
     return customers
       .filter((customer) => {
@@ -253,9 +253,8 @@ const NewSale = () => {
       .toLowerCase()
       .replace(/\s+/g, ' ');
 
-    if (!search) {
-      return products.slice(0, 20);
-    }
+    // Products are shown only after a search term is entered.
+    if (!search) return [];
 
     return products
       .filter((product) => {
@@ -1516,7 +1515,7 @@ if (invalidDate) {
               INVOICE NUMBER
           ================================================== */}
 
-          <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-3">
+          <section className="premium-card p-5 sm:p-6 space-y-3">
 
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -1558,7 +1557,7 @@ if (invalidDate) {
               CUSTOMER SEARCH
           ================================================== */}
 
-          <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-3">
+          <section className="premium-card p-5 sm:p-6 space-y-3">
 
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
 
@@ -1614,14 +1613,10 @@ if (invalidDate) {
                     );
 
                     setShowCustomerDropdown(
-                      true
+                      Boolean(e.target.value.trim())
                     );
                   }}
-                  onFocus={() =>
-                    setShowCustomerDropdown(
-                      true
-                    )
-                  }
+                  onFocus={() => setShowCustomerDropdown(false)}
                   placeholder="Search by name, phone or CNIC (dashes auto)..."
                   className="w-full h-11 border border-slate-200 rounded-xl pl-10 pr-10 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
@@ -1630,7 +1625,7 @@ if (invalidDate) {
 
               </div>
 
-              {showCustomerDropdown && (
+              {showCustomerDropdown && customerSearch.trim() && (
                 <>
 
                   <div
@@ -1746,7 +1741,7 @@ if (invalidDate) {
               PRODUCT SEARCH
           ================================================== */}
 
-          <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-3">
+          <section className="premium-card p-5 sm:p-6 space-y-3">
 
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
 
@@ -1800,14 +1795,10 @@ if (invalidDate) {
                     );
 
                     setShowProductDropdown(
-                      true
+                      Boolean(e.target.value.trim())
                     );
                   }}
-                  onFocus={() =>
-                    setShowProductDropdown(
-                      true
-                    )
-                  }
+                  onFocus={() => setShowProductDropdown(false)}
                   placeholder="Search inventory product by name, brand or SKU..."
                   className="w-full h-11 border border-slate-200 rounded-xl pl-10 pr-10 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
@@ -1816,7 +1807,7 @@ if (invalidDate) {
 
               </div>
 
-              {showProductDropdown && (
+              {showProductDropdown && productSearch.trim() && (
                 <>
 
                   <div
@@ -1939,7 +1930,7 @@ if (invalidDate) {
               PRICING & QUANTITY
           ================================================== */}
 
-          <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-4">
+          <section className="premium-card p-5 sm:p-6 shadow-sm space-y-4">
 
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -2070,7 +2061,7 @@ if (invalidDate) {
 
           {isInstallmentSale && (
 
-            <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-5 animate-[pageEnter_0.3s_ease-out]">
+            <section className="premium-card p-5 sm:p-6 space-y-5 animate-[pageEnter_0.3s_ease-out]">
 
               {/* HEADER */}
 
@@ -2759,13 +2750,14 @@ if (invalidDate) {
                 FINALIZE BUTTON
             ================================================== */}
 
-            <button
-              type="submit"
-              disabled={
-                isSubmitting
-              }
-              className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white font-black text-xs shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <div className="sticky bottom-3 z-40 rounded-2xl bg-slate-950/95 p-2 shadow-xl shadow-slate-950/20 backdrop-blur-md">
+              <button
+                type="submit"
+                disabled={
+                  isSubmitting
+                }
+                className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white font-black text-xs shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
 
               {isSubmitting ? (
 
@@ -2791,7 +2783,8 @@ if (invalidDate) {
 
               )}
 
-            </button>
+              </button>
+            </div>
 
           </div>
 

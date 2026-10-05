@@ -1880,7 +1880,7 @@ const DueDates = () => {
 
         {/* OVERDUE RECOVERY */}
 
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-rose-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+        <div className="group relative overflow-hidden premium-card border-rose-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
 
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
 
@@ -1914,7 +1914,7 @@ const DueDates = () => {
 
         {/* TODAY RECOVERY */}
 
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-emerald-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+        <div className="group relative overflow-hidden premium-card border-emerald-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
 
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
 
@@ -1948,7 +1948,7 @@ const DueDates = () => {
 
         {/* TOTAL RECOVERY */}
 
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-indigo-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+        <div className="group relative overflow-hidden premium-card border-indigo-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
 
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-violet-600" />
 
@@ -1981,7 +1981,7 @@ const DueDates = () => {
 
         {/* UPCOMING */}
 
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-blue-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+        <div className="group relative overflow-hidden premium-card border-blue-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
 
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
 
@@ -2019,7 +2019,7 @@ const DueDates = () => {
           PRIORITY LEGEND
       ====================================================== */}
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
+      <section className="premium-card p-4 sm:p-5">
 
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
 
@@ -2065,7 +2065,7 @@ const DueDates = () => {
           SEARCH
       ====================================================== */}
 
-      <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-3.5 sm:p-4">
+      <section className="premium-card p-3.5 sm:p-4">
 
         <div className="relative">
 
@@ -2106,7 +2106,7 @@ const DueDates = () => {
 
       {recoveryData.priorityItems.length > 0 && (
 
-        <section className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <section className="premium-card overflow-hidden">
 
           <div className="p-5 sm:p-6 border-b border-slate-100">
 

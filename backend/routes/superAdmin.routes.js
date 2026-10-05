@@ -15,6 +15,7 @@ const {
   getDashboardStats,
   suspendShop,
   activateShop,
+  clearShopDevices,
   updateShopMonthlyCharge,
   renewShopSubscription,
   permanentlyDeleteShop,
@@ -137,6 +138,12 @@ router.patch(
   '/shops/:shopId/activate',
   protectSuperAdmin,
   activateShop
+);
+
+router.patch(
+  '/shops/:shopId/authorized-devices/clear',
+  protectSuperAdmin,
+  clearShopDevices
 );
 
 

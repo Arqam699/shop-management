@@ -145,6 +145,40 @@ function App() {
         <Toaster
           position="top-right"
           reverseOrder={false}
+          gutter={10}
+          containerStyle={{
+            top: 76,
+            right: 20,
+          }}
+          toastOptions={{
+            duration: 3500,
+            style: {
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              boxShadow:
+                '0 10px 30px rgba(15, 23, 42, 0.12)',
+              padding: '12px 16px',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              maxWidth: '380px',
+            },
+            success: {
+              duration: 3500,
+              iconTheme: {
+                primary: '#16a34a',
+                secondary: '#ffffff',
+              },
+            },
+            error: {
+              duration: 5000,
+              iconTheme: {
+                primary: '#dc2626',
+                secondary: '#ffffff',
+              },
+            },
+          }}
         />
 
         <Router>

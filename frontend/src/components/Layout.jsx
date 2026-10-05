@@ -1,5 +1,8 @@
 
-import React, { useEffect, useState } from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
 import {
   NavLink,
   useLocation,
@@ -888,6 +891,38 @@ icon: DatabaseBackup,
 ];
 
 /* =====================================================
+   ACTIVE DROPDOWN FINDER
+   Returns the name of the dropdown menu whose child
+   matches the current route (or null).
+===================================================== */
+
+const findActiveMenuName = (pathname, search) => {
+  for (const item of navItems) {
+    if (!item.children) continue;
+
+    const match = item.children.some((child) => {
+      const [childPath, childQuery] =
+        child.path.split('?');
+
+      if (pathname !== childPath) {
+        return false;
+      }
+
+      return (
+        !childQuery ||
+        search === `?${childQuery}`
+      );
+    });
+
+    if (match) {
+      return item.name;
+    }
+  }
+
+  return null;
+};
+
+/* =====================================================
    ROUTE TITLES (shown as a label in the header)
 ===================================================== */
 
@@ -1027,6 +1062,21 @@ export const Layout = ({ children }) => {
     );
 
   };
+
+  /* =====================================================
+     AUTO-OPEN DROPDOWN
+     The dropdown containing the current route opens
+     automatically. Click still toggles manually.
+  ===================================================== */
+
+  useEffect(() => {
+    setOpenMenu(
+      findActiveMenuName(
+        location.pathname,
+        location.search
+      )
+    );
+  }, [location.pathname, location.search]);
 
   /* =====================================================
      SIDEBAR
@@ -1912,13 +1962,11 @@ export const Layout = ({ children }) => {
         <main
           className="
             relative
-            z-10
             min-h-0
             flex-1
             p-4
             sm:p-5
             lg:p-7
-            animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]
           "
         >
           {children}

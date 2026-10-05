@@ -65,7 +65,7 @@ npm run dev par sirf zaroori lines: server URL, MongoDB status, backup folder au
 Backup chalne par sirf compact progress: Shop → Done. Total records: N.
 
 🛠️ Technology Stack
-Frontend: React.js (v18), Vite, Tailwind CSS, React Router (v6), Axios, Lucide React Icons.
+Frontend: React.js (v18), Vite (v6), Tailwind CSS (v4), React Router (v7), Axios, Lucide React Icons.
 Backend: Node.js, Express.js, MongoDB Atlas (Cloud), Mongoose (ODM), JSON Web Tokens (JWT), Cookie-Parser, Bcrypt.js, CORS, node-cron (daily backups), archiver (ZIP).
 AI: Groq API (openai/gpt-oss-120b → 20b → qwen3 fallback chain) with local NLP engine.
 

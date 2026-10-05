@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
+import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import {
   ArrowLeft,
@@ -137,11 +138,14 @@ const EditSale = () => {
             : 0,
       });
 
+      toast.success('Sale updated successfully.');
+
       navigate('/sales');
     } catch (err) {
-      setErrorMsg(
-        err.response?.data?.message || 'Failed to update transaction.'
-      );
+      const message =
+        err.response?.data?.message || 'Failed to update transaction.';
+      setErrorMsg(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -240,7 +244,7 @@ const EditSale = () => {
       ====================================================== */}
       <form
         onSubmit={handleSubmit}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 gap-6 lg:grid-cols-3"
       >
         {/* LEFT COLUMN: SALE INPUTS */}
         <div className="lg:col-span-2 space-y-6">
@@ -484,7 +488,7 @@ const EditSale = () => {
             <button
               type="submit"
               disabled={isSaving}
-              className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white font-black text-xs shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+              className="fixed bottom-4 right-4 z-50 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white font-black text-xs shadow-lg shadow-blue-950/40 transition-shadow duration-200 hover:shadow-xl active:scale-95 disabled:opacity-60"
             >
               {isSaving ? (
                 <>

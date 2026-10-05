@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -32,8 +32,24 @@ const Login = () => {
   const [isSuspended, setIsSuspended] = useState(false);
   const [suspensionReason, setSuspensionReason] = useState('');
 
-  const { login } = useAuth();
+  const {
+    login,
+    sessionMessage,
+    suspensionReason: authSuspensionReason,
+  } = useAuth();
   const navigate = useNavigate();
+
+  // Show why a server-revoked session was sent back to login.
+  useEffect(() => {
+    if (!sessionMessage) return;
+
+    setErrorMsg(sessionMessage);
+
+    if (sessionMessage.toLowerCase().includes('suspend')) {
+      setIsSuspended(true);
+      setSuspensionReason(authSuspensionReason || '');
+    }
+  }, [sessionMessage, authSuspensionReason]);
 
   // =====================================================
   // WHATSAPP SUPPORT

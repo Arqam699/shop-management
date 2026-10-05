@@ -992,7 +992,7 @@ const AddEditCustomer = () => {
         {/* ===================================================
             SECTION 1: PRIMARY CUSTOMER PROFILE
         =================================================== */}
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
+        <div className="premium-card p-5 sm:p-7 space-y-6">
           <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
             <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
               <User className="w-4 h-4" />
@@ -1115,7 +1115,7 @@ const AddEditCustomer = () => {
         {/* ===================================================
             SECTION 2: ZAMANATDAR 1 (PRIMARY GUARANTOR)
         =================================================== */}
-        <div className="bg-white border border-purple-200/80 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
+        <div className="premium-card p-5 sm:p-7 space-y-6 border-purple-200/80">
           <div className="flex items-center justify-between pb-3 border-b border-purple-100">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
@@ -1219,7 +1219,7 @@ const AddEditCustomer = () => {
         {/* ===================================================
             SECTION 3: ZAMANATDAR 2 (SECONDARY GUARANTOR)
         =================================================== */}
-        <div className="bg-white border border-indigo-200/80 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
+        <div className="premium-card p-5 sm:p-7 space-y-6 border-indigo-200/80">
           <div className="flex items-center justify-between pb-3 border-b border-indigo-100">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -1321,7 +1321,7 @@ const AddEditCustomer = () => {
         </div>
 
         {/* SUBMIT BUTTON BAR */}
-        <div className="flex items-center justify-between p-4 sm:p-5 bg-white border border-slate-200/80 rounded-3xl shadow-sm">
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm sm:p-5">
           <Link
             to="/customers"
             className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-black text-slate-600 transition-all"
@@ -1332,7 +1332,7 @@ const AddEditCustomer = () => {
           <button
             type="submit"
             disabled={loading || !!activeFingerprint || cameraOpen}
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white font-black text-xs shadow-lg shadow-blue-950/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+            className="fixed bottom-4 right-4 z-50 inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white font-black text-xs shadow-lg shadow-blue-950/20 transition-shadow duration-200 hover:shadow-xl active:scale-95 disabled:opacity-50"
           >
             {loading ? (
               <>

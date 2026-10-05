@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
+import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import {
   Save,
@@ -151,11 +152,18 @@ const AddEditProduct = () => {
         await api.post('/api/products', formData);
       }
 
+      toast.success(
+        isEditMode
+          ? 'Product updated successfully.'
+          : 'Product added successfully.'
+      );
+
       navigate('/inventory');
     } catch (error) {
-      setErrorMsg(
-        error.response?.data?.message || 'Failed to save product configurations.'
-      );
+      const message =
+        error.response?.data?.message || 'Failed to save product configurations.';
+      setErrorMsg(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -254,7 +262,7 @@ const AddEditProduct = () => {
       ====================================================== */}
       <form
         onSubmit={handleSubmit}
-        className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden"
+        className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm"
       >
         <div className="p-5 sm:p-7 space-y-8">
           
@@ -578,7 +586,7 @@ const AddEditProduct = () => {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+            className="fixed bottom-4 right-4 z-50 inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition-shadow duration-200 hover:shadow-xl active:scale-95 disabled:opacity-60"
           >
             {loading ? (
               <>

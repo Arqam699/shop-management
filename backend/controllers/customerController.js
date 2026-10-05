@@ -3,6 +3,58 @@ const {
   getPaginationParams,
   paginatedResponse,
 } = require('../utils/pagination');
+const {
+  escapeRegex,
+} = require('../utils/escapeRegex');
+
+const BIOMETRIC_FIELDS = [
+  'fingerprintFmd',
+  'fingerprintImage',
+  'fingerprintCapturedAt',
+  'liveImage',
+  'liveImageCapturedAt',
+];
+
+const sanitizeCustomer = (customer) => {
+  const result = customer?.toObject
+    ? customer.toObject()
+    : { ...customer };
+
+  BIOMETRIC_FIELDS.forEach((field) => {
+    delete result[field];
+  });
+
+  ['guarantor1', 'guarantor2'].forEach((key) => {
+    if (!result[key]) return;
+    result[key] = { ...result[key] };
+    BIOMETRIC_FIELDS.forEach((field) => {
+      delete result[key][field];
+    });
+  });
+
+  return result;
+};
+
+const preserveStoredBiometrics = (payload) => {
+  BIOMETRIC_FIELDS.forEach((field) => {
+    if (payload[field] === '' || payload[field] === null) {
+      delete payload[field];
+    }
+  });
+
+  ['guarantor1', 'guarantor2'].forEach((key) => {
+    if (!payload[key] || typeof payload[key] !== 'object') return;
+    payload[key] = { ...payload[key] };
+    BIOMETRIC_FIELDS.forEach((field) => {
+      if (payload[key][field] === '' || payload[key][field] === null) {
+        delete payload[key][field];
+      }
+    });
+  });
+
+  return payload;
+};
+
 
 
 // ==========================================
@@ -886,8 +938,11 @@ const calculatePaymentScore = async ({
 const getCustomers = async (req, res) => {
   try {
     const {
-      search
+      search: rawSearch
     } = req.query;
+
+    // Escape user input so it cannot be abused as a ReDoS regex.
+    const search = escapeRegex(rawSearch);
 
     // ======================================
     // CURRENT SHOP
@@ -986,7 +1041,7 @@ const getCustomers = async (req, res) => {
               });
 
             return {
-              ...customer,
+              ...sanitizeCustomer(customer),
               paymentScore
             };
           }
@@ -1267,7 +1322,7 @@ const getCustomerById = async (
       success: true,
 
       data: {
-        ...customer.toObject(),
+        ...sanitizeCustomer(customer),
 
         sales,
 
@@ -1437,7 +1492,11 @@ const getFingerprintTemplates = async (
 
     return res.status(200).json({
       success: true,
-      templates
+      templates: templates.map(t => ({
+        id: t.id,
+        type: t.type,
+        fmd: 'PROTECTED_DATA'
+      }))
     });
 
   } catch (error) {
@@ -1529,7 +1588,7 @@ const createCustomer = async (
         'Customer registered successfully',
 
       data:
-        customer
+        sanitizeCustomer(customer)
     });
 
   } catch (error) {
@@ -1617,9 +1676,32 @@ const updateCustomer = async (
     // UPDATE
     // ======================================
 
+    // ======================================
+    // MASS-ASSIGNMENT PROTECTION
+    // Never let the client overwrite protected/internal fields.
+    // ======================================
+
+    const updatePayload = preserveStoredBiometrics({
+      ...req.body,
+    });
+
+    [
+      '_id',
+      'id',
+      'shopId',
+      'customerId',
+      'createdAt',
+      'updatedAt',
+      '__proto__',
+      'constructor',
+      'prototype',
+    ].forEach((field) => {
+      delete updatePayload[field];
+    });
+
     Object.assign(
       customer,
-      req.body
+      updatePayload
     );
 
     // ======================================
@@ -1642,7 +1724,7 @@ const updateCustomer = async (
         'Profile details updated',
 
       data:
-        customer
+        sanitizeCustomer(customer)
     });
 
   } catch (error) {
@@ -1655,10 +1737,7 @@ const updateCustomer = async (
       success: false,
 
       message:
-        'Failed to update profile',
-
-      error:
-        error.message
+        'Failed to update profile'
     });
   }
 };

@@ -986,7 +986,7 @@ const Customers = () => {
                 )}
 
                 {/* 2. CUSTOMER PERSONAL DETAILS */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<User className="w-4 h-4" />}
                     title="Customer Personal Profile"
@@ -1014,7 +1014,7 @@ const Customers = () => {
                 </section>
 
                 {/* 3. GUARANTORS / ZAMANATDAR */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<Users className="w-4 h-4" />}
                     title="Zamanatdar / Guarantors Information"
@@ -1027,7 +1027,7 @@ const Customers = () => {
                 </section>
 
                 {/* 4. VERIFICATION / MEDIA STATUS */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<Fingerprint className="w-4 h-4" />}
                     title="Biometric & Media Verification"
@@ -1055,7 +1055,7 @@ const Customers = () => {
                 </section>
 
                 {/* 5. SALES HISTORY */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<ShoppingBag className="w-4 h-4" />}
                     title="Complete Sales History"
@@ -1124,7 +1124,7 @@ const Customers = () => {
                 </section>
 
                 {/* 6. INSTALLMENTS & SCHEDULE */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<FileText className="w-4 h-4" />}
                     title="Installment Plans & Schedules"
@@ -1222,7 +1222,7 @@ const Customers = () => {
                 </section>
 
                 {/* 7. PAYMENTS HISTORY */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<CreditCard className="w-4 h-4" />}
                     title="Received Payments History"
@@ -1268,7 +1268,7 @@ const Customers = () => {
                 </section>
 
                 {/* 8. RETURNS HISTORY */}
-                <section className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <section className="premium-card p-5 shadow-sm">
                   <SectionHeader
                     icon={<RotateCcw className="w-4 h-4" />}
                     title="Return / Refund History"
@@ -1342,7 +1342,7 @@ const Customers = () => {
   // CUSTOMER SELECTOR (FOR DETAILS & LEDGER TABS)
   // =====================================================
   const renderCustomerSelector = (mode) => (
-    <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm p-6 space-y-5 animate-[pageEnter_0.3s_ease-out]">
+    <div className="premium-card p-6 space-y-5 animate-[pageEnter_0.3s_ease-out]">
       <div className="flex items-start gap-3.5">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/15 to-violet-500/15 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">
           {mode === 'details' ? (
@@ -1591,7 +1591,7 @@ const Customers = () => {
   const renderCustomerList = () => (
     <>
       {/* SEARCH & DATE FILTERS BAR */}
-      <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm space-y-4">
+      <div className="premium-card p-4 space-y-4">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -1602,6 +1602,7 @@ const Customers = () => {
             className="w-full h-11 border border-slate-200 rounded-xl pl-11 pr-4 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
           />
         </div>
+
 
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-t border-slate-100 pt-3">
           <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
@@ -1841,7 +1842,7 @@ const Customers = () => {
       )}
 
       {/* SECTION NAVIGATION SWITCHER TABS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-1.5 bg-slate-200/60 rounded-2xl border border-slate-200">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-1.5 bg-slate-100/50 rounded-2xl border border-slate-200/60 backdrop-blur-sm">
         {sectionOptions.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.id;

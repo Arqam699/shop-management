@@ -45,15 +45,6 @@ const handleAiChat = async (req, res) => {
       req.admin?.shopId ||
       req.shop?._id;
 
-    console.log('========================================');
-    console.log('AI CHAT SHOP CONTEXT');
-    console.log('req.shopId:', req.shopId);
-    console.log('req.admin.shopId:', req.admin?.shopId);
-    console.log('req.shop._id:', req.shop?._id);
-    console.log('Final shopId:', shopId);
-    console.log('Final type:', typeof shopId);
-    console.log('========================================');
-
     if (!shopId) {
       return res.status(403).json({
         success: false,
@@ -72,11 +63,6 @@ const handleAiChat = async (req, res) => {
         String(shopId)
       )
     ) {
-      console.error(
-        'AI CHAT INVALID SHOP ID:',
-        shopId
-      );
-
       return res.status(403).json({
         success: false,
         code: 'INVALID_SHOP_ID',
@@ -102,11 +88,6 @@ const handleAiChat = async (req, res) => {
           'Shop account was not found.',
       });
     }
-
-    console.log(
-      'AI SHOP VERIFIED:',
-      shop._id.toString()
-    );
 
     // ========================================================
     // CONFIRMED WRITE ACTION (from AI agent confirmation card)
@@ -245,7 +226,7 @@ const handleAiChat = async (req, res) => {
     // ========================================================
 
     const dailyLimit = parseInt(
-      process.env.AI_DAILY_LIMIT || '50',
+      process.env.AI_DAILY_LIMIT || '25',
       10
     );
 
@@ -446,7 +427,7 @@ const getAiUsage = async (req, res) => {
     }
 
     const limit = parseInt(
-      process.env.AI_DAILY_LIMIT || '50',
+      process.env.AI_DAILY_LIMIT || '25',
       10
     );
 

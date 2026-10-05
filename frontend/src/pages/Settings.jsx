@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -108,6 +107,8 @@ const SettingsPage = () => {
       if (result.success) {
         await refreshSettings();
 
+        toast.success('Settings saved successfully!');
+
         setStatus({
           type: 'success',
           message: 'Settings database updated successfully!',
@@ -120,21 +121,29 @@ const SettingsPage = () => {
           });
         }, 5000);
       } else {
+        const message =
+          result.message || 'Failed to update settings.';
+
+        toast.error(message);
+
         setStatus({
           type: 'error',
-          message:
-            result.message || 'Failed to update settings.',
+          message,
         });
       }
     } catch (error) {
       setIsSaving(false);
 
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to update settings.';
+
+      toast.error(message);
+
       setStatus({
         type: 'error',
-        message:
-          error?.response?.data?.message ||
-          error?.message ||
-          'Failed to update settings.',
+        message,
       });
     }
   };
@@ -244,13 +253,13 @@ const SettingsPage = () => {
   // =====================================================
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+    <div className="w-full max-w-6xl mx-auto space-y-5 pb-20 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
       {/* =====================================================
           DARK HERO HEADER
       ====================================================== */}
 
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 border border-slate-800 shadow-xl shadow-slate-900/10 text-white">
 
         <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
 
@@ -283,12 +292,11 @@ const SettingsPage = () => {
               </div>
 
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white">
-                Shop Configurations & Security
+                Settings
               </h1>
 
-              <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
-                Customize system rules, print prefixes, currency parameters,
-                data protection, and master deletion security locks.
+              <p className="mt-1.5 text-sm text-slate-300 max-w-2xl font-medium leading-relaxed">
+                Manage your shop profile, billing defaults, and data security in one place.
               </p>
 
             </div>
@@ -337,10 +345,10 @@ const SettingsPage = () => {
       ====================================================== */}
 
       <div
-        className={`p-5 sm:p-6 rounded-3xl border transition-all shadow-sm ${
+        className={`premium-card p-5 sm:p-6 transition-all shadow-sm ${
           isDeletionUnlocked
             ? 'bg-rose-50/80 border-rose-300 shadow-md'
-            : 'bg-white border-slate-200/80'
+            : ''
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -433,19 +441,20 @@ const SettingsPage = () => {
       ====================================================== */}
 
       <form
+        id="settings-form"
         onSubmit={handleSubmit}
-        className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden"
+        className="premium-card overflow-hidden"
       >
 
-        <div className="p-6 sm:p-8 space-y-7">
+        <div className="p-5 sm:p-7 lg:p-8 space-y-7">
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
 
             {/* =================================================
                 SHOP INFORMATION
             ================================================== */}
 
-            <div className="space-y-4">
+            <div className="space-y-4 rounded-2xl bg-slate-50/70 p-4 sm:p-5 border border-slate-100">
 
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -454,7 +463,7 @@ const SettingsPage = () => {
                 </div>
 
                 <h3 className="text-sm font-black text-slate-900">
-                  Dukan Information
+                  Shop information
                 </h3>
 
               </div>
@@ -502,7 +511,7 @@ const SettingsPage = () => {
 
               {/* LIVE BRAND PREVIEW */}
 
-              <div className="rounded-2xl border-2 border-dashed border-amber-200 bg-white p-4 text-center">
+              <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 text-center shadow-sm">
                 <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1.5">
                   Slip Preview
                 </p>
@@ -574,7 +583,7 @@ const SettingsPage = () => {
                 SYSTEM CALCULATIONS
             ================================================== */}
 
-            <div className="space-y-4">
+            <div className="space-y-4 rounded-2xl bg-slate-50/70 p-4 sm:p-5 border border-slate-100">
 
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -583,7 +592,7 @@ const SettingsPage = () => {
                 </div>
 
                 <h3 className="text-sm font-black text-slate-900">
-                  System Parameters & Prefixes
+                  Billing & inventory defaults
                 </h3>
 
               </div>
@@ -701,26 +710,21 @@ const SettingsPage = () => {
             SAVE FOOTER
         ====================================================== */}
 
-        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex justify-end">
-
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-          >
-            <Save className="w-4 h-4" />
-
-            <span>
-              {isSaving
-                ? 'Saving Configurations...'
-                : 'Save System Settings'}
-            </span>
-
-          </button>
-
+        <div className="p-4 sm:px-7 sm:py-5 bg-white border-t border-slate-100">
+          <p className="text-xs text-slate-500 font-medium">Changes apply across your shop after saving.</p>
         </div>
 
       </form>
+
+      <button
+        type="submit"
+        form="settings-form"
+        disabled={isSaving}
+        className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 z-40 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-xl shadow-blue-950/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60"
+      >
+        <Save className="w-4 h-4" />
+        <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
+      </button>
 
       {/* =====================================================
           PASSWORD MODAL

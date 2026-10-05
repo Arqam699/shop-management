@@ -6,6 +6,9 @@ const {
 } = require('../utils/pagination');
 const StockMovement = require('../models/StockMovement');
 const Settings = require('../models/Settings');
+const {
+  escapeRegex,
+} = require('../utils/escapeRegex');
 
 
 // ============================================================
@@ -115,10 +118,29 @@ const generateSKU = async (shopId) => {
 const getProducts = async (req, res) => {
   try {
     const {
-      search,
-      category,
-      status,
+      search: rawSearch,
+      category: rawCategory,
+      status: rawStatus,
     } = req.query;
+
+    // --------------------------------------------------------
+    // INPUT SANITIZATION
+    //
+    // 1. search  -> escaped so it cannot be used as a ReDoS regex.
+    // 2. category/status -> forced to plain strings so a client
+    //    cannot inject Mongo operators (e.g. ?category[$ne]=1).
+    // --------------------------------------------------------
+    const search = escapeRegex(rawSearch);
+
+    const category =
+      typeof rawCategory === 'string'
+        ? rawCategory.trim()
+        : '';
+
+    const status =
+      typeof rawStatus === 'string'
+        ? rawStatus.trim()
+        : '';
 
     // --------------------------------------------------------
     // IMPORTANT SaaS SECURITY:
@@ -219,7 +241,6 @@ const getProducts = async (req, res) => {
       success: false,
       message:
         'Failed to load products',
-      error: error.message,
     });
   }
 };
@@ -267,7 +288,6 @@ const getProductById = async (req, res) => {
       success: false,
       message:
         'Failed to fetch product details',
-      error: error.message,
     });
   }
 };
@@ -506,9 +526,31 @@ const updateProduct = async (req, res) => {
     // --------------------------------------------------------
     // Update product fields
     // --------------------------------------------------------
+    // --------------------------------------------------------
+    // MASS-ASSIGNMENT PROTECTION
+    // Never let the client overwrite protected/internal fields.
+    // --------------------------------------------------------
+    const updatePayload = {
+      ...req.body,
+    };
+
+    [
+      '_id',
+      'id',
+      'shopId',
+      'productId',
+      'createdAt',
+      'updatedAt',
+      '__proto__',
+      'constructor',
+      'prototype',
+    ].forEach((field) => {
+      delete updatePayload[field];
+    });
+
     Object.assign(
       product,
-      req.body
+      updatePayload
     );
 
 
@@ -585,7 +627,6 @@ const updateProduct = async (req, res) => {
       success: false,
       message:
         'Failed to update product',
-      error: error.message,
     });
   }
 };
@@ -669,7 +710,6 @@ const deleteProduct = async (req, res) => {
       success: false,
       message:
         'Failed to delete product',
-      error: error.message,
     });
   }
 };
@@ -737,7 +777,6 @@ const getStockMovements = async (req, res) => {
       success: false,
       message:
         'Failed to load stock movements',
-      error: error.message,
     });
   }
 };

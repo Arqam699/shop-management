@@ -74,16 +74,19 @@ const customerSchema = new mongoose.Schema(
     fingerprintFmd: {
       type: String,
       default: null,
+      select: false,
     },
 
     fingerprintImage: {
       type: String,
       default: null,
+      select: false,
     },
 
     fingerprintCapturedAt: {
       type: Date,
       default: null,
+      select: false,
     },
 
     // ==========================================
@@ -92,11 +95,13 @@ const customerSchema = new mongoose.Schema(
     liveImage: {
       type: String,
       default: null,
+      select: false,
     },
 
     liveImageCapturedAt: {
       type: Date,
       default: null,
+      select: false,
     },
 
     // ==========================================
@@ -145,16 +150,19 @@ const customerSchema = new mongoose.Schema(
       fingerprintFmd: {
         type: String,
         default: null,
+        select: false,
       },
 
       fingerprintImage: {
         type: String,
         default: null,
+        select: false,
       },
 
       fingerprintCapturedAt: {
         type: Date,
         default: null,
+        select: false,
       },
 
       // ==========================================
@@ -163,11 +171,13 @@ const customerSchema = new mongoose.Schema(
       liveImage: {
         type: String,
         default: null,
+        select: false,
       },
 
       liveImageCapturedAt: {
         type: Date,
         default: null,
+        select: false,
       },
     },
 
@@ -217,16 +227,19 @@ const customerSchema = new mongoose.Schema(
       fingerprintFmd: {
         type: String,
         default: null,
+        select: false,
       },
 
       fingerprintImage: {
         type: String,
         default: null,
+        select: false,
       },
 
       fingerprintCapturedAt: {
         type: Date,
         default: null,
+        select: false,
       },
 
       // ==========================================
@@ -235,11 +248,13 @@ const customerSchema = new mongoose.Schema(
       liveImage: {
         type: String,
         default: null,
+        select: false,
       },
 
       liveImageCapturedAt: {
         type: Date,
         default: null,
+        select: false,
       },
     },
   },

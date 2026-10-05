@@ -1629,7 +1629,7 @@ const getPaymentScore = (customer) => {
           CUSTOMER SELECTOR
       ====================================================== */}
       {!selectedCustomer && (
-        <section className="no-print bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden animate-[pageEnter_0.3s_ease-out]">
+        <section className="premium-card no-print overflow-hidden animate-[pageEnter_0.3s_ease-out]">
           <div className="p-5 sm:p-6 border-b border-slate-100">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1776,7 +1776,7 @@ const getPaymentScore = (customer) => {
           LOADING STATE
       ====================================================== */}
       {selectedCustomer && ledgerLoading && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-16 text-center shadow-sm no-print">
+        <div className="premium-card p-16 text-center no-print">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 p-0.5 animate-spin flex items-center justify-center mx-auto">
             <div className="w-full h-full bg-white rounded-2xl flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />

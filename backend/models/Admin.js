@@ -21,6 +21,7 @@ const adminSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
+      minlength: [12, 'Admin password must be at least 12 characters long'],
     },
 
     // Deletion Mode
@@ -34,9 +35,16 @@ const adminSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Security: three incorrect passwords suspend the linked shop until the
-    // Super Admin activates it again.
+    // Failed login counter for monitoring. It must never suspend a shop,
+    // since public login attempts could otherwise be used for denial of service.
     failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Increment to revoke every existing session for this admin account.
+    sessionVersion: {
       type: Number,
       default: 0,
       min: 0,

@@ -256,7 +256,7 @@ export const AuthProvider = ({
   // ======================================================
   // AUTOMATIC SESSION MONITOR
   //
-  // Every 60 seconds. Skipped while the tab is hidden.
+  // Every 10 seconds. Skipped while the tab is hidden.
   //
   // This also detects:
   // - Suspension
@@ -279,7 +279,7 @@ export const AuthProvider = ({
         checkAuthStatus({
           silent: true,
         });
-      }, 60000);
+      }, 10000);
 
     return () => {
       clearInterval(

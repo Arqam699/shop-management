@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
 import api from '../utils/api';
@@ -329,9 +330,9 @@ const Expenses = () => {
           EXPENSE METRICS KPI CARDS
       ====================================================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        
+
         {/* Total Filtered Vouchers */}
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+        <div className="premium-card p-5 sm:p-6 group relative overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
           <div className="flex items-start justify-between">
             <div>
@@ -351,8 +352,9 @@ const Expenses = () => {
           </div>
         </div>
 
+
         {/* Total Expense Amount */}
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-rose-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+        <div className="premium-card p-5 sm:p-6 group relative overflow-hidden border-rose-200/80">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
           <div className="flex items-start justify-between">
             <div>
@@ -372,12 +374,13 @@ const Expenses = () => {
           </div>
         </div>
 
+
       </div>
 
       {/* =====================================================
           SEARCH & DATE FILTERS TOOLBAR
       ====================================================== */}
-      <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
+      <section className="premium-card p-4 sm:p-5 space-y-4">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -396,6 +399,7 @@ const Expenses = () => {
             </button>
           )}
         </div>
+
 
         {/* Date Filter Presets */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-t border-slate-100 pt-3.5">
@@ -454,7 +458,7 @@ const Expenses = () => {
       {/* =====================================================
           EXPENSES TABLE
       ====================================================== */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+      <div className="premium-card overflow-hidden">
         {loading ? (
           <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -553,14 +557,16 @@ const Expenses = () => {
       {/* =====================================================
           ADD EXPENSE MODAL
       ====================================================== */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]">
+      {showAddModal &&
+        createPortal(
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]">
+          <div className="flex min-h-full items-center justify-center p-4">
           <form
             onSubmit={handleFormSubmit}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
+            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
-            <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
+            <div className="relative shrink-0 bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-950/40">
                   <Wallet className="w-5 h-5" />
@@ -583,7 +589,7 @@ const Expenses = () => {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               {modalError && (
                 <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -684,7 +690,7 @@ const Expenses = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+            <div className="p-4 sm:p-5 shrink-0 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
@@ -702,7 +708,9 @@ const Expenses = () => {
               </button>
             </div>
           </form>
-        </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* CONFIRM DELETE MODAL */}

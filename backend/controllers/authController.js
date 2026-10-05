@@ -21,11 +21,17 @@ const loginAdmin = async (req, res) => {
     // VALIDATION
     // ====================================================
 
-    if (!email || !password) {
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      !email.trim() ||
+      !password ||
+      Buffer.byteLength(password, 'utf8') > 72
+    ) {
       return res.status(400).json({
         success: false,
         message:
-          'Please provide both email and password',
+          'Please provide a valid email and password (maximum 72 UTF-8 bytes).',
       });
     }
 
@@ -50,36 +56,6 @@ const loginAdmin = async (req, res) => {
     }
 
     // ====================================================
-    // CHECK SUSPENDED SHOP BEFORE PASSWORD
-    // ====================================================
-
-    if (admin.shopId) {
-      const assignedShop =
-        await Shop.findById(
-          admin.shopId
-        ).select(
-          'subscriptionStatus subscriptionExpiresAt suspensionReason authVersion mustChangePassword'
-        );
-
-      if (
-        assignedShop?.subscriptionStatus ===
-        'Suspended'
-      ) {
-        return res.status(403).json({
-          success: false,
-          accountSuspended: true,
-          code:
-            'ACCOUNT_SUSPENDED',
-          message:
-            'Your shop account has been suspended. Please contact the administrator.',
-          suspensionReason:
-            assignedShop.suspensionReason ||
-            'No suspension reason was provided.',
-        });
-      }
-    }
-
-    // ====================================================
     // CHECK PASSWORD
     // ====================================================
 
@@ -88,73 +64,11 @@ const loginAdmin = async (req, res) => {
         password
       );
 
-    // ====================================================
-    // WRONG PASSWORD
-    // ====================================================
-
     if (!isMatch) {
-      const updatedAdmin =
-        await Admin.findByIdAndUpdate(
-          admin._id,
-          {
-            $inc: {
-              failedLoginAttempts: 1,
-            },
-          },
-          {
-            new: true,
-          }
-        ).select(
-          'failedLoginAttempts shopId'
-        );
-
-      // ==================================================
-      // 3 WRONG PASSWORD ATTEMPTS
-      // ==================================================
-
-      if (
-        updatedAdmin?.failedLoginAttempts >=
-          3 &&
-        updatedAdmin.shopId
-      ) {
-        const suspensionReason =
-          'Suspended automatically after 3 incorrect password attempts.';
-
-        const suspendedShop =
-          await Shop.findByIdAndUpdate(
-            updatedAdmin.shopId,
-            {
-              $set: {
-                subscriptionStatus:
-                  'Suspended',
-
-                suspensionReason,
-
-                suspendedAt:
-                  new Date(),
-              },
-
-              $inc: {
-                authVersion: 1,
-              },
-            },
-            {
-              new: true,
-            }
-          );
-
-        return res.status(403).json({
-          success: false,
-          accountSuspended: true,
-          code:
-            'ACCOUNT_SUSPENDED',
-          message:
-            'Your shop account has been suspended after 3 incorrect password attempts. Please contact the Super Admin.',
-          suspensionReason,
-          authVersion:
-            suspendedShop?.authVersion,
-        });
-      }
+      await Admin.updateOne(
+        { _id: admin._id },
+        { $inc: { failedLoginAttempts: 1 } }
+      );
 
       return res.status(401).json({
         success: false,
@@ -163,23 +77,11 @@ const loginAdmin = async (req, res) => {
       });
     }
 
-    // ====================================================
-    // CORRECT PASSWORD
-    // RESET FAILED ATTEMPTS
-    // ====================================================
-
-    if (
-      admin.failedLoginAttempts > 0
-    ) {
+    // Count consecutive failures only; a successful login resets the counter.
+    if (admin.failedLoginAttempts > 0) {
       await Admin.updateOne(
-        {
-          _id: admin._id,
-        },
-        {
-          $set: {
-            failedLoginAttempts: 0,
-          },
-        }
+        { _id: admin._id },
+        { $set: { failedLoginAttempts: 0 } }
       );
     }
 
@@ -322,35 +224,11 @@ const loginAdmin = async (req, res) => {
       deviceIndex === -1 &&
       shop.authorizedDevices.length >= 3
     ) {
-      const suspensionReason =
-        'Suspended automatically because a fourth device attempted to log in.';
-
-      shop.subscriptionStatus =
-        'Suspended';
-
-      shop.suspensionReason =
-        suspensionReason;
-
-      shop.suspendedAt =
-        new Date();
-
-      shop.authVersion =
-        (Number(
-          shop.authVersion
-        ) || 0) + 1;
-
-      await shop.save();
-
       return res.status(403).json({
         success: false,
-        accountSuspended: true,
-        code:
-          'ACCOUNT_SUSPENDED',
+        code: 'DEVICE_LIMIT_REACHED',
         message:
-          'Your shop account has been suspended because a fourth device attempted to log in. Please contact the Super Admin.',
-        suspensionReason,
-        authVersion:
-          shop.authVersion,
+          'This shop already has three authorized devices. Ask the Super Admin to clear the device list before signing in here.',
       });
     }
 
@@ -435,7 +313,8 @@ const loginAdmin = async (req, res) => {
       admin.shopId,
       Number(
         shop.authVersion
-      ) || 0
+      ) || 0,
+      Number(admin.sessionVersion) || 0
     );
 
     // ====================================================
@@ -469,8 +348,6 @@ const loginAdmin = async (req, res) => {
       success: false,
       message:
         'Internal server error',
-      error:
-        error.message,
     });
   }
 };
@@ -495,6 +372,8 @@ const changeAdminPassword = async (
     // ====================================================
 
     if (
+      typeof newPassword !== 'string' ||
+      typeof confirmPassword !== 'string' ||
       !newPassword ||
       !confirmPassword
     ) {
@@ -520,12 +399,24 @@ const changeAdminPassword = async (
     // ====================================================
 
     if (
-      cleanNewPassword.length < 6
+      cleanNewPassword.length < 12
     ) {
       return res.status(400).json({
         success: false,
         message:
-          'Password must be at least 6 characters long.',
+          'Password must be at least 12 characters long.',
+      });
+    }
+
+    // bcrypt only hashes the first 72 bytes, so cap the input to
+    // stop an oversized payload from wasting CPU.
+    if (
+      Buffer.byteLength(cleanNewPassword, 'utf8') > 72
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Password must be at most 72 UTF-8 bytes long.',
       });
     }
 
@@ -631,7 +522,20 @@ const changeAdminPassword = async (
     admin.password =
       cleanNewPassword;
 
+    admin.sessionVersion =
+      (Number(admin.sessionVersion) || 0) + 1;
+
     await admin.save();
+
+    // Keep this request signed in with its new version; other cookies
+    // issued to this admin are now invalid.
+    generateToken(
+      res,
+      admin._id,
+      admin.shopId,
+      Number(shop.authVersion) || 0,
+      Number(admin.sessionVersion) || 0
+    );
 
     // ====================================================
     // RECORD PASSWORD HISTORY
@@ -687,9 +591,6 @@ const changeAdminPassword = async (
 
       message:
         'Internal server error',
-
-      error:
-        error.message,
     });
   }
 };
@@ -699,10 +600,23 @@ const changeAdminPassword = async (
 // LOGOUT
 // ========================================================
 
-const logoutAdmin = (
+const logoutAdmin = async (
   req,
   res
 ) => {
+  try {
+    await Admin.updateOne(
+      { _id: req.admin._id },
+      { $inc: { sessionVersion: 1 } }
+    );
+  } catch (error) {
+    console.error('Admin session revocation error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Could not revoke the current session.',
+    });
+  }
+
   res.cookie('token', '', {
     httpOnly: true,
 
@@ -756,9 +670,6 @@ const getAdminProfile = async (
         email:
           req.admin.email,
 
-        shopId:
-          req.shopId,
-
         mustChangePassword:
           !!req.shop?.mustChangePassword,
       },
@@ -774,9 +685,6 @@ const getAdminProfile = async (
 
       message:
         'Internal server error',
-
-      error:
-        error.message,
     });
   }
 };

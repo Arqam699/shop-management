@@ -26,10 +26,16 @@ const loginSuperAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      !email.trim() ||
+      !password ||
+      Buffer.byteLength(password, 'utf8') > 72
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required',
+        message: 'A valid email and password are required (maximum 72 UTF-8 bytes).',
       });
     }
 
@@ -58,6 +64,7 @@ const loginSuperAdmin = async (req, res) => {
       {
         userId: superAdmin._id,
         role: 'SuperAdmin',
+        sessionVersion: Number(superAdmin.sessionVersion) || 0,
       },
       process.env.JWT_SECRET,
       {
@@ -116,6 +123,12 @@ const loginSuperAdmin = async (req, res) => {
 
 const logoutSuperAdmin = async (req, res) => {
   try {
+
+    // Revoke tokens from every active Super Admin session, not only this cookie.
+    await SuperAdmin.updateOne(
+      { _id: req.superAdmin._id },
+      { $inc: { sessionVersion: 1 } }
+    );
 
     res.cookie('superAdminToken', '', {
       httpOnly: true,
@@ -205,7 +218,11 @@ const createShopAdmin = async (req, res) => {
     }
 
 
-    if (password.length < 6) {
+    if (
+      typeof password !== 'string' ||
+      password.length < 12 ||
+      Buffer.byteLength(password, 'utf8') > 72
+    ) {
 
       await session.abortTransaction();
 
@@ -213,7 +230,7 @@ const createShopAdmin = async (req, res) => {
         success: false,
 
         message:
-          'Password must be at least 6 characters',
+          'Password must be at least 12 characters and at most 72 UTF-8 bytes',
       });
     }
 
@@ -755,6 +772,51 @@ const activateShop = async (req, res) => {
 
       message:
         'Internal server error',
+    });
+  }
+};
+
+// =====================================================
+// CLEAR AUTHORIZED DEVICES
+// Keeps shop subscription state unchanged and revokes the
+// current shop sessions so devices can sign in again.
+// =====================================================
+
+const clearShopDevices = async (req, res) => {
+  try {
+    const { shopId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(shopId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop ID',
+      });
+    }
+
+    const shop = await Shop.findById(shopId);
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+    const clearedDevices = shop.authorizedDevices?.length || 0;
+    shop.authorizedDevices = [];
+    shop.authVersion = (Number(shop.authVersion) || 0) + 1;
+    await shop.save();
+
+    return res.status(200).json({
+      success: true,
+      clearedDevices,
+      message: 'Authorized devices cleared. All shop sessions were revoked; users must sign in again.',
+    });
+  } catch (error) {
+    console.error('Clear Shop Devices Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Could not clear authorized devices.',
     });
   }
 };
@@ -1588,9 +1650,14 @@ const getAllShops = async (
 
     const formattedShops =
       shops.map(
-        (shop) => ({
+        (shop) => {
+          const { authorizedDevices = [], ...safeShop } = shop;
+          return {
+          ...safeShop,
 
-          ...shop,
+          authorizedDeviceCount: Array.isArray(authorizedDevices)
+            ? authorizedDevices.length
+            : 0,
 
           adminEmail:
             adminEmailMap.get(
@@ -1600,7 +1667,8 @@ const getAllShops = async (
             ) ||
             shop.email ||
             null,
-        })
+        };
+        }
       );
 
 
@@ -1804,14 +1872,15 @@ const resetShopAdminPassword = async (
     }
 
     if (
-      String(newPassword).length <
-      6
+      typeof newPassword !== 'string' ||
+      newPassword.length < 12 ||
+      Buffer.byteLength(newPassword, 'utf8') > 72
     ) {
       return res.status(400).json({
         success: false,
 
         message:
-          'Password must be at least 6 characters',
+          'Password must be at least 12 characters and at most 72 UTF-8 bytes',
       });
     }
 
@@ -2080,6 +2149,7 @@ module.exports = {
   suspendShop,
 
   activateShop,
+  clearShopDevices,
 
   renewShopSubscription,
 

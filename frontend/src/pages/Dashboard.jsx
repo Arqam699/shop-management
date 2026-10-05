@@ -1544,7 +1544,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             return (
               <div
                 key={kpi.name}
-                className="group relative overflow-hidden bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300"
+                className="premium-card group relative overflow-hidden p-5 shadow-sm"
               >
                 <div
                   className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.glow} to-transparent`}
@@ -1587,7 +1587,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             return (
               <div
                 key={kpi.name}
-                className="group relative overflow-hidden bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300"
+                className="premium-card group relative overflow-hidden p-5 shadow-sm"
               >
                 <div
                   className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.glow} to-transparent`}
@@ -1647,7 +1647,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="premium-card p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">
@@ -1668,7 +1668,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="premium-card p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">

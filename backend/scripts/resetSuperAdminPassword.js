@@ -55,10 +55,13 @@ const resetSuperAdminPassword = async () => {
     }
 
 
-    if (password.length < 6) {
+    if (
+      password.length < 12 ||
+      Buffer.byteLength(password, 'utf8') > 72
+    ) {
 
       throw new Error(
-        'SUPER_ADMIN_PASSWORD must be at least 6 characters'
+        'SUPER_ADMIN_PASSWORD must be at least 12 characters and at most 72 UTF-8 bytes'
       );
     }
 

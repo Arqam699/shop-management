@@ -14,7 +14,10 @@ const protectSuperAdmin = async (req, res, next) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      {
+        algorithms: ['HS256'],
+      }
     );
 
     if (decoded.role !== 'SuperAdmin') {
@@ -32,6 +35,16 @@ const protectSuperAdmin = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'Super Admin account not found',
+      });
+    }
+
+    if (
+      (Number(decoded.sessionVersion) || 0) !==
+      (Number(superAdmin.sessionVersion) || 0)
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: 'Super Admin session has been revoked. Please log in again.',
       });
     }
 

@@ -185,7 +185,6 @@ const getPayments = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to load payments history',
-      error: error.message,
     });
   }
 };
@@ -261,7 +260,6 @@ const getPaymentById = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch payment details',
-      error: error.message,
     });
   }
 };

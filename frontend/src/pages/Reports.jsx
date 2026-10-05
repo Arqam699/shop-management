@@ -325,7 +325,7 @@ const Expenses = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         
         {/* Total Filtered Vouchers */}
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+        <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
           <div className="flex items-start justify-between">
             <div>
@@ -346,7 +346,7 @@ const Expenses = () => {
         </div>
 
         {/* Total Expense Amount */}
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-rose-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+        <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
           <div className="flex items-start justify-between">
             <div>
@@ -371,7 +371,7 @@ const Expenses = () => {
       {/* =====================================================
           SEARCH & DATE FILTERS TOOLBAR
       ====================================================== */}
-      <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
+      <section className="premium-card p-4 sm:p-5 space-y-4">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -448,7 +448,7 @@ const Expenses = () => {
       {/* =====================================================
           EXPENSES TABLE
       ====================================================== */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+      <div className="premium-card overflow-hidden">
         {loading ? (
           <div className="p-16 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />

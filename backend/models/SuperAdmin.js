@@ -20,12 +20,20 @@ const superAdminSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
+      minlength: [12, 'Super Admin password must be at least 12 characters long'],
     },
 
     role: {
       type: String,
       default: 'SuperAdmin',
       enum: ['SuperAdmin'],
+    },
+
+    // Increment this value to invalidate every existing Super Admin token.
+    sessionVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   {

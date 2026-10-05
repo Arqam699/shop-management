@@ -103,7 +103,7 @@ const getDashboardStats = async (
         shopId,
       })
         .select(
-          '_id name model quantity purchasePrice sellingPrice status'
+          '_id name model quantity purchasePrice salePrice sellingPrice minStockLevel status'
         )
         .lean(),
 
@@ -287,14 +287,20 @@ const getDashboardStats = async (
 
           sellingPrice:
             Number(
-              product.sellingPrice || 0
+              product.sellingPrice || product.salePrice || 0
             ),
+
+          minStockLevel: Number(product.minStockLevel || 0),
 
           soldQuantity:
             0,
 
           soldQuantity30Days:
             0,
+
+          soldQuantity7Days: 0,
+
+          soldQuantityPrevious30Days: 0,
 
           salesCount:
             0,
@@ -327,6 +333,11 @@ const getDashboardStats = async (
       inventory30DaysStart.getDate() -
       30
     );
+
+    const inventory7DaysStart = new Date(inventory30DaysStart);
+    inventory7DaysStart.setDate(inventory7DaysStart.getDate() + 23);
+    const inventoryPrevious30DaysStart = new Date(inventory30DaysStart);
+    inventoryPrevious30DaysStart.setDate(inventoryPrevious30DaysStart.getDate() - 30);
 
 
     // --------------------------------------------------------
@@ -406,8 +417,17 @@ const getDashboardStats = async (
 
         productData.revenue30Days +=
           Number(
-            sale.finalTotal || 0
+            sale.finalTotal || sale.subtotal || 0
           );
+
+        if (saleDate >= inventory7DaysStart) {
+          productData.soldQuantity7Days += quantitySold;
+        }
+      } else if (
+        !Number.isNaN(saleDate.getTime()) &&
+        saleDate >= inventoryPrevious30DaysStart
+      ) {
+        productData.soldQuantityPrevious30Days += quantitySold;
       }
     }
 
@@ -448,6 +468,17 @@ const getDashboardStats = async (
 
           const averageDailySales =
             sold30 / 30;
+
+          const averageDailySales7Days =
+            Number(product.soldQuantity7Days || 0) / 7;
+          const previousDailySales =
+            Number(product.soldQuantityPrevious30Days || 0) / 30;
+          const salesTrendPercent = previousDailySales > 0
+            ? Math.round(((averageDailySales7Days - previousDailySales) / previousDailySales) * 100)
+            : (averageDailySales7Days > 0 ? null : 0);
+          const minStockLevel = Number(product.minStockLevel || 0);
+          const reorderTarget = Math.max(minStockLevel, Math.ceil(averageDailySales * 30));
+          const suggestedReorderQuantity = Math.max(0, reorderTarget - stock);
 
 
           // --------------------------------------------------
@@ -528,7 +559,7 @@ const getDashboardStats = async (
               'Out of Stock';
 
           } else if (
-            stock <= 5 &&
+            stock <= minStockLevel &&
             sold30 > 0
           ) {
 
@@ -574,6 +605,13 @@ const getDashboardStats = async (
 
             soldQuantity30Days:
               sold30,
+
+            soldQuantity7Days: Number(product.soldQuantity7Days || 0),
+            soldQuantityPrevious30Days: Number(product.soldQuantityPrevious30Days || 0),
+            salesTrendPercent,
+            minStockLevel,
+            suggestedReorderQuantity,
+            deadStockValue: sold30 === 0 && stock > 0 ? stockValue : 0,
 
             salesCount:
               Number(
@@ -687,49 +725,23 @@ const getDashboardStats = async (
       intelligenceProducts
         .filter(
           product =>
-            product.stockRisk ===
-              'Critical' ||
-            product.stockRisk ===
-              'High' ||
-            product.stockRisk ===
-              'Dead Stock' ||
-            product.stockRisk ===
-              'Out of Stock'
+            product.stock <= product.minStockLevel
         )
         .sort(
           (
             a,
             b
-          ) => {
-
-            const riskOrder = {
-              'Out of Stock': 1,
-              'Critical': 2,
-              'High': 3,
-              'Dead Stock': 4,
-              'Medium': 5,
-              'Normal': 6,
-            };
-
-
-            return (
-              (
-                riskOrder[
-                  a.stockRisk
-                ] || 99
-              ) -
-              (
-                riskOrder[
-                  b.stockRisk
-                ] || 99
-              )
-            );
-          }
+          ) => a.stock - b.stock
         )
         .slice(
           0,
           10
         );
+
+    const reorderProducts = intelligenceProducts
+      .filter(product => product.suggestedReorderQuantity > 0 && product.soldQuantity30Days > 0)
+      .sort((a, b) => (a.stockCoverageDays ?? 0) - (b.stockCoverageDays ?? 0))
+      .slice(0, 10);
 
 
     // ========================================================
@@ -755,8 +767,7 @@ const getDashboardStats = async (
     const stockAtRiskCount =
       intelligenceProducts.filter(
         product =>
-          product.stockRisk !==
-          'Normal'
+          product.stock <= product.minStockLevel
       ).length;
 
 
@@ -798,6 +809,10 @@ const getDashboardStats = async (
         0
       );
 
+    const deadStockValue = intelligenceProducts.reduce(
+      (sum, product) => sum + Number(product.deadStockValue || 0), 0
+    );
+
 
     const inventoryIntelligence = {
 
@@ -807,6 +822,8 @@ const getDashboardStats = async (
       totalInventoryRetailValue,
 
       totalInventoryCostValue,
+
+      deadStockValue,
 
       fastMovingCount,
 
@@ -821,6 +838,8 @@ const getDashboardStats = async (
       slowMovingProducts,
 
       stockAtRiskProducts,
+
+      reorderProducts,
     };
 
 

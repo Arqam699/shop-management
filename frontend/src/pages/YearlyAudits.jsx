@@ -186,7 +186,7 @@ const YearlyAudits = () => {
             </span>
           </div>
         ) : audits.length === 0 ? (
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-12 text-center col-span-full space-y-2 text-slate-400 shadow-sm">
+          <div className="premium-card p-12 text-center col-span-full space-y-2 text-slate-400">
             <Calendar className="w-12 h-12 mx-auto text-slate-300" />
             <p className="font-black text-slate-700 text-sm">No historical registers added yet</p>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
@@ -197,7 +197,7 @@ const YearlyAudits = () => {
           audits.map((audit) => (
             <div
               key={audit._id}
-              className="group relative bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between space-y-5 overflow-hidden"
+              className="premium-card group relative p-6 flex flex-col justify-between space-y-5 overflow-hidden"
             >
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
 

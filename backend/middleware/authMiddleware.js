@@ -51,7 +51,10 @@ const protect = async (req, res, next) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      {
+        algorithms: ['HS256'],
+      }
     );
 
     // ====================================================
@@ -93,18 +96,43 @@ const protect = async (req, res, next) => {
     // SHOP ID
     // ====================================================
 
-    req.shopId =
-      req.admin.shopId ||
-      decoded.shopId;
-
-    if (!req.shopId) {
+    if (!req.admin.shopId) {
       clearAuthCookie(res);
 
       return res.status(403).json({
         success: false,
         code: 'SHOP_NOT_ASSIGNED',
-        message:
-          'Shop is not assigned to this account',
+        message: 'Shop is not assigned to this account',
+      });
+    }
+
+    req.shopId = req.admin.shopId;
+
+    if (
+      !decoded.shopId ||
+      String(req.shopId) !== String(decoded.shopId)
+    ) {
+      clearAuthCookie(res);
+
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_REVOKED',
+        message: 'Your session is no longer valid. Please log in again.',
+      });
+    }
+
+    const tokenSessionVersion =
+      Number(decoded.sessionVersion) || 0;
+    const currentSessionVersion =
+      Number(req.admin.sessionVersion) || 0;
+
+    if (tokenSessionVersion !== currentSessionVersion) {
+      clearAuthCookie(res);
+
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_REVOKED',
+        message: 'Your session has been revoked. Please log in again.',
       });
     }
 
@@ -112,15 +140,7 @@ const protect = async (req, res, next) => {
     // FIND SHOP
     // ====================================================
 
-    let shop = shopFromToken;
-
-    if (
-      String(req.shopId) !==
-      String(decoded.shopId)
-    ) {
-      shop =
-        await Shop.findById(req.shopId);
-    }
+    const shop = shopFromToken;
 
     if (!shop) {
       clearAuthCookie(res);

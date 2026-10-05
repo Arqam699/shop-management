@@ -230,6 +230,11 @@ const BackupPage = () => {
       )
       .map((part) =>
         part.replace(
+          // Windows-illegal filename characters + control chars
+          // (\x00-\x1F) are matched on purpose here to sanitize
+          // backup file/folder names, so the control-regex rule
+          // is intentionally disabled for this line.
+          // eslint-disable-next-line no-control-regex
           /[<>:"|?*\x00-\x1F]/g,
           '_'
         )

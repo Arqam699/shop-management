@@ -51,7 +51,6 @@ const getSettings = async (req, res) => {
       success: false,
       message:
         'Failed to retrieve settings',
-      error: error.message,
     });
   }
 };
@@ -130,7 +129,6 @@ const updateSettings = async (
       success: false,
       message:
         'Failed to update settings',
-      error: error.message,
     });
   }
 };
@@ -238,7 +236,6 @@ const enableDeletionMode = async (
       success: false,
       message:
         'Failed to enable deletion mode',
-      error: error.message,
     });
   }
 };
@@ -337,7 +334,6 @@ const disableDeletionMode = async (
       success: false,
       message:
         'Failed to disable deletion mode',
-      error: error.message,
     });
   }
 };

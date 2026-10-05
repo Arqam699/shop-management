@@ -766,7 +766,7 @@ const Payments = () => {
         </section>
 
         {/* SEARCH & DATE FILTERS TOOLBAR */}
-        <section className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-sm space-y-4">
+        <section className="premium-card p-4 sm:p-5 space-y-4">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input
@@ -843,7 +843,7 @@ const Payments = () => {
             TAB 0 — INVOICE CLASSIFICATION LIST
         ====================================================== */}
         {viewModeTab === 0 && (
-          <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+          <div className="premium-card overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -951,7 +951,7 @@ const Payments = () => {
             TAB 1 — ALL RECEIPTS LEDGER
         ====================================================== */}
         {viewModeTab === 1 && (
-          <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+          <div className="premium-card overflow-hidden">
             {filteredPayments.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-xs font-semibold">
                 No receipts logged for this selection.

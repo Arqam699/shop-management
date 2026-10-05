@@ -327,7 +327,7 @@ const getPaymentScore = (customer) => {
       {/* =====================================================
           SEARCH BAR
       ====================================================== */}
-      <section className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm">
+      <section className="premium-card p-4">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -359,7 +359,7 @@ const getPaymentScore = (customer) => {
           CUSTOMER LISTING
       ====================================================== */}
       {loading ? (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-16 flex flex-col items-center justify-center shadow-sm">
+        <div className="premium-card p-16 flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 p-0.5 animate-spin flex items-center justify-center">
             <div className="w-full h-full bg-white rounded-2xl flex items-center justify-center">
               <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
@@ -373,7 +373,7 @@ const getPaymentScore = (customer) => {
           </p>
         </div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-16 text-center shadow-sm">
+        <div className="premium-card p-16 text-center">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 flex items-center justify-center text-slate-300">
             <UserRound className="w-7 h-7" />
           </div>
@@ -385,7 +385,7 @@ const getPaymentScore = (customer) => {
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm">
+        <div className="premium-card overflow-hidden">
           
           {/* LIST HEADER */}
           <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">

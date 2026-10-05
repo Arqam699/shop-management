@@ -1365,7 +1365,7 @@ Thank you - ${
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 no-print">
 
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
+        <div className="premium-card p-5 sm:p-6">
 
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
@@ -1425,7 +1425,7 @@ Thank you - ${
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
+        <div className="premium-card p-5 sm:p-6">
 
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shrink-0">
@@ -1498,7 +1498,7 @@ Thank you - ${
           CALCULATION
       ====================================================== */}
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm no-print">
+      <section className="premium-card no-print">
 
         <div className="flex items-center gap-3 mb-5">
 
@@ -1665,7 +1665,7 @@ Thank you - ${
           PAYMENT PROGRESS
       ====================================================== */}
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm no-print">
+      <section className="premium-card no-print">
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
 
@@ -1764,7 +1764,7 @@ Thank you - ${
           INSTALLMENT TABLE
       ====================================================== */}
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm no-print">
+      <section className="premium-card overflow-hidden no-print">
 
         <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 
@@ -2013,7 +2013,7 @@ Thank you - ${
           PAYMENT RECEIPT HISTORY
       ====================================================== */}
 
-      <section className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm no-print">
+      <section className="premium-card overflow-hidden no-print">
         <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="text-base font-black text-slate-900">

@@ -249,23 +249,20 @@ const Installments = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
       {/* =================================================
           HEADER
       ================================================== */}
 
-      <div>
-
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 font-sans">
           Installment Sales
         </h2>
-
         <p className="text-sm text-gray-600 font-medium">
           Search installment sales by Invoice Number,
           customer name, and manage active installments.
         </p>
-
       </div>
 
       {/* =================================================
@@ -276,30 +273,23 @@ const Installments = () => {
 
         {/* FILTERED PLANS */}
 
-        <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
-
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+        <div className="premium-card p-5 rounded-xl shadow-sm">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
             Filtered Installment Plans
           </span>
-
-          <p className="text-2xl font-extrabold text-gray-900 mt-1">
+          <p className="text-2xl font-extrabold text-slate-900 mt-1">
             {filteredPlans.length}
           </p>
-
         </div>
 
         {/* OUTSTANDING BALANCE */}
 
-        <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
-
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+        <div className="premium-card p-5 rounded-xl shadow-sm">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
             Outstanding Financed Balance
           </span>
-
           <p className="text-2xl font-extrabold text-red-600 mt-1">
-
             {settings.currency}{' '}
-
             {filteredPlans
               .reduce(
                 (sum, p) =>
@@ -309,23 +299,17 @@ const Installments = () => {
                 0
               )
               .toLocaleString()}
-
           </p>
-
         </div>
 
         {/* OVERDUE */}
 
-        <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
-
+        <div className="premium-card p-5 rounded-xl shadow-sm flex items-center justify-between">
           <div>
-
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
               Overdue/Defaulter Plans
             </span>
-
             <p className="text-2xl font-extrabold text-amber-600 mt-1">
-
               {
                 filteredPlans.filter(
                   (p) =>
@@ -333,11 +317,8 @@ const Installments = () => {
                     'Overdue'
                 ).length
               }
-
             </p>
-
           </div>
-
           {
             filteredPlans.filter(
               (p) =>
@@ -347,7 +328,6 @@ const Installments = () => {
               <AlertTriangle className="w-6 h-6 text-amber-500 animate-pulse" />
             )
           }
-
         </div>
 
       </div>
@@ -356,12 +336,9 @@ const Installments = () => {
           SEARCH & DATE FILTERS
       ================================================== */}
 
-      <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm space-y-4">
-
+      <div className="premium-card p-4 rounded-xl shadow-sm space-y-4">
         <div className="relative">
-
-          <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-
+          <Search className="w-5 h-5 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Search by invoice/bill number, customer name, mobile number, CNIC, or plan ID..."
@@ -369,115 +346,61 @@ const Installments = () => {
             onChange={(e) =>
               setSearchTerm(formatCnicSearchInput(e.target.value))
             }
-            className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+            className="w-full border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900 bg-slate-50 focus:bg-white transition-all"
           />
-
         </div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t pt-3">
-
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-slate-100 pt-3">
           <div className="flex flex-wrap gap-1.5">
-
             {[
-              {
-                id: 'today',
-                label: 'Today (Daily)'
-              },
-              {
-                id: 'yesterday',
-                label: 'Yesterday'
-              },
-              {
-                id: 'dayBeforeYesterday',
-                label: 'Day Before Yesterday'
-              },
-              {
-                id: 'all',
-                label: 'All-Time'
-              },
-              {
-                id: 'week',
-                label: 'Weekly (7 Days)'
-              },
-              {
-                id: 'month',
-                label: 'Monthly (This Month)'
-              },
-              {
-                id: 'custom',
-                label: 'Custom Range'
-              }
+              { id: 'today', label: 'Today (Daily)' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'dayBeforeYesterday', label: 'Day Before Yesterday' },
+              { id: 'all', label: 'All-Time' },
+              { id: 'week', label: 'Weekly (7 Days)' },
+              { id: 'month', label: 'Monthly (This Month)' },
+              { id: 'custom', label: 'Custom Range' }
             ].map(
               (preset) => (
                 <button
                   key={preset.id}
-                  onClick={() =>
-                    setFilterPreset(
-                      preset.id
-                    )
-                  }
+                  onClick={() => setFilterPreset(preset.id)}
                   className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
-                    filterPreset ===
-                    preset.id
+                    filterPreset === preset.id
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   {preset.label}
                 </button>
               )
             )}
-
           </div>
-
-          {filterPreset ===
-            'custom' && (
-            <div className="flex items-center space-x-2 text-xs font-bold text-gray-500">
-
+          {filterPreset === 'custom' && (
+            <div className="flex items-center space-x-2 text-xs font-bold text-slate-500">
               <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
-
               <input
                 type="date"
-                value={
-                  customStartDate
-                }
-                onChange={(e) =>
-                  setCustomStartDate(
-                    e.target.value
-                  )
-                }
-                className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1 focus:outline-none bg-white text-slate-900"
               />
-
-              <span>
-                to
-              </span>
-
+              <span>to</span>
               <input
                 type="date"
-                value={
-                  customEndDate
-                }
-                onChange={(e) =>
-                  setCustomEndDate(
-                    e.target.value
-                  )
-                }
-                className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1 focus:outline-none bg-white text-slate-900"
               />
-
             </div>
           )}
-
         </div>
-
       </div>
 
       {/* =================================================
           MAIN LIST
       ================================================== */}
 
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="premium-card overflow-hidden">
 
         {loading ? (
 

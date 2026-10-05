@@ -126,7 +126,6 @@ const getExpenses = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to load expenses',
-      error: error.message,
     });
 
   }

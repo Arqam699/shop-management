@@ -1369,6 +1369,11 @@ const createSale = async (req, res) => {
       }
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'An unexpected error occurred while creating the sale. Please try again or contact support.',
+    });
   } catch (error) {
     console.error(
       'CREATE SALE ERROR:',
@@ -1464,6 +1469,11 @@ const getSales = async (req, res) => {
       data: sales
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'Failed to fetch sales. Please try again or contact support.',
+    });
   } catch (error) {
     console.error(
       'GET SALES ERROR:',
@@ -1547,6 +1557,11 @@ const getSaleById = async (req, res) => {
       }
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'Failed to fetch sale details. Please try again or contact support.',
+    });
   } catch (error) {
     console.error(
       'GET SALE ERROR:',
@@ -2626,6 +2641,11 @@ const updateSale = async (req, res) => {
       }
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'An internal error occurred while updating the sale. Please try again.',
+    });
   } catch (error) {
     console.error(
       'UPDATE SALE ERROR:',
@@ -2792,6 +2812,11 @@ const deleteSale = async (req, res) => {
         'Sale deleted successfully'
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'An internal error occurred while deleting the sale. Please try again.',
+    });
   } catch (error) {
     console.error(
       'DELETE SALE ERROR:',
@@ -3474,6 +3499,11 @@ const exchangeSaleProduct = async (
       }
     });
 
+    return res.status(500).json({
+      success: false,
+      message:
+        'An internal error occurred during product exchange. Please try again.',
+    });
   } catch (error) {
     console.error(
       'EXCHANGE SALE ERROR:',
