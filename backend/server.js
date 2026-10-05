@@ -198,6 +198,53 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Vercel invokes the exported Express app as a serverless handler. Do not
+// open a separate HTTP listener there; initialize shared database state only
+// for actual API requests. CORS handles OPTIONS above this middleware, so a
+// browser preflight never waits on MongoDB.
+let vercelInitialization;
+
+const initializeVercelRequest = async (req, res, next) => {
+  if (process.env.VERCEL !== '1' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  try {
+    if (!vercelInitialization) {
+      vercelInitialization = (async () => {
+        const jwtSecret = process.env.JWT_SECRET || '';
+        const isPlaceholderSecret = /^(replace|change|your|example)[_-]/i.test(jwtSecret);
+
+        if (
+          process.env.NODE_ENV === 'production' &&
+          (Buffer.byteLength(jwtSecret, 'utf8') < 32 || isPlaceholderSecret)
+        ) {
+          throw new Error('Production requires a JWT_SECRET with at least 32 random bytes.');
+        }
+
+        await connectDB();
+        await seedAdminAccount();
+      })().catch((error) => {
+        // Let later invocations retry after a transient database failure.
+        vercelInitialization = null;
+        throw error;
+      });
+    }
+
+    await vercelInitialization;
+    return next();
+  } catch (error) {
+    console.error('[VERCEL] Request initialization failed:', error.message);
+    return res.status(503).json({
+      success: false,
+      code: 'SERVICE_INITIALIZATION_FAILED',
+      message: 'The API is temporarily unavailable. Please try again.',
+    });
+  }
+};
+
+app.use(initializeVercelRequest);
+
 // =====================================================
 // BODY PARSERS
 // =====================================================
@@ -851,7 +898,7 @@ const startServer = async () => {
     // 5. START HTTP SERVER
     // =================================================
 
-    app.listen(
+    if (process.env.VERCEL !== '1') app.listen(
       PORT,
       () => {
         console.log('');
@@ -902,7 +949,7 @@ const startServer = async () => {
     // We still fail startup for critical errors
     // such as MongoDB/auth initialization.
 
-    process.exit(1);
+    if (process.env.VERCEL !== '1') process.exitCode = 1;
   }
 };
 
@@ -910,7 +957,9 @@ const startServer = async () => {
 // START APPLICATION
 // =====================================================
 
-startServer();
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
 
 // =====================================================
 // EXPORT APP
