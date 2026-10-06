@@ -132,6 +132,10 @@ const DueDates = lazy(
   () => import('./pages/DueDates')
 );
 
+const AboutDeveloper = lazy(
+  () => import('./pages/AboutDeveloper')
+);
+
 
 // =====================================================
 // APP
@@ -467,6 +471,18 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <SettingsPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* ABOUT THE DEVELOPER */}
+              <Route
+                path="/about-developer"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AboutDeveloper />
                     </Layout>
                   </ProtectedRoute>
                 }

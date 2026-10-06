@@ -44,6 +44,7 @@ import {
   CircleUserRound,
   Bot,
   ChevronRight,
+  Code2,
 } from 'lucide-react';
 
 /* =====================================================
@@ -888,6 +889,12 @@ icon: DatabaseBackup,
     icon: Settings,
   },
 
+  {
+    name: 'About Developer',
+    path: '/about-developer',
+    icon: Code2,
+  },
+
 ];
 
 /* =====================================================
@@ -945,6 +952,7 @@ const PAGE_TITLES = {
   '/backup': 'Backup',
   '/reports': 'Reports',
   '/settings': 'Settings',
+  '/about-developer': 'About Developer',
 };
 
 const getPageTitle = (pathname, search) => {

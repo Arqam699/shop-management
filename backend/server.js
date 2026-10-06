@@ -2,7 +2,6 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-const cron = require('node-cron');
 const helmet = require('helmet');
 
 // =====================================================
@@ -26,7 +25,6 @@ const Admin = require('./models/Admin');
 // =====================================================
 
 const {
-  runAutomaticDailyBackups,
   initializeBackupStorage,
 } = require('./services/backupService');
 
@@ -385,14 +383,11 @@ app.get('/health', (req, res) => {
         ? 'vercel'
         : process.env.NODE_ENV || 'development',
 
-    backupScheduler:
-      process.env.VERCEL === '1'
-        ? 'disabled-on-vercel'
-        : 'active',
+    backupScheduler: 'disabled',
+
+    backupMode: 'manual',
 
     timezone: 'Asia/Karachi',
-
-    automaticBackupTime: '23:59',
   });
 });
 
@@ -658,85 +653,6 @@ const seedAdminAccount = async () => {
 };
 
 // =====================================================
-// AUTOMATIC BACKUP SCHEDULER
-// =====================================================
-//
-// LOCAL MACHINE ONLY
-//
-// Every day at 11:59 PM Pakistan Time.
-//
-// IMPORTANT:
-// This scheduler is NOT started on Vercel.
-// Vercel serverless functions are not persistent.
-//
-// =====================================================
-
-let backupScheduler = null;
-
-const initializeAutomaticBackupScheduler = () => {
-  // ---------------------------------------------------
-  // Do not run scheduler on Vercel
-  // ---------------------------------------------------
-
-  if (process.env.VERCEL === '1') {
-    console.log(
-      '[BACKUP] Vercel: local cron skipped.'
-    );
-
-    return null;
-  }
-
-  // ---------------------------------------------------
-  // Prevent duplicate scheduler
-  // ---------------------------------------------------
-
-  if (backupScheduler) {
-    console.log(
-      '[BACKUP] Scheduler already initialized.'
-    );
-
-    return backupScheduler;
-  }
-
-  // ---------------------------------------------------
-  // Create Cron
-  // ---------------------------------------------------
-
-  backupScheduler = cron.schedule(
-    '59 23 * * *',
-    async () => {
-      console.log('[BACKUP] Daily auto-backup started.');
-
-      try {
-        const result =
-          await runAutomaticDailyBackups();
-
-        console.log(
-          `[BACKUP] Daily auto-backup done. ` +
-          `Shops: ${result?.total ?? 0}, ` +
-          `OK: ${result?.success ?? 0}, ` +
-          `Failed: ${result?.failed ?? 0}`
-        );
-      } catch (error) {
-        console.error(
-          '[BACKUP] Daily auto-backup ERROR:',
-          error.message || error
-        );
-      }
-    },
-    {
-      timezone: 'Asia/Karachi',
-    }
-  );
-
-  console.log(
-    '[BACKUP] Daily auto-backup: 11:59 PM (Asia/Karachi)'
-  );
-
-  return backupScheduler;
-};
-
-// =====================================================
 // 404 HANDLER
 // =====================================================
 
@@ -883,16 +799,19 @@ const startServer = async () => {
     await seedAdminAccount();
 
     // =================================================
-    // 4. AUTOMATIC BACKUP SCHEDULER
+    // 4. AUTOMATIC BACKUP — DISABLED (manual backup only)
+    // =================================================
+    //
+    // Shop owner decision: no automatic backups. Many users
+    // run low-end PCs, so auto-created backups would waste
+    // disk space. The admin takes a backup manually from the
+    // Backup page whenever they want one.
+    //
     // =================================================
 
-    if (process.env.VERCEL !== '1') {
-      initializeAutomaticBackupScheduler();
-    } else {
-      console.log(
-        '[BACKUP] Automatic cron scheduler disabled on Vercel.'
-      );
-    }
+    console.log(
+      '[BACKUP] Automatic backup disabled — manual backup only.'
+    );
 
     // =================================================
     // 5. START HTTP SERVER

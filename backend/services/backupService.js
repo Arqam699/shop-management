@@ -3307,7 +3307,8 @@ const saveCompleteBackup = async ({
 // ============================================================
 // CREATE DAILY BACKUP LOCALLY
 //
-// Used by automatic local scheduler.
+// Manual-use local backup (automatic scheduler disabled —
+// backups are manual-only via ZIP download).
 // ============================================================
 
 const createDailyBackup = async (
