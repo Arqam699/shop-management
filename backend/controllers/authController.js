@@ -346,6 +346,7 @@ const loginAdmin = async (req, res) => {
 
     return res.status(500).json({
       success: false,
+
       message:
         'Internal server error',
     });
@@ -598,6 +599,13 @@ const changeAdminPassword = async (
 
 // ========================================================
 // LOGOUT
+//
+// Ends ONLY the current device's session:
+//   - removes this device from authorizedDevices (slot frees up)
+//   - clears the login cookie on this device
+//
+// Other devices stay logged in. sessionVersion is NOT
+// touched here — bumping it would log out every device.
 // ========================================================
 
 const logoutAdmin = async (
@@ -605,16 +613,48 @@ const logoutAdmin = async (
   res
 ) => {
   try {
-    await Admin.updateOne(
-      { _id: req.admin._id },
-      { $inc: { sessionVersion: 1 } }
-    );
+
+    // ====================================================
+    // IDENTIFY THIS DEVICE
+    // ====================================================
+
+    const deviceId =
+      String(
+        req.get(
+          'X-Device-Id'
+        ) || ''
+      ).trim();
+
+    // ====================================================
+    // REMOVE ONLY THIS DEVICE
+    // ====================================================
+
+    if (
+      deviceId &&
+      req.shopId
+    ) {
+      await Shop.updateOne(
+        { _id: req.shopId },
+        {
+          $pull: {
+            authorizedDevices: {
+              deviceId:
+                deviceId,
+            },
+          },
+        }
+      );
+    }
+
   } catch (error) {
-    console.error('Admin session revocation error:', error.message);
-    return res.status(500).json({
-      success: false,
-      message: 'Could not revoke the current session.',
-    });
+
+    console.error(
+      'Logout device cleanup error:',
+      error.message
+    );
+
+    // Never block logout if the
+    // device cleanup fails.
   }
 
   res.cookie('token', '', {
