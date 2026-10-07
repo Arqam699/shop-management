@@ -276,6 +276,89 @@ const shopSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+
+    // =================================================
+    // MONTHLY PAYMENT HISTORY
+    // Recorded by Super Admin (collections)
+    // =================================================
+
+    paymentHistory: {
+      type: [
+        {
+          month: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+
+          amount: {
+            type: Number,
+            required: true,
+            min: 0,
+          },
+
+          paidVia: {
+            type: String,
+            default: '',
+            trim: true,
+          },
+
+          note: {
+            type: String,
+            default: '',
+            trim: true,
+          },
+
+          paidAt: {
+            type: Date,
+            default: Date.now,
+          },
+
+          recordedBy: {
+            type: String,
+            default: 'Super Admin',
+          },
+        },
+      ],
+      default: [],
+    },
+
+
+    // =================================================
+    // SUPER ADMIN PRIVATE NOTES
+    // =================================================
+
+    superAdminNotes: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+
+    notesUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+
+
+    // =================================================
+    // MANUAL BACKUP TRACKING
+    //
+    // Updated whenever the shop admin downloads a
+    // manual backup from the Backup page.
+    // Shown in the Super Admin dashboard.
+    // =================================================
+
+    lastBackupAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastBackupType: {
+      type: String,
+      enum: ['Complete', 'Daily'],
+      default: null,
+    },
   },
   {
     timestamps: true,

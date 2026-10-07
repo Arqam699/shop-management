@@ -1,4 +1,3 @@
-
 import React, {
   useEffect,
   useState,
@@ -12,6 +11,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import ConfirmModal from './ConfirmModal';
+import ShopNoticeBanner from './ShopNoticeBanner';
 
 import {
   Menu,
@@ -2227,6 +2227,7 @@ export const Layout = ({ children }) => {
             lg:p-7
           "
         >
+          <ShopNoticeBanner />
           {children}
         </main>
 

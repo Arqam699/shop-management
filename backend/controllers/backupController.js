@@ -75,6 +75,32 @@ exports.downloadBackup = async (
       result.filename ||
       'COMPLETE-BACKUP.zip';
 
+    // --------------------------------------------
+    // TRACK LAST BACKUP
+    // For Super Admin backup monitoring.
+    // Never blocks the download if it fails.
+    // --------------------------------------------
+
+    try {
+
+      await Shop.updateOne(
+        { _id: shopId },
+        {
+          $set: {
+            lastBackupAt: new Date(),
+            lastBackupType: 'Complete',
+          },
+        }
+      );
+
+    } catch (trackError) {
+
+      console.warn(
+        '[BACKUP TRACK WARNING]',
+        trackError.message
+      );
+    }
+
     res.status(200);
 
     res.setHeader(
@@ -154,7 +180,7 @@ exports.getBackupInfo = async (
         shopId
       )
         .select(
-          'shopName createdAt'
+          'shopName createdAt lastBackupAt lastBackupType'
         )
         .lean();
 
@@ -298,6 +324,14 @@ exports.getBackupInfo = async (
         createdAt:
           shop.createdAt ||
           null,
+
+        lastBackupAt:
+          shop.lastBackupAt ||
+          null,
+
+        lastBackupType:
+          shop.lastBackupType ||
+          null,
       },
 
       totalDocuments,
@@ -365,7 +399,6 @@ exports.getBackupInfo = async (
     ).json({
       success:
         false,
-
       message:
         error.message ||
         'Backup information load nahi ho saki.',

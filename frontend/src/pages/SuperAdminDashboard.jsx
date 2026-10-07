@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -20,6 +20,8 @@ import {
   MessageCircle,
   KeyRound,
   RotateCcw,
+  MoreVertical,
+  Download,
 } from 'lucide-react';
 
 const DEFAULT_STATS = {
@@ -84,7 +86,6 @@ const SuperAdminDashboard = () => {
   // =====================================================
 
   const [historyModal, setHistoryModal] = useState(null);
-  const [loginIpModal, setLoginIpModal] = useState(null);
 
   // =====================================================
   // PASSWORD CHANGE HISTORY MODAL
@@ -123,6 +124,88 @@ const SuperAdminDashboard = () => {
   // =====================================================
 
   const [confirmConfig, setConfirmConfig] = useState(null);
+
+  // =====================================================
+  // SHOP ACTIONS MENU + DIRECTORY SEARCH
+  // =====================================================
+
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [shopSearch, setShopSearch] = useState('');
+  const [directoryFilter, setDirectoryFilter] =
+    useState('all');
+
+  // =====================================================
+  // MONTHLY COLLECTIONS
+  // =====================================================
+
+  const [collectionMonth, setCollectionMonth] =
+    useState(() => {
+      const d = new Date();
+
+      return `${d.getFullYear()}-${String(
+        d.getMonth() + 1
+      ).padStart(2, '0')}`;
+    });
+
+  const [payModal, setPayModal] =
+    useState(null);
+
+  const [payAmount, setPayAmount] =
+    useState('');
+
+  const [payVia, setPayVia] =
+    useState('Cash');
+
+  const [payNote, setPayNote] =
+    useState('');
+
+  const [paymentHistoryModal, setPaymentHistoryModal] =
+    useState(null);
+
+  // =====================================================
+  // SHOP NOTES
+  // =====================================================
+
+  const [notesModal, setNotesModal] =
+    useState(null);
+
+  const [notesText, setNotesText] =
+    useState('');
+
+  // =====================================================
+  // BROADCAST NOTICES
+  // =====================================================
+
+  const [announcements, setAnnouncements] =
+    useState([]);
+
+  const [announcementModal, setAnnouncementModal] =
+    useState(null);
+
+  const [announcementTitle, setAnnouncementTitle] =
+    useState('');
+
+  const [announcementMessage, setAnnouncementMessage] =
+    useState('');
+
+  // =====================================================
+  // EDIT SHOP
+  // =====================================================
+
+  const [editShopModal, setEditShopModal] =
+    useState(null);
+
+  const [editShopName, setEditShopName] =
+    useState('');
+
+  const [editShopOwner, setEditShopOwner] =
+    useState('');
+
+  const [editShopEmail, setEditShopEmail] =
+    useState('');
+
+  const [editShopPhone, setEditShopPhone] =
+    useState('');
 
   // =====================================================
   // API HELPER
@@ -303,6 +386,7 @@ const SuperAdminDashboard = () => {
 
       if (authenticated && mounted) {
         await fetchDashboardData();
+        await fetchAnnouncements();
       }
     };
 
@@ -584,14 +668,11 @@ const SuperAdminDashboard = () => {
   };
 
   // =====================================================
-  // ACTIVATE + WHATSAPP
+  // ACTIVATE (WhatsApp notice removed — shops are no longer
+  // suspended; access is only blocked beyond 3 devices)
   // =====================================================
 
   const handleActivate = (shopId) => {
-    const shop = shops.find(
-      (item) => item.shopId === shopId
-    );
-
     setConfirmConfig({
       title: 'Activate Shop',
 
@@ -603,10 +684,6 @@ const SuperAdminDashboard = () => {
           setActionLoading(shopId);
           setError('');
 
-          // --------------------------------------------
-          // ACTIVATE SHOP
-          // --------------------------------------------
-
           await fetchJson(
             `/api/super-admin/shops/${shopId}/activate`,
             {
@@ -617,127 +694,6 @@ const SuperAdminDashboard = () => {
           toast.success(
             'Shop activated successfully.'
           );
-
-          // --------------------------------------------
-          // CREATE WHATSAPP MESSAGE
-          // --------------------------------------------
-
-          if (shop) {
-            const email =
-              shop.adminEmail ||
-              shop.email ||
-              'Not provided';
-
-            const suspensionReason = String(
-              shop.suspensionReason || ''
-            ).toLowerCase();
-
-            let whatsappMessage = '';
-
-            // ------------------------------------------
-            // 3 WRONG PASSWORD
-            // ------------------------------------------
-
-            if (
-              suspensionReason.includes(
-                'wrong password'
-              ) ||
-              suspensionReason.includes(
-                'incorrect password'
-              ) ||
-              suspensionReason.includes(
-                '3 incorrect'
-              ) ||
-              suspensionReason.includes(
-                'three incorrect'
-              )
-            ) {
-              whatsappMessage =
-                `Assalam o Alaikum,\n\n` +
-                `Ap ki shop is liye suspend hoi kyun ke ap ne 3 dafa wrong password lagaya tha.\n\n` +
-                `Agar ap ko apna password yaad nahi hai to humein bata dein, ap ko new password de diya jaye ga.\n\n` +
-                `Ap ka Email: ${email}\n\n` +
-                `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
-                `Meharbani kar ke ainda password sahi enter karein taake account dobara suspend na ho.\n\n` +
-                `Shukriya.`;
-            }
-
-            // ------------------------------------------
-            // 3RD DEVICE
-            // ------------------------------------------
-
-            else if (
-              suspensionReason.includes(
-                'third device'
-              ) ||
-              suspensionReason.includes(
-                '3rd device'
-              ) ||
-              suspensionReason.includes(
-                'third different device'
-              )
-            ) {
-              whatsappMessage =
-                `Assalam o Alaikum,\n\n` +
-                `Purani device policy ke tehat ap ki shop suspend hui thi. Ab shop par 3 authorized devices allowed hain; is limit se zyada device ka login reject hoga, lekin shop suspend nahi hogi.\n\n` +
-                `Agar devices reset karne hon to Super Admin dashboard se Clear Authorized Devices use karein. Is se current sessions logout honge aur devices dobara login kar sakenge.\n\n` +
-                `Ap ka Email: ${email}\n\n` +
-                `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
-                `Shukriya.`;
-            }
-
-            // ------------------------------------------
-            // OTHER REASON
-            // ------------------------------------------
-
-            else {
-              whatsappMessage =
-                `Assalam o Alaikum,\n\n` +
-                `Ap ki shop suspend hoi thi.\n\n` +
-                `Suspension Reason: ${
-                  shop.suspensionReason ||
-                  'Not provided'
-                }\n\n` +
-                `Ap ka Email: ${email}\n\n` +
-                `Ye ap ka account hai aur is ko activate kar diya gaya hai. Ap ab apna POS system use kar sakte hain.\n\n` +
-                `Shukriya.`;
-            }
-
-            // ------------------------------------------
-            // GET PHONE NUMBER
-            // ------------------------------------------
-
-            let phoneNumber = String(
-              shop.phone || ''
-            ).replace(/\D/g, '');
-
-            if (phoneNumber.startsWith('0')) {
-              phoneNumber =
-                `92${phoneNumber.substring(1)}`;
-            }
-
-            // ------------------------------------------
-            // OPEN WHATSAPP
-            // ------------------------------------------
-
-            if (phoneNumber) {
-              const whatsappUrl =
-                `https://wa.me/${phoneNumber}?text=` +
-                encodeURIComponent(
-                  whatsappMessage
-                );
-
-              window.open(
-                whatsappUrl,
-                '_blank',
-                'noopener,noreferrer'
-              );
-            } else {
-              toast.error(
-                'Shop activated, but no WhatsApp number was found.'
-              );
-            }
-          }
 
           await fetchDashboardData();
         } catch (error) {
@@ -897,10 +853,6 @@ const SuperAdminDashboard = () => {
 
   const closeHistoryModal = () => {
     setHistoryModal(null);
-  };
-
-  const openLoginIpModal = (shop) => {
-    setLoginIpModal(shop);
   };
 
   const getTotalPaidMonths = (shop) => {
@@ -1238,6 +1190,1020 @@ const SuperAdminDashboard = () => {
   };
 
   // =====================================================
+  // DERIVED INSIGHTS
+  // (computed from already-loaded shops — no extra API)
+  // =====================================================
+
+  // Monthly Recurring Revenue: active shops' charges total
+  const monthlyRevenue = useMemo(() => {
+    return shops.reduce((sum, shop) => {
+      if (shop.subscriptionStatus === 'Active') {
+        return sum + Number(shop.monthlyCharge || 0);
+      }
+      return sum;
+    }, 0);
+  }, [shops]);
+
+  // Shop expiring within the next 7 days
+  const isExpiringSoon = (shop) => {
+    if (shop?.subscriptionStatus !== 'Active') return false;
+    if (!shop?.subscriptionExpiresAt) return false;
+
+    const expiry = new Date(
+      shop.subscriptionExpiresAt
+    ).getTime();
+
+    if (Number.isNaN(expiry)) return false;
+
+    const diff = expiry - Date.now();
+
+    return diff >= 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const expiringSoonCount = useMemo(
+    () => shops.filter(isExpiringSoon).length,
+    [shops]
+  );
+
+  // Latest successful login from the shop's IP history
+  const getLastActive = (shop) => {
+    const history = shop?.loginIpHistory;
+
+    if (!Array.isArray(history) || history.length === 0) {
+      return null;
+    }
+
+    let latest = 0;
+
+    for (const entry of history) {
+      const t = new Date(entry?.loggedInAt).getTime();
+
+      if (!Number.isNaN(t) && t > latest) {
+        latest = t;
+      }
+    }
+
+    return latest ? new Date(latest) : null;
+  };
+
+  // Manual-backup status per shop.
+  // Requires backend to send `lastBackupAt` on each shop
+  // (set whenever the shop admin downloads a backup).
+  // Until then every shop shows "No record".
+  const getBackupStatus = (shop) => {
+    if (!shop?.lastBackupAt) {
+      return { label: 'No record', tone: 'none' };
+    }
+
+    const t = new Date(shop.lastBackupAt).getTime();
+
+    if (Number.isNaN(t)) {
+      return { label: 'No record', tone: 'none' };
+    }
+
+    const daysOld = (Date.now() - t) / (24 * 60 * 60 * 1000);
+
+    return {
+      label: formatDate(shop.lastBackupAt),
+      tone: daysOld > 30 ? 'stale' : 'ok',
+    };
+  };
+
+  // Dormant = no login for 30+ days (or never logged in
+  // and shop is older than 7 days)
+  const isDormant = (shop) => {
+    const lastActive = getLastActive(shop);
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+    if (lastActive) {
+      return (
+        Date.now() - lastActive.getTime() >
+        thirtyDays
+      );
+    }
+
+    const created = shop?.createdAt
+      ? new Date(shop.createdAt).getTime()
+      : 0;
+
+    if (!created || Number.isNaN(created)) {
+      return true;
+    }
+
+    return (
+      Date.now() - created >
+      7 * 24 * 60 * 60 * 1000
+    );
+  };
+
+
+  // =====================================================
+  // DIRECTORY SEARCH + ACTIONS MENU HELPERS
+  // =====================================================
+
+  const visibleShops = useMemo(() => {
+    let list = shops;
+
+    if (directoryFilter === 'expiring') {
+      list = list.filter(isExpiringSoon);
+    } else if (directoryFilter === 'dormant') {
+      list = list.filter(isDormant);
+    }
+
+    const q = shopSearch.trim().toLowerCase();
+
+    if (!q) return list;
+
+    return list.filter((item) =>
+      [
+        item.shopName,
+        item.ownerName,
+        item.adminEmail,
+        item.email,
+        item.shopId,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [shops, shopSearch, directoryFilter]);
+
+  const closeShopMenu = () => setMenuAnchor(null);
+
+  const openShopMenu = (event, shopId) => {
+    event.stopPropagation();
+
+    const rect =
+      event.currentTarget.getBoundingClientRect();
+
+    const menuWidth = 224;
+    const menuHeight = 400;
+
+    let top = rect.bottom + 6;
+    let left = rect.right - menuWidth;
+
+    if (left < 8) left = 8;
+
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuHeight - 6);
+    }
+
+    setMenuAnchor({ shopId, top, left });
+  };
+
+  const menuItemClass =
+    'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+
+  useEffect(() => {
+    if (!menuAnchor) return;
+
+    const close = () => setMenuAnchor(null);
+
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [menuAnchor]);
+
+  const dormantCount = useMemo(
+    () => shops.filter(isDormant).length,
+    [shops]
+  );
+
+  // Revenue insights: plan distribution + last 6 months
+  // renewal revenue (estimated from renewal history)
+  const revenueInsights = useMemo(() => {
+    const planCounts = {};
+
+    shops.forEach((item) => {
+      const plan =
+        item.subscriptionPlan || 'Unknown';
+
+      planCounts[plan] =
+        (planCounts[plan] || 0) + 1;
+    });
+
+    const months = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - i,
+        1
+      );
+
+      months.push({
+        key: `${d.getFullYear()}-${d.getMonth()}`,
+        label: d.toLocaleString('en', {
+          month: 'short',
+        }),
+        revenue: 0,
+        renewals: 0,
+      });
+    }
+
+    const monthIndex = Object.fromEntries(
+      months.map((m, i) => [m.key, i])
+    );
+
+    shops.forEach((item) => {
+      (item.subscriptionHistory || []).forEach(
+        (h) => {
+          if (!h?.renewedAt) return;
+
+          const d = new Date(h.renewedAt);
+
+          if (Number.isNaN(d.getTime())) return;
+
+          const key = `${d.getFullYear()}-${d.getMonth()}`;
+
+          if (key in monthIndex) {
+            const entry =
+              months[monthIndex[key]];
+
+            entry.renewals += 1;
+
+            if (h.plan === 'Complete') {
+              entry.revenue +=
+                Number(
+                  item.monthlyCharge || 0
+                ) *
+                Number(
+                  h.durationMonths || 0
+                );
+            }
+          }
+        }
+      );
+    });
+
+    const maxRevenue = Math.max(
+      1,
+      ...months.map((m) => m.revenue)
+    );
+
+    const totalShops = Math.max(
+      1,
+      shops.length
+    );
+
+    return {
+      planCounts,
+      months,
+      maxRevenue,
+      totalShops,
+    };
+  }, [shops]);
+
+  // Export visible directory as CSV
+  const exportShopsCsv = () => {
+    const headers = [
+      'Shop ID',
+      'Shop Name',
+      'Owner',
+      'Admin Email',
+      'Phone',
+      'Plan',
+      'Status',
+      'Monthly Charge',
+      'Expiry Date',
+      'Last Active',
+      'Last Backup',
+      'Created At',
+    ];
+
+    const cell = (value) =>
+      `"${String(value ?? '').replace(
+        /"/g,
+        '""'
+      )}"`;
+
+    const isoDate = (value) => {
+      if (!value) return '';
+      const d = new Date(value);
+      return Number.isNaN(d.getTime())
+        ? ''
+        : d.toISOString().slice(0, 10);
+    };
+
+    const rows = shops.map((item) => {
+      const lastActive =
+        getLastActive(item);
+
+      return [
+        item.shopId,
+        item.shopName,
+        item.ownerName || '',
+        item.adminEmail || item.email || '',
+        item.phone || '',
+        item.subscriptionPlan || '',
+        item.subscriptionStatus || '',
+        Number(item.monthlyCharge || 0),
+        isoDate(item.subscriptionExpiresAt),
+        isoDate(lastActive),
+        isoDate(item.lastBackupAt),
+        isoDate(item.createdAt),
+      ].map(cell);
+    });
+
+    const csv = [
+      headers.map(cell).join(','),
+      ...rows.map((r) => r.join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csv], {
+      type: 'text/csv;charset=utf-8;',
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `shops-${
+      new Date().toISOString().slice(0, 10)
+    }.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+
+    toast.success('Shops exported to CSV.');
+  };
+
+  // Convert a saved phone number to wa.me international
+  // format (Pakistan default): 0300... -> 92300...
+  const toWhatsAppNumber = (phone) => {
+    if (!phone) return null;
+
+    let digits = String(phone).replace(
+      /\D/g,
+      ''
+    );
+
+    if (!digits) return null;
+
+    if (
+      digits.startsWith('92') &&
+      digits.length >= 11
+    ) {
+      return digits;
+    }
+
+    if (digits.startsWith('0')) {
+      digits = '92' + digits.slice(1);
+    } else if (digits.length === 10) {
+      digits = '92' + digits;
+    }
+
+    return digits;
+  };
+
+  // Open WhatsApp chat with the shop owner
+  const openWhatsAppChat = (shop) => {
+    const waNumber = toWhatsAppNumber(
+      shop?.phone
+    );
+
+    if (!waNumber) {
+      toast.error(
+        'No phone number saved for this shop.'
+      );
+
+      return;
+    }
+
+    const text = encodeURIComponent(
+      `Assalam-o-Alaikum${
+        shop?.shopName
+          ? ` (${shop.shopName})`
+          : ''
+      }!`
+    );
+
+    window.open(
+      `https://wa.me/${waNumber}?text=${text}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  // =====================================================
+  // MONTHLY COLLECTIONS LOGIC
+  // =====================================================
+
+  const monthOptions = useMemo(() => {
+    const opts = [];
+    const now = new Date();
+
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - i,
+        1
+      );
+
+      opts.push({
+        value: `${d.getFullYear()}-${String(
+          d.getMonth() + 1
+        ).padStart(2, '0')}`,
+        label: d.toLocaleString('en', {
+          month: 'long',
+          year: 'numeric',
+        }),
+      });
+    }
+
+    return opts;
+  }, []);
+
+  const collectionMonthLabel = useMemo(() => {
+    const found = monthOptions.find(
+      (m) => m.value === collectionMonth
+    );
+
+    return found
+      ? found.label
+      : collectionMonth;
+  }, [monthOptions, collectionMonth]);
+
+  const getMonthPayment = (shop, month) =>
+    (shop?.paymentHistory || []).find(
+      (item) => item.month === month
+    ) || null;
+
+  const activeShopsForCollection = useMemo(
+    () =>
+      shops.filter(
+        (item) =>
+          item.subscriptionStatus ===
+          'Active'
+      ),
+    [shops]
+  );
+
+  const collectionSummary = useMemo(() => {
+    let paid = 0;
+    let collected = 0;
+    let expected = 0;
+
+    activeShopsForCollection.forEach(
+      (item) => {
+        expected += Number(
+          item.monthlyCharge || 0
+        );
+
+        const payment = getMonthPayment(
+          item,
+          collectionMonth
+        );
+
+        if (payment) {
+          paid += 1;
+          collected += Number(
+            payment.amount || 0
+          );
+        }
+      }
+    );
+
+    return {
+      paid,
+      pending:
+        activeShopsForCollection.length -
+        paid,
+      collected,
+      expected,
+    };
+  }, [
+    shops,
+    collectionMonth,
+    activeShopsForCollection,
+  ]);
+
+  const paymentHistoryShop = paymentHistoryModal
+    ? shops.find(
+        (item) =>
+          item.shopId ===
+          paymentHistoryModal
+      ) || null
+    : null;
+
+  const fetchAnnouncements = async () => {
+    try {
+      const data = await fetchJson(
+        `/api/super-admin/announcements`,
+        { method: 'GET' }
+      );
+
+      setAnnouncements(
+        Array.isArray(
+          data.announcements
+        )
+          ? data.announcements
+          : []
+      );
+    } catch (error) {
+      console.error(
+        'Fetch Announcements Error:',
+        error
+      );
+    }
+  };
+
+  const openPayModal = (shop) => {
+    setPayModal(shop);
+    setPayAmount(
+      String(
+        Number(shop.monthlyCharge || 0)
+      )
+    );
+    setPayVia('Cash');
+    setPayNote('');
+    setError('');
+  };
+
+  const closePayModal = () => {
+    if (actionLoading === 'record-payment')
+      return;
+
+    setPayModal(null);
+  };
+
+  const handleRecordPayment = async () => {
+    if (!payModal) return;
+
+    setError('');
+
+    if (
+      payAmount === '' ||
+      !Number.isFinite(
+        Number(payAmount)
+      ) ||
+      Number(payAmount) <= 0
+    ) {
+      setError(
+        'Please enter a valid payment amount.'
+      );
+
+      return;
+    }
+
+    try {
+      setActionLoading('record-payment');
+
+      await fetchJson(
+        `/api/super-admin/shops/${payModal.shopId}/payments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            month: collectionMonth,
+            amount: Number(payAmount),
+            paidVia: payVia,
+            note: payNote.trim(),
+          }),
+        }
+      );
+
+      setPayModal(null);
+
+      toast.success(
+        'Payment recorded successfully.'
+      );
+
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(
+        'Record Payment Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      setError(
+        error.message ||
+          'Failed to record payment.'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeletePayment = (
+    shop,
+    payment
+  ) => {
+    setConfirmConfig({
+      title: 'Delete Payment',
+
+      message: `Delete the ${
+        payment.month
+      } payment of Rs. ${Number(
+        payment.amount || 0
+      ).toLocaleString()} for ${
+        shop.shopName
+      }?`,
+
+      onConfirm: async () => {
+        try {
+          setActionLoading(shop.shopId);
+          setError('');
+
+          await fetchJson(
+            `/api/super-admin/shops/${shop.shopId}/payments/${payment._id}`,
+            { method: 'DELETE' }
+          );
+
+          toast.success(
+            'Payment entry deleted.'
+          );
+
+          await fetchDashboardData();
+        } catch (error) {
+          console.error(
+            'Delete Payment Error:',
+            error
+          );
+
+          if (error.status === 401) return;
+
+          setError(
+            error.message ||
+              'Failed to delete payment.'
+          );
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
+  };
+
+  // =====================================================
+  // SHOP NOTES LOGIC
+  // =====================================================
+
+  const openNotesModal = (shop) => {
+    setNotesModal(shop);
+    setNotesText(
+      shop.superAdminNotes || ''
+    );
+    setError('');
+  };
+
+  const closeNotesModal = () => {
+    if (actionLoading === 'save-notes')
+      return;
+
+    setNotesModal(null);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!notesModal) return;
+
+    try {
+      setActionLoading('save-notes');
+      setError('');
+
+      await fetchJson(
+        `/api/super-admin/shops/${notesModal.shopId}/notes`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            notes: notesText,
+          }),
+        }
+      );
+
+      setNotesModal(null);
+
+      toast.success(
+        'Notes saved successfully.'
+      );
+
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(
+        'Save Notes Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      setError(
+        error.message ||
+          'Failed to save notes.'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // =====================================================
+  // BROADCAST NOTICES LOGIC
+  // =====================================================
+
+  const openAnnouncementModal = (
+    mode,
+    item
+  ) => {
+    if (mode === 'edit' && item) {
+      setAnnouncementModal({
+        mode: 'edit',
+        item,
+      });
+      setAnnouncementTitle(
+        item.title || ''
+      );
+      setAnnouncementMessage(
+        item.message || ''
+      );
+    } else {
+      setAnnouncementModal({
+        mode: 'create',
+      });
+      setAnnouncementTitle('');
+      setAnnouncementMessage('');
+    }
+
+    setError('');
+  };
+
+  const closeAnnouncementModal = () => {
+    if (
+      actionLoading ===
+      'save-announcement'
+    )
+      return;
+
+    setAnnouncementModal(null);
+  };
+
+  const handleSaveAnnouncement = async () => {
+    if (!announcementModal) return;
+
+    setError('');
+
+    if (
+      !announcementTitle.trim() ||
+      !announcementMessage.trim()
+    ) {
+      setError(
+        'Title and message are required.'
+      );
+
+      return;
+    }
+
+    try {
+      setActionLoading(
+        'save-announcement'
+      );
+
+      if (
+        announcementModal.mode ===
+        'edit'
+      ) {
+        await fetchJson(
+          `/api/super-admin/announcements/${announcementModal.item._id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              title:
+                announcementTitle.trim(),
+              message:
+                announcementMessage.trim(),
+            }),
+          }
+        );
+
+        toast.success(
+          'Notice updated successfully.'
+        );
+      } else {
+        await fetchJson(
+          `/api/super-admin/announcements`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              title:
+                announcementTitle.trim(),
+              message:
+                announcementMessage.trim(),
+            }),
+          }
+        );
+
+        toast.success(
+          'Notice published successfully.'
+        );
+      }
+
+      setAnnouncementModal(null);
+
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error(
+        'Save Announcement Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      setError(
+        error.message ||
+          'Failed to save notice.'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleAnnouncement = async (
+    item
+  ) => {
+    try {
+      await fetchJson(
+        `/api/super-admin/announcements/${item._id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            active: !item.active,
+          }),
+        }
+      );
+
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error(
+        'Toggle Announcement Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      toast.error(
+        error.message ||
+          'Failed to update notice.'
+      );
+    }
+  };
+
+  const handleDeleteAnnouncement = (
+    item
+  ) => {
+    setConfirmConfig({
+      title: 'Delete Notice',
+
+      message: `Delete the notice "${item.title}"? Shops will no longer see it.`,
+
+      onConfirm: async () => {
+        try {
+          await fetchJson(
+            `/api/super-admin/announcements/${item._id}`,
+            { method: 'DELETE' }
+          );
+
+          toast.success(
+            'Notice deleted successfully.'
+          );
+
+          await fetchAnnouncements();
+        } catch (error) {
+          console.error(
+            'Delete Announcement Error:',
+            error
+          );
+
+          if (error.status === 401)
+            return;
+
+          toast.error(
+            error.message ||
+              'Failed to delete notice.'
+          );
+        }
+      },
+    });
+  };
+
+  // =====================================================
+  // EDIT SHOP LOGIC
+  // =====================================================
+
+  const openEditShopModal = (shop) => {
+    setEditShopModal(shop);
+    setEditShopName(shop.shopName || '');
+    setEditShopOwner(shop.ownerName || '');
+    setEditShopEmail(
+      shop.adminEmail || shop.email || ''
+    );
+    setEditShopPhone(shop.phone || '');
+    setError('');
+  };
+
+  const closeEditShopModal = () => {
+    if (actionLoading === 'edit-shop')
+      return;
+
+    setEditShopModal(null);
+  };
+
+  const handleUpdateShopDetails = async () => {
+    if (!editShopModal) return;
+
+    setError('');
+
+    if (!editShopName.trim()) {
+      setError('Please enter shop name.');
+      return;
+    }
+
+    if (!editShopOwner.trim()) {
+      setError('Please enter owner name.');
+      return;
+    }
+
+    if (!editShopEmail.trim()) {
+      setError('Please enter admin email.');
+      return;
+    }
+
+    try {
+      setActionLoading('edit-shop');
+
+      const data = await fetchJson(
+        `/api/super-admin/shops/${editShopModal.shopId}/details`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            shopName:
+              editShopName.trim(),
+            ownerName:
+              editShopOwner.trim(),
+            email:
+              editShopEmail.trim(),
+            phone:
+              editShopPhone.trim(),
+          }),
+        }
+      );
+
+      setEditShopModal(null);
+
+      toast.success(
+        data.message ||
+          'Shop updated successfully.'
+      );
+
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(
+        'Update Shop Details Error:',
+        error
+      );
+
+      if (error.status === 401) return;
+
+      setError(
+        error.message ||
+          'Failed to update shop.'
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // =====================================================
   // AUTH CHECK SCREEN
   // =====================================================
 
@@ -1363,10 +2329,28 @@ const SuperAdminDashboard = () => {
         )}
 
         {/* =====================================================
+            EXPIRY ALERT BANNER
+        ====================================================== */}
+
+        {!loading && expiringSoonCount > 0 && (
+          <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 animate-[pageEnter_0.3s_ease-out]">
+
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 border border-amber-200 text-sm font-black text-amber-700">
+              !
+            </span>
+
+            <p className="text-xs font-bold leading-relaxed text-amber-800">
+              {expiringSoonCount} shop{expiringSoonCount > 1 ? 's are' : ' is'} expiring within 7 days — renew soon to avoid service interruption.
+            </p>
+
+          </div>
+        )}
+
+        {/* =====================================================
             STATISTICS
         ====================================================== */}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
 
           <div className="premium-card p-5 relative overflow-hidden">
 
@@ -1448,6 +2432,527 @@ const SuperAdminDashboard = () => {
 
           </div>
 
+          <div className="premium-card p-5 relative overflow-hidden">
+
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-600 to-purple-600" />
+
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+              Monthly Revenue
+            </p>
+
+            <p className="mt-2 text-2xl sm:text-3xl font-black text-violet-600">
+              {loading
+                ? '...'
+                : `Rs. ${Number(monthlyRevenue || 0).toLocaleString()}`}
+            </p>
+
+            <p className="mt-1 text-xs font-semibold text-slate-400">
+              Active shops MRR
+            </p>
+
+          </div>
+
+          <div className="premium-card p-5 relative overflow-hidden">
+
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-500 to-slate-700" />
+
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+              Dormant Shops
+            </p>
+
+            <p className="mt-2 text-2xl sm:text-3xl font-black text-slate-600">
+              {loading
+                ? '...'
+                : dormantCount}
+            </p>
+
+            <p className="mt-1 text-xs font-semibold text-slate-400">
+              No login in 30+ days
+            </p>
+
+          </div>
+
+        </div>
+
+        {/* =====================================================
+            REVENUE INSIGHTS
+        ====================================================== */}
+
+        <div className="premium-card p-5 sm:p-6">
+
+          <h2 className="text-base font-black text-slate-900">
+            Revenue Insights
+          </h2>
+
+          <p className="text-xs text-slate-400 mt-0.5">
+            Estimated from renewal history
+          </p>
+
+          <div className="mt-5 grid gap-8 lg:grid-cols-2">
+
+            {/* 6-MONTH RENEWAL REVENUE */}
+
+            <div>
+
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Renewal revenue — last 6 months
+              </p>
+
+              <div className="flex h-44 items-end gap-2 sm:gap-3">
+
+                {revenueInsights.months.map(
+                  (m) => (
+                    <div
+                      key={m.key}
+                      className="flex flex-1 flex-col items-center justify-end gap-1.5 h-full"
+                      title={`${m.label}: Rs. ${m.revenue.toLocaleString()} (${m.renewals} renewals)`}
+                    >
+
+                      <span className="text-[9px] font-black text-slate-500">
+                        {m.revenue >= 1000
+                          ? `${Math.round(
+                              m.revenue / 1000
+                            )}k`
+                          : m.revenue}
+                      </span>
+
+                      <div
+                        className="w-full rounded-t-lg bg-gradient-to-t from-violet-600 to-purple-400 transition-all"
+                        style={{
+                          height: `${Math.max(
+                            3,
+                            (m.revenue /
+                              revenueInsights.maxRevenue) *
+                              100
+                          )}%`,
+                        }}
+                      />
+
+                      <span className="text-[9px] font-bold text-slate-400">
+                        {m.label}
+                      </span>
+
+                    </div>
+                  )
+                )}
+
+              </div>
+
+            </div>
+
+            {/* PLAN DISTRIBUTION */}
+
+            <div>
+
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Plan distribution
+              </p>
+
+              <div className="space-y-3.5">
+
+                {Object.entries(
+                  revenueInsights.planCounts
+                ).map(([plan, count]) => (
+                  <div key={plan}>
+
+                    <div className="mb-1 flex items-center justify-between text-xs">
+
+                      <span className="font-bold text-slate-700">
+                        {plan}
+                      </span>
+
+                      <span className="font-black text-slate-900">
+                        {count} shop
+                        {count !== 1 && 's'}
+                      </span>
+
+                    </div>
+
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
+                        style={{
+                          width: `${Math.round(
+                            (count /
+                              revenueInsights.totalShops) *
+                              100
+                          )}%`,
+                        }}
+                      />
+
+                    </div>
+
+                  </div>
+                ))}
+
+                {Object.keys(
+                  revenueInsights.planCounts
+                ).length === 0 && (
+                  <p className="text-xs font-bold text-slate-400">
+                    No shops yet.
+                  </p>
+                )}
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* =====================================================
+            MONTHLY COLLECTIONS
+        ====================================================== */}
+
+        <div className="premium-card p-5 sm:p-6">
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+
+              <h2 className="text-base font-black text-slate-900">
+                Monthly Collections
+              </h2>
+
+              <p className="text-xs text-slate-400 mt-0.5">
+                {collectionSummary.paid} of{' '}
+                {
+                  activeShopsForCollection.length
+                }{' '}
+                paid • Rs.{' '}
+                {collectionSummary.collected.toLocaleString()}{' '}
+                collected
+              </p>
+
+            </div>
+
+            <select
+              value={collectionMonth}
+              onChange={(e) =>
+                setCollectionMonth(
+                  e.target.value
+                )
+              }
+              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-700 focus:bg-white focus:outline-none focus:border-blue-500"
+            >
+              {monthOptions.map((m) => (
+                <option
+                  key={m.value}
+                  value={m.value}
+                >
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+          </div>
+
+          {loading ? (
+
+            <div className="p-10 text-center text-xs font-black uppercase text-slate-400">
+              Loading collections...
+            </div>
+
+          ) : activeShopsForCollection.length ===
+            0 ? (
+
+            <div className="p-10 text-center text-xs font-bold text-slate-400">
+              No active shops to collect from.
+            </div>
+
+          ) : (
+
+            <div className="mt-4 overflow-x-auto">
+
+              <table className="w-full text-left text-xs text-slate-600 font-medium">
+
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
+
+                  <tr>
+
+                    <th className="px-4 py-3">
+                      Shop
+                    </th>
+
+                    <th className="px-4 py-3 text-right">
+                      Charge
+                    </th>
+
+                    <th className="px-4 py-3 text-center">
+                      Status
+                    </th>
+
+                    <th className="px-4 py-3">
+                      Paid Via
+                    </th>
+
+                    <th className="px-4 py-3">
+                      Paid On
+                    </th>
+
+                    <th className="px-4 py-3 text-center">
+                      Action
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+
+                  {activeShopsForCollection.map(
+                    (shop) => {
+                      const payment =
+                        getMonthPayment(
+                          shop,
+                          collectionMonth
+                        );
+
+                      return (
+                        <tr
+                          key={shop.shopId}
+                          className="hover:bg-slate-50/80 transition-colors"
+                        >
+
+                          <td className="px-4 py-3">
+
+                            <p className="font-black text-slate-900 text-sm">
+                              {shop.shopName}
+                            </p>
+
+                            <p className="text-[10px] text-slate-400 font-semibold">
+                              {shop.ownerName ||
+                                '—'}
+                            </p>
+
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-black text-slate-700 whitespace-nowrap">
+                            Rs.{' '}
+                            {Number(
+                              shop.monthlyCharge ||
+                                0
+                            ).toLocaleString()}
+                          </td>
+
+                          <td className="px-4 py-3 text-center">
+
+                            {payment ? (
+                              <span className="px-2.5 py-1 rounded-full text-[9px] font-black border bg-emerald-50 border-emerald-200 text-emerald-700">
+                                Paid
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[9px] font-black border bg-amber-50 border-amber-200 text-amber-700">
+                                Pending
+                              </span>
+                            )}
+
+                          </td>
+
+                          <td className="px-4 py-3 font-bold text-slate-700">
+                            {payment?.paidVia ||
+                              '—'}
+                          </td>
+
+                          <td className="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">
+                            {payment
+                              ? formatDate(
+                                  payment.paidAt
+                                )
+                              : '—'}
+                          </td>
+
+                          <td className="px-4 py-3 text-center">
+
+                            {payment ? (
+                              <span className="text-[10px] font-black text-emerald-600">
+                                Rs.{' '}
+                                {Number(
+                                  payment.amount ||
+                                    0
+                                ).toLocaleString()}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openPayModal(
+                                    shop
+                                  )
+                                }
+                                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[10px] font-black hover:bg-emerald-700 transition-all"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
+
+                          </td>
+
+                        </tr>
+                      );
+                    }
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          )}
+
+        </div>
+
+        {/* =====================================================
+            BROADCAST NOTICES
+        ====================================================== */}
+
+        <div className="premium-card p-5 sm:p-6">
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+
+              <h2 className="text-base font-black text-slate-900">
+                Broadcast Notices
+              </h2>
+
+              <p className="text-xs text-slate-400 mt-0.5">
+                Published notices appear as a banner
+                inside every shop's panel
+              </p>
+
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                openAnnouncementModal(
+                  'create'
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg transition-all duration-300 hover:scale-[1.02] active:scale-95"
+            >
+              <span>
+                + New Notice
+              </span>
+            </button>
+
+          </div>
+
+          <div className="mt-4 space-y-3">
+
+            {announcements.length ===
+            0 ? (
+
+              <p className="py-8 text-center text-xs font-bold text-slate-400">
+                No notices published yet.
+              </p>
+
+            ) : (
+
+              announcements.map((item) => (
+
+                <div
+                  key={item._id}
+                  className={`rounded-2xl border p-4 transition-colors ${
+                    item.active
+                      ? 'border-blue-200 bg-blue-50/50'
+                      : 'border-slate-200 bg-slate-50/50 opacity-70'
+                  }`}
+                >
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
+                    <div className="min-w-0">
+
+                      <div className="flex flex-wrap items-center gap-2">
+
+                        <p className="text-sm font-black text-slate-900">
+                          {item.title}
+                        </p>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black border ${
+                            item.active
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : 'bg-slate-100 border-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {item.active
+                            ? 'Live'
+                            : 'Hidden'}
+                        </span>
+
+                      </div>
+
+                      <p className="mt-1 text-xs font-medium leading-relaxed text-slate-600 break-words">
+                        {item.message}
+                      </p>
+
+                      <p className="mt-1.5 text-[10px] font-semibold text-slate-400">
+                        {formatPakistanDateTime(
+                          item.createdAt
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleToggleAnnouncement(
+                            item
+                          )
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 text-[10px] font-black hover:bg-slate-50 transition-all"
+                      >
+                        {item.active
+                          ? 'Hide'
+                          : 'Show'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openAnnouncementModal(
+                            'edit',
+                            item
+                          )
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black hover:bg-blue-100 transition-all"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeleteAnnouncement(
+                            item
+                          )
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black hover:bg-rose-100 transition-all"
+                      >
+                        Delete
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              ))
+
+            )}
+
+          </div>
+
         </div>
 
         {/* =====================================================
@@ -1458,26 +2963,102 @@ const SuperAdminDashboard = () => {
 
           <div className="p-5 sm:p-6 border-b border-slate-100">
 
-            <h2 className="text-base font-black text-slate-900">
-              Tenant Shops Directory
-            </h2>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-            <p className="text-xs text-slate-400 mt-0.5">
-              Manage shop statuses, subscriptions, and access passwords
-            </p>
+              <div>
+
+                <h2 className="text-base font-black text-slate-900">
+                  Tenant Shops Directory
+                </h2>
+
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {visibleShops.length} of {shops.length} shops
+                </p>
+
+              </div>
+
+              <div className="relative w-full sm:w-64">
+
+                <input
+                  type="text"
+                  value={shopSearch}
+                  onChange={(e) =>
+                    setShopSearch(e.target.value)
+                  }
+                  placeholder="Search name, owner, email..."
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-4 pr-9 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition-all"
+                />
+
+                {shopSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setShopSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-700"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+
+              </div>
+
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+
+              {[
+                { id: 'all', label: 'All' },
+                {
+                  id: 'expiring',
+                  label: `Expiring Soon (${expiringSoonCount})`,
+                },
+                {
+                  id: 'dormant',
+                  label: `Dormant (${dormantCount})`,
+                },
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() =>
+                    setDirectoryFilter(chip.id)
+                  }
+                  className={`rounded-full px-3.5 py-1.5 text-[10px] font-black transition-all ${
+                    directoryFilter ===
+                    chip.id
+                      ? 'bg-slate-900 text-white shadow'
+                      : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={exportShopsCsv}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[10px] font-black text-slate-600 hover:bg-slate-50 transition-all"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </button>
+
+            </div>
 
           </div>
 
-          {loading ? (
+{loading ? (
 
             <div className="p-16 text-center text-xs font-black uppercase text-slate-400">
               Loading tenant database...
             </div>
 
-          ) : shops.length === 0 ? (
+          ) : visibleShops.length === 0 ? (
 
             <div className="p-16 text-center text-xs font-bold text-slate-400">
-              No shops registered in the system yet.
+              {shops.length === 0
+                ? 'No shops registered in the system yet.'
+                : 'No shops match your search.'}
             </div>
 
           ) : (
@@ -1491,34 +3072,30 @@ const SuperAdminDashboard = () => {
                   <tr>
 
                     <th className="px-5 py-4">
-                      Shop Details
+                      Shop
                     </th>
 
                     <th className="px-5 py-4">
-                      Owner Name
-                    </th>
-
-                    <th className="px-5 py-4">
-                      Admin Email
-                    </th>
-
-                    <th className="px-5 py-4">
-                      Plan
+                      Plan & Status
                     </th>
 
                     <th className="px-5 py-4 text-right">
                       Monthly Charge
                     </th>
 
-                    <th className="px-5 py-4 text-center">
-                      Status
-                    </th>
-
                     <th className="px-5 py-4">
                       Expiry Date
                     </th>
 
-                    <th className="px-5 py-4 text-center">
+                    <th className="px-5 py-4">
+                      Last Active
+                    </th>
+
+                    <th className="px-5 py-4">
+                      Last Backup
+                    </th>
+
+                    <th className="px-5 py-4 text-center w-16">
                       Actions
                     </th>
 
@@ -1528,15 +3105,48 @@ const SuperAdminDashboard = () => {
 
                 <tbody className="divide-y divide-slate-100">
 
-                  {shops.map((shop) => {
+                  {visibleShops.map((shop) => {
 
                     const isLoading =
                       actionLoading ===
                       shop.shopId;
 
-                    const historyCount =
-                      shop.subscriptionHistory
-                        ?.length || 0;
+                    const expiringSoon =
+                      isExpiringSoon(shop);
+
+                    const lastActive =
+                      getLastActive(shop);
+
+                    const backupStatus =
+                      getBackupStatus(shop);
+
+                    const initials = (
+                      shop.shopName || 'S'
+                    )
+                      .trim()
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((w) => w[0])
+                      .join('')
+                      .toUpperCase();
+
+                    const statusDot =
+                      shop.subscriptionStatus ===
+                      'Active'
+                        ? 'bg-emerald-500'
+                        : shop.subscriptionStatus ===
+                          'Expired'
+                        ? 'bg-rose-500'
+                        : 'bg-amber-500';
+
+                    const statusText =
+                      shop.subscriptionStatus ===
+                      'Active'
+                        ? 'text-emerald-700'
+                        : shop.subscriptionStatus ===
+                          'Expired'
+                        ? 'text-rose-700'
+                        : 'text-amber-700';
 
                     return (
 
@@ -1545,38 +3155,81 @@ const SuperAdminDashboard = () => {
                         className="hover:bg-slate-50/80 transition-colors"
                       >
 
-                        <td className="px-5 py-3.5">
+                        {/* SHOP */}
 
-                          <p className="font-black text-slate-900 text-sm">
-                            {shop.shopName}
-                          </p>
+                        <td className="px-5 py-4">
 
-                          <p className="text-[10px] text-slate-400 font-semibold font-mono">
-                            ID: {shop.shopId}
-                          </p>
+                          <div className="flex items-center gap-3">
+
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-[11px] font-black text-white shadow-sm">
+                              {initials}
+                            </span>
+
+                            <div className="min-w-0">
+
+                              <p className="truncate text-sm font-black text-slate-900">
+                                {shop.shopName}
+                              </p>
+
+                              <p className="truncate text-[10px] font-semibold text-slate-400">
+                                {shop.ownerName || '—'}
+                                {' • '}
+                                {shop.adminEmail ||
+                                  shop.email ||
+                                  '—'}
+                              </p>
+
+                              {shop.phone && (
+                                <p className="truncate text-[10px] font-bold text-emerald-600">
+                                  {shop.phone}
+                                </p>
+                              )}
+
+                            </div>
+
+                          </div>
 
                         </td>
 
-                        <td className="px-5 py-3.5 font-bold text-slate-700">
-                          {shop.ownerName || '—'}
-                        </td>
+                        {/* PLAN & STATUS */}
 
-                        <td className="px-5 py-3.5 font-bold text-slate-700 break-all">
-                          {shop.adminEmail ||
-                            shop.email ||
-                            '—'}
-                        </td>
+                        <td className="px-5 py-4">
 
-                        <td className="px-5 py-3.5">
-
-                          <span className="px-2.5 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-black">
+                          <span className="whitespace-nowrap rounded-full bg-blue-50 border border-blue-100 px-2.5 py-1 text-blue-700 text-[10px] font-black">
                             {shop.subscriptionPlan ||
                               '—'}
                           </span>
 
+                          <div className="mt-1.5 flex items-center gap-1.5">
+
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${statusDot}`}
+                            />
+
+                            <span
+                              className={`text-[10px] font-black ${statusText}`}
+                            >
+                              {shop.subscriptionStatus ||
+                                '—'}
+                            </span>
+
+                          </div>
+
+                          {shop.subscriptionStatus ===
+                            'Suspended' &&
+                            shop.suspensionReason && (
+                              <p className="mt-0.5 max-w-[160px] truncate text-[9px] text-amber-600">
+                                {
+                                  shop.suspensionReason
+                                }
+                              </p>
+                            )}
+
                         </td>
 
-                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                        {/* MONTHLY CHARGE */}
+
+                        <td className="px-5 py-4 text-right whitespace-nowrap">
 
                           <p className="font-black text-emerald-700">
                             Rs.{' '}
@@ -1591,205 +3244,104 @@ const SuperAdminDashboard = () => {
 
                         </td>
 
-                        <td className="px-5 py-3.5 text-center">
+                        {/* EXPIRY DATE */}
 
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[9px] font-black border ${
-                              shop.subscriptionStatus ===
-                              'Active'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                : shop.subscriptionStatus ===
-                                  'Expired'
-                                ? 'bg-rose-50 border-rose-200 text-rose-700'
-                                : 'bg-amber-50 border-amber-200 text-amber-700'
-                            }`}
-                          >
-                            {shop.subscriptionStatus ||
-                              '—'}
-                          </span>
-
-                          {shop.subscriptionStatus ===
-                            'Suspended' &&
-                            shop.suspensionReason && (
-                              <p className="text-[9px] text-amber-600 mt-1 max-w-[150px] truncate">
-                                {
-                                  shop.suspensionReason
-                                }
-                              </p>
-                            )}
-
-                        </td>
-
-                        <td className="px-5 py-3.5 font-bold text-slate-700 whitespace-nowrap">
+                        <td
+                          className={`px-5 py-4 font-bold whitespace-nowrap ${
+                            expiringSoon
+                              ? 'text-amber-600'
+                              : 'text-slate-700'
+                          }`}
+                        >
                           {formatDate(
                             shop.subscriptionExpiresAt
                           )}
+
+                          {expiringSoon && (
+                            <span className="ml-1.5 inline-block rounded-full bg-amber-100 border border-amber-200 px-1.5 py-0.5 text-[8px] font-black uppercase text-amber-700 align-middle">
+                              Soon
+                            </span>
+                          )}
                         </td>
 
-                        <td className="px-5 py-3.5 text-center">
+                        {/* LAST ACTIVE */}
 
-                          <div className="flex flex-wrap items-center justify-center gap-1.5">
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          {lastActive ? (
+                            <span className="font-bold text-slate-700">
+                              {formatPakistanDateTime(
+                                lastActive
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-400">
+                              Never
+                            </span>
+                          )}
+                        </td>
 
-                            {/* SUBSCRIPTION HISTORY */}
+                        {/* LAST BACKUP */}
+
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          {backupStatus.tone ===
+                          'none' ? (
+                            <span className="text-[10px] font-bold text-slate-400">
+                              No record
+                            </span>
+                          ) : (
+                            <span
+                              className={`font-bold ${
+                                backupStatus.tone ===
+                                'stale'
+                                  ? 'text-rose-600'
+                                  : 'text-slate-700'
+                              }`}
+                            >
+                              {backupStatus.label}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* ACTIONS MENU TRIGGER */}
+
+                        <td className="px-5 py-4 text-center">
+
+                          <div className="inline-flex items-center gap-1.5">
 
                             <button
                               type="button"
-                              disabled={isLoading}
                               onClick={() =>
-                                openHistoryModal(
+                                openWhatsAppChat(
                                   shop
                                 )
                               }
-                              className="px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-black hover:bg-purple-100 transition-all"
-                            >
-                              History{' '}
-                              {historyCount > 0 &&
-                                `(${historyCount})`}
-                            </button>
-
-                            {/* LOGIN IPS */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                openLoginIpModal(
-                                  shop
+                              disabled={
+                                !toWhatsAppNumber(
+                                  shop?.phone
                                 )
                               }
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-black hover:bg-slate-200 transition-all"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm transition-all hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              title={
+                                shop?.phone
+                                  ? `Chat on WhatsApp: ${shop.phone}`
+                                  : 'No phone number saved for this shop'
+                              }
                             >
-                              IPs (
-                              {shop.loginIpHistory
-                                ?.length || 0}
-                              )
+                              <MessageCircle className="h-4 w-4" />
                             </button>
 
                             <button
                               type="button"
-                              disabled={isLoading || !shop.authorizedDeviceCount}
-                              onClick={() => handleClearDevices(shop)}
-                              title="Clear registered devices and revoke shop sessions"
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-black hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Devices ({shop.authorizedDeviceCount || 0})
-                            </button>
-
-                            {/* SUSPEND / ACTIVATE */}
-
-                            {shop.subscriptionStatus ===
-                            'Active' ? (
-
-                              <button
-                                type="button"
-                                disabled={isLoading}
-                                onClick={() =>
-                                  handleSuspend(
-                                    shop.shopId
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-black hover:bg-amber-100 transition-all"
-                              >
-                                {isLoading
-                                  ? 'Working...'
-                                  : 'Suspend'}
-                              </button>
-
-                            ) : (
-
-                              <button
-                                type="button"
-                                disabled={isLoading}
-                                onClick={() =>
-                                  handleActivate(
-                                    shop.shopId
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black hover:bg-emerald-100 transition-all"
-                              >
-                                {isLoading
-                                  ? 'Activating...'
-                                  : 'Activate'}
-                              </button>
-
-                            )}
-
-                            {/* MONTHLY CHARGE */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                openChargeModal(
-                                  shop
+                              onClick={(e) =>
+                                openShopMenu(
+                                  e,
+                                  shop.shopId
                                 )
                               }
-                              className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black hover:bg-emerald-100 transition-all"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-800"
+                              title="Shop actions"
                             >
-                              Charge
-                            </button>
-
-                            {/* RENEW */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                openRenewModal(
-                                  shop
-                                )
-                              }
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black hover:bg-blue-100 transition-all"
-                            >
-                              Renew
-                            </button>
-
-                            {/* RESET PASSWORD */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                openPasswordModal(
-                                  shop
-                                )
-                              }
-                              className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-black hover:bg-indigo-100 transition-all"
-                            >
-                              Password
-                            </button>
-
-                            {/* PASSWORD HISTORY */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                handleViewPasswordHistory(
-                                  shop
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-black hover:bg-violet-100 transition-all"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-
-                              Password History
-                            </button>
-
-                            {/* DELETE */}
-
-                            <button
-                              type="button"
-                              disabled={isLoading}
-                              onClick={() =>
-                                openDeleteModal(
-                                  shop
-                                )
-                              }
-                              className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black hover:bg-rose-100 transition-all"
-                            >
-                              Delete
+                              <MoreVertical className="h-4 w-4" />
                             </button>
 
                           </div>
@@ -1812,6 +3364,238 @@ const SuperAdminDashboard = () => {
         </div>
 
       </div>
+
+      {/* =====================================================
+          SHOP ACTIONS FLOATING MENU
+      ====================================================== */}
+
+      {menuAnchor &&
+        (() => {
+          const shop = shops.find(
+            (item) =>
+              item.shopId ===
+              menuAnchor.shopId
+          );
+
+          if (!shop) return null;
+
+          const isLoading =
+            actionLoading ===
+            shop.shopId;
+
+          const historyCount =
+            shop.subscriptionHistory
+              ?.length || 0;
+
+          const deviceCount = Number(
+            shop.authorizedDeviceCount || 0
+          );
+
+          const closeThen = (fn) => () => {
+            closeShopMenu();
+            fn();
+          };
+
+          return (
+            <>
+
+              <div
+                className="fixed inset-0 z-40"
+                onClick={closeShopMenu}
+              />
+
+              <div
+                className="fixed z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-[pageEnter_0.15s_ease-out]"
+                style={{
+                  top: menuAnchor.top,
+                  left: menuAnchor.left,
+                }}
+              >
+
+                <div className="border-b border-slate-100 px-4 py-3">
+
+                  <p className="truncate text-xs font-black text-slate-900">
+                    {shop.shopName}
+                  </p>
+
+                  <p className="text-[10px] font-semibold text-slate-400">
+                    Manage shop
+                  </p>
+
+                </div>
+
+                <div className="py-1.5">
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openHistoryModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-purple-500" />
+                    Subscription History
+                    {historyCount > 0 &&
+                      ` (${historyCount})`}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!deviceCount}
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      handleClearDevices(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-orange-500" />
+                    Clear Devices ({deviceCount})
+                  </button>
+
+                </div>
+
+                <div className="border-t border-slate-100 py-1.5">
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openEditShopModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Edit Shop
+                  </button>
+
+                  {shop.subscriptionStatus ===
+                  'Active' ? (
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      className={menuItemClass}
+                      onClick={closeThen(() =>
+                        handleSuspend(
+                          shop.shopId
+                        )
+                      )}
+                    >
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+                      {isLoading
+                        ? 'Working...'
+                        : 'Suspend Shop'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      className={menuItemClass}
+                      onClick={closeThen(() =>
+                        handleActivate(
+                          shop.shopId
+                        )
+                      )}
+                    >
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      {isLoading
+                        ? 'Activating...'
+                        : 'Activate Shop'}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openChargeModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    Edit Monthly Charge
+                  </button>
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openRenewModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Renew Subscription
+                  </button>
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openPasswordModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                    Reset Password
+                  </button>
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      handleViewPasswordHistory(
+                        shop
+                      )
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-violet-500" />
+                    Password History
+                  </button>
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      setPaymentHistoryModal(
+                        shop.shopId
+                      )
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-teal-500" />
+                    Payment History
+                  </button>
+
+                  <button
+                    type="button"
+                    className={menuItemClass}
+                    onClick={closeThen(() =>
+                      openNotesModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    Shop Notes
+                    {shop.superAdminNotes && (
+                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    )}
+                  </button>
+
+                </div>
+
+                <div className="border-t border-slate-100 py-1.5">
+
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-black text-rose-600 hover:bg-rose-50 transition-colors"
+                    onClick={closeThen(() =>
+                      openDeleteModal(shop)
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-rose-500" />
+                    Delete Shop
+                  </button>
+
+                </div>
+
+              </div>
+
+            </>
+          );
+        })()}
 
       {/* =====================================================
           CREATE SHOP MODAL
@@ -2219,7 +4003,7 @@ const SuperAdminDashboard = () => {
                 onClick={closeRenewModal}
                 className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 w-4" />
               </button>
 
             </div>
@@ -2458,124 +4242,6 @@ const SuperAdminDashboard = () => {
 
                 <p className="text-xs text-slate-400 text-center py-10">
                   No renewal history recorded.
-                </p>
-
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* =====================================================
-          LOGIN IP MODAL
-      ====================================================== */}
-
-      {loginIpModal && (
-
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
-
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-
-            <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
-
-              <h3 className="font-black text-base">
-                Successful Login IPs:{' '}
-                {loginIpModal.shopName}
-              </h3>
-
-              <button
-                onClick={() =>
-                  setLoginIpModal(null)
-                }
-                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-            </div>
-
-            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-
-              {loginIpModal.loginIpHistory
-                ?.length ? (
-
-                <div className="overflow-x-auto">
-
-                  <table className="w-full min-w-[600px] text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
-
-                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
-
-                      <tr>
-
-                        <th className="px-4 py-3">
-                          IP Address
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Admin Email
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Login Time
-                        </th>
-
-                      </tr>
-
-                    </thead>
-
-                    <tbody className="divide-y divide-slate-100">
-
-                      {loginIpModal.loginIpHistory
-                        .slice()
-                        .reverse()
-                        .map(
-                          (
-                            entry,
-                            idx
-                          ) => (
-
-                            <tr
-                              key={
-                                entry._id ||
-                                idx
-                              }
-                              className="hover:bg-slate-50/60"
-                            >
-
-                              <td className="px-4 py-3 font-mono font-bold text-slate-800">
-                                {entry.ip}
-                              </td>
-
-                              <td className="px-4 py-3 text-slate-600">
-                                {entry.adminEmail ||
-                                  '—'}
-                              </td>
-
-                              <td className="px-4 py-3 text-slate-500">
-                                {formatPakistanDateTime(
-                                  entry.loggedInAt
-                                )}
-                              </td>
-
-                            </tr>
-
-                          )
-                        )}
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-
-              ) : (
-
-                <p className="text-xs text-slate-400 text-center py-10">
-                  No successful login IP recorded.
                 </p>
 
               )}
@@ -3269,6 +4935,675 @@ const SuperAdminDashboard = () => {
                 'delete-shop'
                   ? 'Deleting...'
                   : 'Delete Permanently'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =====================================================
+          RECORD PAYMENT MODAL
+      ====================================================== */}
+
+      {payModal && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+
+            <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
+
+              <div>
+
+                <h3 className="text-base font-black">
+                  Record Payment
+                </h3>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  {payModal.shopName} •{' '}
+                  {collectionMonthLabel}
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={closePayModal}
+                className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+            </div>
+
+            <div className="space-y-4 p-6">
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Amount (Rs.)
+                </label>
+
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={payAmount}
+                  onChange={(e) =>
+                    setPayAmount(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
+                />
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Paid Via
+                </label>
+
+                <select
+                  value={payVia}
+                  onChange={(e) =>
+                    setPayVia(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="Cash">
+                    Cash
+                  </option>
+
+                  <option value="Bank Transfer">
+                    Bank Transfer
+                  </option>
+
+                  <option value="JazzCash">
+                    JazzCash
+                  </option>
+
+                  <option value="EasyPaisa">
+                    EasyPaisa
+                  </option>
+
+                  <option value="Other">
+                    Other
+                  </option>
+                </select>
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Note (optional)
+                </label>
+
+                <input
+                  type="text"
+                  value={payNote}
+                  onChange={(e) =>
+                    setPayNote(
+                      e.target.value
+                    )
+                  }
+                  placeholder="e.g. Received via rider"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4 sm:p-5">
+
+              <button
+                type="button"
+                onClick={closePayModal}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleRecordPayment
+                }
+                disabled={
+                  actionLoading ===
+                  'record-payment'
+                }
+                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {actionLoading ===
+                'record-payment'
+                  ? 'Saving...'
+                  : 'Save Payment'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =====================================================
+          PAYMENT HISTORY MODAL
+      ====================================================== */}
+
+      {paymentHistoryShop && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+
+            <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
+
+              <h3 className="font-black text-base">
+                Payment History:{' '}
+                {paymentHistoryShop.shopName}
+              </h3>
+
+              <button
+                onClick={() =>
+                  setPaymentHistoryModal(
+                    null
+                  )
+                }
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+
+              {(paymentHistoryShop.paymentHistory ||
+                []).length ? (
+
+                <div className="overflow-x-auto">
+
+                  <table className="w-full min-w-[550px] text-left text-xs font-medium border border-slate-200 rounded-2xl overflow-hidden">
+
+                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200">
+
+                      <tr>
+
+                        <th className="px-4 py-3">
+                          Month
+                        </th>
+
+                        <th className="px-4 py-3 text-right">
+                          Amount
+                        </th>
+
+                        <th className="px-4 py-3">
+                          Via
+                        </th>
+
+                        <th className="px-4 py-3">
+                          Paid On
+                        </th>
+
+                        <th className="px-4 py-3 text-center">
+                          Action
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+
+                      {[
+                        ...paymentHistoryShop.paymentHistory,
+                      ]
+                        .sort((a, b) =>
+                          String(
+                            b.month
+                          ).localeCompare(
+                            String(a.month)
+                          )
+                        )
+                        .map((payment) => (
+
+                          <tr
+                            key={payment._id}
+                            className="hover:bg-slate-50/60"
+                          >
+
+                            <td className="px-4 py-3 font-black text-slate-800">
+                              {payment.month}
+                            </td>
+
+                            <td className="px-4 py-3 text-right font-black text-emerald-700">
+                              Rs.{' '}
+                              {Number(
+                                payment.amount ||
+                                  0
+                              ).toLocaleString()}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-600">
+                              {payment.paidVia ||
+                                '—'}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-500">
+                              {formatDate(
+                                payment.paidAt
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3 text-center">
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeletePayment(
+                                    paymentHistoryShop,
+                                    payment
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black hover:bg-rose-100 transition-all"
+                              >
+                                Delete
+                              </button>
+
+                            </td>
+
+                          </tr>
+
+                        ))}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+
+              ) : (
+
+                <p className="text-xs text-slate-400 text-center py-10">
+                  No payments recorded yet.
+                </p>
+
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =====================================================
+          SHOP NOTES MODAL
+      ====================================================== */}
+
+      {notesModal && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+
+            <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
+
+              <div>
+
+                <h3 className="text-base font-black">
+                  Shop Notes
+                </h3>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  {notesModal.shopName} •
+                  private, only you see this
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={closeNotesModal}
+                className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+            </div>
+
+            <div className="p-6">
+
+              <textarea
+                value={notesText}
+                onChange={(e) =>
+                  setNotesText(
+                    e.target.value
+                  )
+                }
+                rows={6}
+                placeholder="e.g. Owner se baat hui, agle hafte payment karega..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition-all resize-none"
+              />
+
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4 sm:p-5">
+
+              <button
+                type="button"
+                onClick={closeNotesModal}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveNotes}
+                disabled={
+                  actionLoading ===
+                  'save-notes'
+                }
+                className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {actionLoading ===
+                'save-notes'
+                  ? 'Saving...'
+                  : 'Save Notes'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =====================================================
+          ANNOUNCEMENT MODAL (Create / Edit)
+      ====================================================== */}
+
+      {announcementModal && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+
+            <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
+
+              <h3 className="text-base font-black">
+                {announcementModal.mode ===
+                'edit'
+                  ? 'Edit Notice'
+                  : 'New Notice'}
+              </h3>
+
+              <button
+                type="button"
+                onClick={
+                  closeAnnouncementModal
+                }
+                className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+            </div>
+
+            <div className="space-y-4 p-6">
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Title *
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    announcementTitle
+                  }
+                  onChange={(e) =>
+                    setAnnouncementTitle(
+                      e.target.value
+                    )
+                  }
+                  placeholder="e.g. Scheduled Maintenance"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Message *
+                </label>
+
+                <textarea
+                  value={
+                    announcementMessage
+                  }
+                  onChange={(e) =>
+                    setAnnouncementMessage(
+                      e.target.value
+                    )
+                  }
+                  rows={4}
+                  placeholder="e.g. Kal raat 2 baje 30 minute ke liye system maintenance hogi."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition-all resize-none"
+                />
+
+              </div>
+
+              <p className="text-[10px] text-slate-400">
+                This notice will appear as a
+                banner inside every shop's
+                panel.
+              </p>
+
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4 sm:p-5">
+
+              <button
+                type="button"
+                onClick={
+                  closeAnnouncementModal
+                }
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleSaveAnnouncement
+                }
+                disabled={
+                  actionLoading ===
+                  'save-announcement'
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {actionLoading ===
+                'save-announcement'
+                  ? 'Publishing...'
+                  : announcementModal.mode ===
+                    'edit'
+                  ? 'Save Changes'
+                  : 'Publish Notice'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =====================================================
+          EDIT SHOP MODAL
+      ====================================================== */}
+
+      {editShopModal && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+
+            <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
+
+              <div>
+
+                <h3 className="text-base font-black">
+                  Edit Shop
+                </h3>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  {editShopModal.shopName}
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={closeEditShopModal}
+                className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+            </div>
+
+            <div className="space-y-4 p-6">
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Shop Name *
+                </label>
+
+                <input
+                  type="text"
+                  value={editShopName}
+                  onChange={(e) =>
+                    setEditShopName(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Owner Name *
+                </label>
+
+                <input
+                  type="text"
+                  value={editShopOwner}
+                  onChange={(e) =>
+                    setEditShopOwner(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Admin Email *
+                </label>
+
+                <input
+                  type="email"
+                  value={editShopEmail}
+                  onChange={(e) =>
+                    setEditShopEmail(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Changing email also updates the
+                  admin login email.
+                </p>
+
+              </div>
+
+              <div>
+
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  WhatsApp / Phone Number
+                </label>
+
+                <input
+                  type="tel"
+                  value={editShopPhone}
+                  onChange={(e) =>
+                    setEditShopPhone(
+                      e.target.value
+                    )
+                  }
+                  placeholder="03001234567"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4 sm:p-5">
+
+              <button
+                type="button"
+                onClick={closeEditShopModal}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleUpdateShopDetails
+                }
+                disabled={
+                  actionLoading ===
+                  'edit-shop'
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {actionLoading ===
+                'edit-shop'
+                  ? 'Saving...'
+                  : 'Save Changes'}
               </button>
 
             </div>

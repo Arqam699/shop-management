@@ -573,6 +573,14 @@ app.use(
   backupRoutes
 );
 
+app.use(
+  '/api/announcements',
+  require('./routes/announcement.routes')
+);
+
+
+
+
 // =====================================================
 // ADMIN SEEDER
 // =====================================================

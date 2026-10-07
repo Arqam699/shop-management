@@ -21,6 +21,14 @@ const {
   permanentlyDeleteShop,
   resetShopAdminPassword,
   getShopPasswordHistory,
+  recordShopPayment,
+  deleteShopPayment,
+  updateShopNotes,
+  getAnnouncements,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  updateShopDetails,
 } = require('../controllers/superAdminController');
 
 
@@ -188,6 +196,79 @@ router.get(
   '/shops/:shopId/password-history',
   protectSuperAdmin,
   getShopPasswordHistory
+);
+
+
+// =====================================================
+// RECORD SHOP PAYMENT (Monthly Collection)
+// =====================================================
+
+router.post(
+  '/shops/:shopId/payments',
+  protectSuperAdmin,
+  recordShopPayment
+);
+
+
+// =====================================================
+// DELETE SHOP PAYMENT
+// =====================================================
+
+router.delete(
+  '/shops/:shopId/payments/:paymentId',
+  protectSuperAdmin,
+  deleteShopPayment
+);
+
+
+// =====================================================
+// UPDATE SHOP NOTES (Super Admin private notes)
+// =====================================================
+
+router.patch(
+  '/shops/:shopId/notes',
+  protectSuperAdmin,
+  updateShopNotes
+);
+
+
+// =====================================================
+// ANNOUNCEMENTS (Broadcast notices)
+// =====================================================
+
+router.get(
+  '/announcements',
+  protectSuperAdmin,
+  getAnnouncements
+);
+
+router.post(
+  '/announcements',
+  protectSuperAdmin,
+  createAnnouncement
+);
+
+router.patch(
+  '/announcements/:id',
+  protectSuperAdmin,
+  updateAnnouncement
+);
+
+router.delete(
+  '/announcements/:id',
+  protectSuperAdmin,
+  deleteAnnouncement
+);
+
+
+// =====================================================
+// UPDATE SHOP DETAILS
+// =====================================================
+
+router.patch(
+  '/shops/:shopId/details',
+  protectSuperAdmin,
+  updateShopDetails
 );
 
 

@@ -16,6 +16,7 @@ const Payment = require('../models/Payment');
 const Return = require('../models/Return');
 const YearlyAudit = require('../models/YearlyAudit');
 const Settings = require('../models/Settings');
+const Announcement = require('../models/Announcement');
 
 
 // =====================================================
@@ -2131,6 +2132,762 @@ const getShopPasswordHistory = async (
 
 
 // =====================================================
+// RECORD SHOP PAYMENT (Monthly Collection)
+// =====================================================
+
+const recordShopPayment = async (
+  req,
+  res
+) => {
+  try {
+
+    const { shopId } =
+      req.params;
+
+    const {
+      month,
+      amount,
+      paidVia,
+      note,
+    } = req.body;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop ID',
+      });
+    }
+
+
+    // month format: YYYY-MM
+
+    const normalizedMonth =
+      String(month || '').trim();
+
+    if (
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(
+        normalizedMonth
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Month must be in YYYY-MM format',
+      });
+    }
+
+
+    if (
+      amount === undefined ||
+      amount === null ||
+      amount === '' ||
+      !Number.isFinite(
+        Number(amount)
+      ) ||
+      Number(amount) <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please enter a valid payment amount',
+      });
+    }
+
+
+    const shop =
+      await Shop.findById(
+        shopId
+      );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+
+    const alreadyPaid = (
+      shop.paymentHistory || []
+    ).some(
+      (p) =>
+        p.month ===
+        normalizedMonth
+    );
+
+    if (alreadyPaid) {
+      return res.status(409).json({
+        success: false,
+        message: `Payment for ${normalizedMonth} is already recorded`,
+      });
+    }
+
+
+    shop.paymentHistory.push({
+      month: normalizedMonth,
+      amount: Number(amount),
+      paidVia: paidVia
+        ? String(paidVia).trim()
+        : '',
+      note: note
+        ? String(note).trim()
+        : '',
+      paidAt: new Date(),
+      recordedBy: 'Super Admin',
+    });
+
+    await shop.save();
+
+
+    return res.status(201).json({
+      success: true,
+      message:
+        'Payment recorded successfully',
+      paymentHistory:
+        shop.paymentHistory,
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Record Shop Payment Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while recording payment',
+    });
+  }
+};
+
+
+// =====================================================
+// DELETE SHOP PAYMENT
+// =====================================================
+
+const deleteShopPayment = async (
+  req,
+  res
+) => {
+  try {
+
+    const {
+      shopId,
+      paymentId,
+    } = req.params;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      ) ||
+      !mongoose.Types.ObjectId.isValid(
+        paymentId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ID',
+      });
+    }
+
+
+    const shop =
+      await Shop.findById(
+        shopId
+      );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+
+    shop.paymentHistory = (
+      shop.paymentHistory || []
+    ).filter(
+      (p) =>
+        String(p._id) !==
+        String(paymentId)
+    );
+
+    await shop.save();
+
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Payment entry deleted',
+      paymentHistory:
+        shop.paymentHistory,
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Delete Shop Payment Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while deleting payment',
+    });
+  }
+};
+
+
+// =====================================================
+// UPDATE SHOP NOTES (Super Admin private notes)
+// =====================================================
+
+const updateShopNotes = async (
+  req,
+  res
+) => {
+  try {
+
+    const { shopId } =
+      req.params;
+
+    const { notes } =
+      req.body;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop ID',
+      });
+    }
+
+
+    const shop =
+      await Shop.findByIdAndUpdate(
+        shopId,
+        {
+          $set: {
+            superAdminNotes: notes
+              ? String(notes).trim()
+              : '',
+            notesUpdatedAt:
+              new Date(),
+          },
+        },
+        {
+          returnDocument:
+            'after',
+        }
+      );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Notes saved successfully',
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Update Shop Notes Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while saving notes',
+    });
+  }
+};
+
+
+// =====================================================
+// GET ALL ANNOUNCEMENTS (Super Admin)
+// =====================================================
+
+const getAnnouncements = async (
+  req,
+  res
+) => {
+  try {
+
+    const announcements =
+      await Announcement.find()
+        .sort({
+          createdAt: -1,
+        })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      announcements,
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Get Announcements Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while fetching announcements',
+    });
+  }
+};
+
+
+// =====================================================
+// CREATE ANNOUNCEMENT
+// =====================================================
+
+const createAnnouncement = async (
+  req,
+  res
+) => {
+  try {
+
+    const {
+      title,
+      message,
+    } = req.body;
+
+
+    if (
+      !title ||
+      !String(title).trim() ||
+      !message ||
+      !String(message).trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Title and message are required',
+      });
+    }
+
+
+    const announcement =
+      await Announcement.create({
+        title:
+          String(title).trim(),
+        message:
+          String(message).trim(),
+        active: true,
+      });
+
+
+    return res.status(201).json({
+      success: true,
+      message:
+        'Notice published successfully',
+      announcement,
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Create Announcement Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while creating announcement',
+    });
+  }
+};
+
+
+// =====================================================
+// UPDATE ANNOUNCEMENT
+// =====================================================
+
+const updateAnnouncement = async (
+  req,
+  res
+) => {
+  try {
+
+    const { id } =
+      req.params;
+
+    const {
+      title,
+      message,
+      active,
+    } = req.body;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        id
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid announcement ID',
+      });
+    }
+
+
+    const update = {};
+
+    if (title !== undefined) {
+      update.title =
+        String(title).trim();
+    }
+
+    if (message !== undefined) {
+      update.message =
+        String(message).trim();
+    }
+
+    if (active !== undefined) {
+      update.active =
+        Boolean(active);
+    }
+
+
+    const announcement =
+      await Announcement.findByIdAndUpdate(
+        id,
+        { $set: update },
+        {
+          returnDocument:
+            'after',
+        }
+      );
+
+    if (!announcement) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Announcement not found',
+      });
+    }
+
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Notice updated successfully',
+      announcement,
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Update Announcement Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while updating announcement',
+    });
+  }
+};
+
+
+// =====================================================
+// DELETE ANNOUNCEMENT
+// =====================================================
+
+const deleteAnnouncement = async (
+  req,
+  res
+) => {
+  try {
+
+    const { id } =
+      req.params;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        id
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid announcement ID',
+      });
+    }
+
+
+    await Announcement.deleteOne({
+      _id: id,
+    });
+
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Notice deleted successfully',
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Delete Announcement Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while deleting announcement',
+    });
+  }
+};
+
+
+// =====================================================
+// UPDATE SHOP DETAILS
+// Edits shop name, owner name, email and phone.
+// Changing the email also updates the linked Admin
+// login email (checked for uniqueness first).
+// =====================================================
+
+const updateShopDetails = async (
+  req,
+  res
+) => {
+
+  const session =
+    await mongoose.startSession();
+
+  session.startTransaction();
+
+  try {
+
+    const { shopId } =
+      req.params;
+
+    const {
+      shopName,
+      ownerName,
+      email,
+      phone,
+    } = req.body;
+
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        shopId
+      )
+    ) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop ID',
+      });
+    }
+
+
+    const shop =
+      await Shop.findById(
+        shopId
+      ).session(session);
+
+    if (!shop) {
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found',
+      });
+    }
+
+
+    const updates = {};
+
+
+    if (shopName !== undefined) {
+      if (!String(shopName).trim()) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Shop name cannot be empty',
+        });
+      }
+
+      updates.shopName =
+        String(shopName).trim();
+    }
+
+
+    if (ownerName !== undefined) {
+      if (!String(ownerName).trim()) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Owner name cannot be empty',
+        });
+      }
+
+      updates.ownerName =
+        String(ownerName).trim();
+    }
+
+
+    if (phone !== undefined) {
+      updates.phone =
+        String(phone || '').trim();
+    }
+
+
+    let emailChanged = false;
+    let newEmail = null;
+
+    if (email !== undefined) {
+      newEmail = String(email || '')
+        .trim()
+        .toLowerCase();
+
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          newEmail
+        )
+      ) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please enter a valid email',
+        });
+      }
+
+      if (newEmail !== shop.email) {
+        const clash =
+          await Admin.findOne({
+            email: newEmail,
+          }).session(session);
+
+        if (
+          clash &&
+          String(clash.shopId) !==
+            String(shop._id)
+        ) {
+          await session.abortTransaction();
+
+          return res.status(409).json({
+            success: false,
+            message:
+              'This email is already used by another shop admin',
+          });
+        }
+
+        emailChanged = true;
+        updates.email = newEmail;
+      }
+    }
+
+
+    if (
+      Object.keys(updates).length ===
+      0
+    ) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: 'Nothing to update',
+      });
+    }
+
+
+    await Shop.updateOne(
+      { _id: shop._id },
+      { $set: updates },
+      { session }
+    );
+
+
+    // Keep the Admin login email in sync.
+
+    if (emailChanged) {
+      await Admin.updateMany(
+        { shopId: shop._id },
+        {
+          $set: {
+            email: newEmail,
+          },
+        },
+        { session }
+      );
+    }
+
+
+    await session.commitTransaction();
+
+
+    return res.status(200).json({
+      success: true,
+      message: emailChanged
+        ? 'Shop updated successfully. The admin must now log in with the new email.'
+        : 'Shop updated successfully.',
+    });
+
+  } catch (error) {
+
+    await session.abortTransaction();
+
+    console.error(
+      'Update Shop Details Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Server error while updating shop',
+    });
+
+  } finally {
+
+    session.endSession();
+  }
+};
+
+
+// =====================================================
 // EXPORTS
 // =====================================================
 
@@ -2164,4 +2921,20 @@ module.exports = {
   resetShopAdminPassword,
 
   getShopPasswordHistory,
+
+  recordShopPayment,
+
+  deleteShopPayment,
+
+  updateShopNotes,
+
+  getAnnouncements,
+
+  createAnnouncement,
+
+  updateAnnouncement,
+
+  deleteAnnouncement,
+
+  updateShopDetails,
 };
