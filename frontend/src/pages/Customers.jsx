@@ -767,6 +767,26 @@ const Customers = () => {
     });
   };
 
+  const formatDateTime = (date) => {
+    if (!date) return { date: '—', time: '' };
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return { date: '—', time: '' };
+    const options = { timeZone: 'Asia/Karachi' };
+    return {
+      date: new Intl.DateTimeFormat('en-PK', {
+        ...options,
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(parsed),
+      time: `${new Intl.DateTimeFormat('en-PK', {
+        ...options,
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(parsed)} PKT`,
+    };
+  };
+
   const getPersonTypeLabel = (type) => {
     if (type === 'customer') return 'Main Customer';
     if (type === 'guarantor1') return 'Zamanti 1';
@@ -1524,6 +1544,23 @@ const Customers = () => {
       className: 'px-6 py-4 text-slate-600',
       render: (customer) =>
         customer.city || '-',
+    },
+    {
+      key: 'createdAt',
+      header: 'Added At',
+      headerClassName: 'px-5 py-4 whitespace-nowrap',
+      className: 'px-5 py-3.5 text-slate-600 whitespace-nowrap',
+      render: (customer) => {
+        const addedAt = formatDateTime(customer.createdAt);
+        return (
+          <div className="leading-tight">
+            <div className="font-semibold text-slate-700">{addedAt.date}</div>
+            {addedAt.time && (
+              <div className="mt-1 text-[10px] text-slate-400">{addedAt.time}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'actions',

@@ -112,7 +112,10 @@ const getPayments = async (req, res) => {
     };
 
     let paymentsQuery = Payment.find(paymentsFilter)
-      .populate('customer', 'fullName mobileNumber cnic')
+      .populate(
+        'customer',
+        'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt'
+      )
       .populate({
         path: 'sale',
         select: 'saleId paymentType finalTotal',
@@ -201,7 +204,10 @@ const getPaymentById = async (req, res) => {
       _id: req.params.id,
       shopId: req.shopId,
     })
-      .populate('customer')
+      .populate(
+        'customer',
+        '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt'
+      )
       .populate({
         path: 'sale',
         populate: {

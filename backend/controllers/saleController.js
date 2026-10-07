@@ -801,7 +801,9 @@ const createSale = async (req, res) => {
         message:
           'Cash sale created successfully.',
         data: {
-          sale
+          sale,
+          productName: productDoc.name,
+          stockRemaining: productDoc.quantity,
         }
       });
     }
@@ -1303,7 +1305,7 @@ const createSale = async (req, res) => {
 
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product');
 
     const createdPlan =
@@ -1434,7 +1436,7 @@ const getSales = async (req, res) => {
 
     let salesQuery =
       Sale.find(filter)
-        .populate('customer', 'fullName mobileNumber cnic')
+        .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product', 'name brand model')
         .sort({
           createdAt: -1
@@ -1508,7 +1510,7 @@ const getSaleById = async (req, res) => {
         _id: id,
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product');
 
     if (!sale) {
@@ -3484,7 +3486,7 @@ const exchangeSaleProduct = async (
 
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product');
 
     return res.json({

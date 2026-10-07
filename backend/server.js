@@ -19,6 +19,7 @@ const backupRoutes = require('./routes/backupRoutes');
 
 const connectDB = require('./config/db');
 const Admin = require('./models/Admin');
+const startAiHistoryCleanup = require('./jobs/aiHistoryCleanup');
 
 // =====================================================
 // BACKUP SERVICE
@@ -751,6 +752,12 @@ const startServer = async () => {
     // =================================================
 
     await connectDB();
+
+    // AI chat history is the one shop record group configured for daily cleanup.
+    // Run the scheduler only in the persistent local server process.
+    if (process.env.VERCEL !== '1') {
+      startAiHistoryCleanup();
+    }
 
     // =================================================
     // 2. BACKUP STORAGE INITIALIZATION

@@ -15,21 +15,29 @@ const BIOMETRIC_FIELDS = [
   'liveImageCapturedAt',
 ];
 
+// Images are needed by customer and print views. Keep fingerprint templates
+// private, but explicitly load the displayable image fields (schema select:false).
+const CUSTOMER_MEDIA_SELECT = [
+  '+fingerprintImage', '+liveImage', '+fingerprintCapturedAt', '+liveImageCapturedAt',
+  '+guarantor1.fingerprintImage', '+guarantor1.liveImage',
+  '+guarantor1.fingerprintCapturedAt', '+guarantor1.liveImageCapturedAt',
+  '+guarantor2.fingerprintImage', '+guarantor2.liveImage',
+  '+guarantor2.fingerprintCapturedAt', '+guarantor2.liveImageCapturedAt',
+].join(' ');
+
 const sanitizeCustomer = (customer) => {
   const result = customer?.toObject
     ? customer.toObject()
     : { ...customer };
 
-  BIOMETRIC_FIELDS.forEach((field) => {
-    delete result[field];
-  });
+  // Never expose biometric templates; image data is intentionally returned
+  // for authorized customer, invoice, ledger, and payment-slip views.
+  delete result.fingerprintFmd;
 
   ['guarantor1', 'guarantor2'].forEach((key) => {
     if (!result[key]) return;
     result[key] = { ...result[key] };
-    BIOMETRIC_FIELDS.forEach((field) => {
-      delete result[key][field];
-    });
+    delete result[key].fingerprintFmd;
   });
 
   return result;
@@ -1004,6 +1012,7 @@ const getCustomers = async (req, res) => {
     let customersQuery =
       Customer
         .find(query)
+        .select(CUSTOMER_MEDIA_SELECT)
         .sort({
           createdAt: 1
         })
@@ -1102,7 +1111,7 @@ const getCustomerById = async (
       await Customer.findOne({
         _id: req.params.id,
         shopId: req.shopId
-      });
+      }).select(CUSTOMER_MEDIA_SELECT);
 
     if (!customer) {
       return res.status(404).json({
@@ -1628,7 +1637,7 @@ const updateCustomer = async (
 
         shopId:
           req.shopId
-      });
+      }).select(CUSTOMER_MEDIA_SELECT);
 
     if (!customer) {
       return res.status(404).json({

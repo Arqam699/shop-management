@@ -620,6 +620,26 @@ const Inventory = () => {
         val || 0
       ).toLocaleString('en-PK')}`;
 
+  const formatAddedAt = (value) => {
+    if (!value) return { date: '—', time: '' };
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return { date: '—', time: '' };
+    const options = { timeZone: 'Asia/Karachi' };
+    return {
+      date: new Intl.DateTimeFormat('en-PK', {
+        ...options,
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(date),
+      time: `${new Intl.DateTimeFormat('en-PK', {
+        ...options,
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date)} PKT`,
+    };
+  };
+
   // =====================================================
   // INTELLIGENCE DATA
   // =====================================================
@@ -705,6 +725,23 @@ const Inventory = () => {
           {p.category || 'General'}
         </span>
       ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Added At',
+      headerClassName: 'px-5 py-4 whitespace-nowrap',
+      className: 'px-5 py-3.5 text-slate-600 whitespace-nowrap',
+      render: (product) => {
+        const addedAt = formatAddedAt(product.createdAt);
+        return (
+          <div className="leading-tight">
+            <div className="font-semibold text-slate-700">{addedAt.date}</div>
+            {addedAt.time && (
+              <div className="mt-1 text-[10px] text-slate-400">{addedAt.time}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'quantity',

@@ -1,6 +1,5 @@
 const {
   createCompleteBackupZip,
-  createDailyBackupZip,
   getBackupStorageInfo,
   BACKUP_MODELS,
   BACKUP_VERSION,
@@ -133,115 +132,6 @@ exports.downloadBackup = async (
       message:
         error.message ||
         'Complete backup create nahi ho saka.',
-    });
-  }
-};
-
-// ============================================================
-// DAILY BACKUP DOWNLOAD
-// ============================================================
-
-exports.downloadDailyBackup = async (
-  req,
-  res
-) => {
-  try {
-
-    const shopId =
-      getShopId(req);
-
-    const requestedDate =
-      req.body?.date ||
-      req.query?.date ||
-      null;
-
-    console.log(
-      `[DAILY BACKUP API] Creating ZIP for shop: ${shopId}`
-    );
-
-    console.log(
-      `[DAILY BACKUP API] Requested date: ${requestedDate || 'Pakistan today'}`
-    );
-
-    const result =
-      await createDailyBackupZip(
-        shopId,
-        requestedDate
-      );
-
-    if (
-      !result?.zipBuffer ||
-      !Buffer.isBuffer(
-        result.zipBuffer
-      ) ||
-      result.zipBuffer.length === 0
-    ) {
-      throw new Error(
-        'Generated daily backup ZIP is empty.'
-      );
-    }
-
-    const filename =
-      result.filename ||
-      'DAILY-BACKUP.zip';
-
-    res.status(200);
-
-    res.setHeader(
-      'Content-Type',
-      'application/zip'
-    );
-
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`
-    );
-
-    res.setHeader(
-      'Content-Length',
-      result.zipBuffer.length
-    );
-
-    res.setHeader(
-      'Cache-Control',
-      'no-store, no-cache, must-revalidate, proxy-revalidate'
-    );
-
-    res.setHeader(
-      'Pragma',
-      'no-cache'
-    );
-
-    res.setHeader(
-      'Expires',
-      '0'
-    );
-
-    console.log(
-      `[DAILY BACKUP API] Sending ZIP: ${filename} (${result.zipBuffer.length} bytes)`
-    );
-
-    return res.send(
-      result.zipBuffer
-    );
-
-  } catch (error) {
-
-    console.error(
-      '[DAILY BACKUP API ERROR]',
-      error
-    );
-
-    return res.status(
-      error.message ===
-      'Shop not found'
-        ? 404
-        : 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Daily backup create nahi ho saka.',
     });
   }
 };
@@ -436,9 +326,6 @@ exports.getBackupInfo = async (
         type:
           'SHOP_SPECIFIC_BACKUP',
 
-        dailySnapshot:
-          true,
-
         completeSnapshot:
           true,
 
@@ -452,22 +339,12 @@ exports.getBackupInfo = async (
       storage:
         storage
           ? {
-              totalDailyBackups:
-                storage
-                  .dailyBackups
-                  ?.total ||
-                0,
-
               totalCompleteBackups:
                 storage
                   .completeBackup
                   ?.exists
                   ? 1
                   : 0,
-
-              dailyBackups:
-                storage
-                  .dailyBackups,
 
               completeBackups:
                 storage

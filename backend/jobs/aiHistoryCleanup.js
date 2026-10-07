@@ -2,50 +2,33 @@ const cron = require('node-cron');
 const AiChatHistory = require('../models/AiChatHistory');
 
 const startAiHistoryCleanup = () => {
-  // Every day at 12:00 AM Pakistan time
+  // Keep only today's AI chat history; old history is cleared at Pakistan midnight.
   cron.schedule(
     '0 0 * * *',
     async () => {
       try {
-        const now = new Date();
-
-        // Pakistan date
         const pakistanDate = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Asia/Karachi',
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
-        }).format(now);
+        }).format(new Date());
 
-        console.log(
-          `🧹 AI history cleanup started for ${pakistanDate}`
-        );
-
-        // Keep only today's history
         const result = await AiChatHistory.deleteMany({
-          historyDate: {
-            $ne: pakistanDate,
-          },
+          historyDate: { $ne: pakistanDate },
         });
 
         console.log(
-          `✅ AI history cleanup complete. Deleted: ${result.deletedCount}`
+          `[AI CHAT] Midnight cleanup complete. Deleted old chat entries: ${result.deletedCount}`
         );
       } catch (error) {
-        console.error(
-          '❌ AI history cleanup error:',
-          error
-        );
+        console.error('[AI CHAT] Midnight cleanup failed:', error);
       }
     },
-    {
-      timezone: 'Asia/Karachi',
-    }
+    { timezone: 'Asia/Karachi' }
   );
 
-  console.log(
-    '🕛 AI history cleanup scheduled: Every day at 12:00 AM Pakistan time'
-  );
+  console.log('[AI CHAT] Old chat history cleanup scheduled for midnight Pakistan time.');
 };
 
 module.exports = startAiHistoryCleanup;

@@ -4,7 +4,6 @@ const router = express.Router();
 
 const {
   downloadBackup,
-  downloadDailyBackup,
   getBackupInfo,
 } = require('../controllers/backupController');
 
@@ -18,16 +17,6 @@ router.get(
   '/info',
   protect,
   getBackupInfo
-);
-
-// ============================================================
-// DAILY BACKUP
-// ============================================================
-
-router.post(
-  '/daily',
-  protect,
-  downloadDailyBackup
 );
 
 // ============================================================

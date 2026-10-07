@@ -264,7 +264,7 @@ const getInstallmentPlans = async (
 
     const buildPlansQuery = () =>
       InstallmentPlan.find(plansFilter)
-        .populate('customer', 'fullName mobileNumber cnic')
+        .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product', 'name')
         .populate('sale', 'saleId paymentType')
         .sort({
@@ -655,7 +655,7 @@ const getInstallmentPlanById = async (
         _id: id,
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
         .populate('sale');
 
@@ -676,7 +676,7 @@ const getInstallmentPlanById = async (
         _id: id,
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
         .populate('sale');
 
@@ -1514,7 +1514,7 @@ const payInstallment = async (
         _id: plan._id,
         shopId
       })
-        .populate('customer')
+        .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
         .populate('sale');
 

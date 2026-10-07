@@ -128,13 +128,14 @@ const AddEditCustomer = () => {
       return date.toLocaleString('en-PK', {
         dateStyle: 'medium',
         timeStyle: 'medium',
+        timeZone: 'Asia/Karachi',
       });
     } catch {
       return '';
     }
   };
 
-  const getImageSource = (image) => {
+  const getImageSource = (image, mimeType = 'image/jpeg') => {
     if (!image || typeof image !== 'string') return '';
     if (
       image.startsWith('data:image/') ||
@@ -144,7 +145,7 @@ const AddEditCustomer = () => {
     ) {
       return image;
     }
-    return `data:image/jpeg;base64,${image}`;
+    return `data:${mimeType};base64,${image}`;
   };
 
   // =========================================================
@@ -208,15 +209,33 @@ const AddEditCustomer = () => {
         });
 
         setFingerprintStatus({
-          customer: data.fingerprintFmd ? 'captured' : 'idle',
-          guarantor1: guarantor1.fingerprintFmd ? 'captured' : 'idle',
-          guarantor2: guarantor2.fingerprintFmd ? 'captured' : 'idle',
+          customer:
+            data.fingerprintFmd || data.fingerprintImage
+              ? 'captured'
+              : 'idle',
+          guarantor1:
+            guarantor1.fingerprintFmd || guarantor1.fingerprintImage
+              ? 'captured'
+              : 'idle',
+          guarantor2:
+            guarantor2.fingerprintFmd || guarantor2.fingerprintImage
+              ? 'captured'
+              : 'idle',
         });
 
         setFingerprintMessage({
-          customer: data.fingerprintFmd ? 'Fingerprint already captured.' : '',
-          guarantor1: guarantor1.fingerprintFmd ? 'Fingerprint already captured.' : '',
-          guarantor2: guarantor2.fingerprintFmd ? 'Fingerprint already captured.' : '',
+          customer:
+            data.fingerprintFmd || data.fingerprintImage
+              ? 'Fingerprint already captured.'
+              : '',
+          guarantor1:
+            guarantor1.fingerprintFmd || guarantor1.fingerprintImage
+              ? 'Fingerprint already captured.'
+              : '',
+          guarantor2:
+            guarantor2.fingerprintFmd || guarantor2.fingerprintImage
+              ? 'Fingerprint already captured.'
+              : '',
         });
       } catch (error) {
         console.error('FETCH CUSTOMER ERROR:', error);
@@ -808,7 +827,7 @@ const AddEditCustomer = () => {
             <div className="w-20 h-24 rounded-xl border border-slate-200 bg-slate-50 p-1 flex items-center justify-center shrink-0">
               <img
                 loading="lazy"
-                src={getImageSource(fingerprintImage)}
+                src={getImageSource(fingerprintImage, 'image/png')}
                 alt={`${label} biometric`}
                 className="w-full h-full object-contain"
               />
@@ -820,7 +839,7 @@ const AddEditCustomer = () => {
               <p className="text-xs font-black text-slate-800 mt-1">DigitalPersona 4500 Verified</p>
               {fingerprintCapturedAt && (
                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                  Captured: {formatCaptureDateTime(fingerprintCapturedAt)}
+                  Added at: {formatCaptureDateTime(fingerprintCapturedAt)}
                 </p>
               )}
             </div>
@@ -894,7 +913,7 @@ const AddEditCustomer = () => {
               <p className="text-xs font-black text-slate-800 mt-1">Identity Verification Attached</p>
               {liveImageCapturedAt && (
                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                  Captured: {formatCaptureDateTime(liveImageCapturedAt)}
+                  Added at: {formatCaptureDateTime(liveImageCapturedAt)}
                 </p>
               )}
             </div>

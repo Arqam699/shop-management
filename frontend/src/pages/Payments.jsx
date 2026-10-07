@@ -419,10 +419,21 @@ const Payments = () => {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
   const receipt = document.getElementById('printable-receipt-content');
 
   if (receipt) {
+    // Wait for the customer photo and fingerprint to finish decoding before
+    // opening the browser print dialog; otherwise print preview can omit them.
+    const receiptImages = Array.from(receipt.querySelectorAll('img'));
+    await Promise.all(
+      receiptImages.map((image) =>
+        typeof image.decode === 'function'
+          ? image.decode().catch(() => undefined)
+          : Promise.resolve()
+      )
+    );
+
     const MM_TO_PX = 3.779527559;
 
     // A4 printable height: 287mm portrait / 200mm landscape
@@ -1175,25 +1186,25 @@ const Payments = () => {
       {activeReceipt && (
         <div
           id="printable-receipt-wrapper"
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-x-hidden overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible"
         >
           <div
             id="printable-receipt-modal-container"
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm my-auto shadow-2xl flex flex-col max-h-[92vh] print:shadow-none print:border-none print:max-h-full print:my-0 print:w-[80mm] print:mx-auto"
+            className="bg-white border border-slate-200 rounded-3xl w-full min-w-0 max-w-sm my-auto shadow-2xl flex flex-col max-h-[92vh] print:shadow-none print:border-none print:max-h-full print:my-0 print:w-[80mm] print:mx-auto"
           >
             {/* PREVIEW TOOLBAR */}
-            <div className="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0 print:hidden rounded-t-3xl">
-              <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <div className="p-3 sm:p-4 border-b bg-slate-50 flex flex-col items-stretch gap-3 shrink-0 print:hidden rounded-t-3xl">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
                 <ShieldCheck className="w-4 h-4 text-blue-600" />
                 <span>Print Receipt Preview</span>
               </span>
 
-              <div className="flex items-center gap-2">
-                <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1 gap-1">
+              <div className="flex w-full min-w-0 flex-col gap-2">
+                <div className="flex w-full min-w-0 items-center rounded-xl border border-slate-200 bg-white p-1 gap-1">
                   <button
                     type="button"
                     onClick={() => handleOrientationChange('portrait')}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
                       printOrientation === 'portrait'
                         ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
                         : 'text-slate-500 hover:text-slate-700'
@@ -1205,7 +1216,7 @@ const Payments = () => {
                   <button
                     type="button"
                     onClick={() => handleOrientationChange('landscape')}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
                       printOrientation === 'landscape'
                         ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
                         : 'text-slate-500 hover:text-slate-700'
@@ -1217,7 +1228,7 @@ const Payments = () => {
                   <button
                     type="button"
                     onClick={() => handleOrientationChange('half')}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
                       printOrientation === 'half'
                         ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
                         : 'text-slate-500 hover:text-slate-700'
@@ -1228,22 +1239,25 @@ const Payments = () => {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs shadow-md transition-all"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print Slip</span>
-                </button>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs shadow-md transition-all"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Slip</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveReceipt(null)}
-                  className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveReceipt(null)}
+                    aria-label="Close receipt preview"
+                    className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1312,7 +1326,8 @@ const Payments = () => {
                     <div className="text-center">
                       {activeCustomerPhoto ? (
                         <img
-                          loading="lazy"
+                          loading="eager"
+                          decoding="sync"
                           src={activeCustomerPhoto}
                           alt="Customer"
                           className="w-12 h-12 object-cover rounded-lg border border-slate-400 mx-auto"
@@ -1329,7 +1344,8 @@ const Payments = () => {
                     <div className="text-center">
                       {activeCustomerFingerprint ? (
                         <img
-                          loading="lazy"
+                          loading="eager"
+                          decoding="sync"
                           src={activeCustomerFingerprint}
                           alt="Fingerprint"
                           className="w-12 h-12 object-contain rounded-lg border border-slate-400 bg-white mx-auto p-0.5"

@@ -182,6 +182,17 @@ const formatDate = (value) => {
   });
 };
 
+const formatAddedAt = (value) => {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return `${new Intl.DateTimeFormat('en-PK', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Karachi',
+  }).format(date)} PKT`;
+};
+
 const formatCurrency = (
   value,
   currency = 'PKR'
@@ -923,7 +934,7 @@ const IdentityCard = ({
               )}
             </div>
           </div>
-
+d
           {/* MEDIA */}
           <IdentityMediaSection
             fingerprintImage={
@@ -1311,6 +1322,10 @@ const CustomerProfile = () => {
                       ID: {customer.customerId || '—'}
                     </span>
                   </div>
+
+                  <p className="mb-1 text-[10px] font-semibold text-slate-400">
+                    Added at: {formatAddedAt(customer.createdAt)}
+                  </p>
 
                   <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white">
                     {customer.fullName ||
@@ -1768,6 +1783,11 @@ const CustomerProfile = () => {
                   {customer.customerId ||
                     'N/A'}
                 </strong>
+              </div>
+
+              <div>
+                <span>Added At</span>
+                <strong>{formatAddedAt(customer.createdAt)}</strong>
               </div>
 
               <div>

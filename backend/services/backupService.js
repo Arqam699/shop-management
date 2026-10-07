@@ -5,7 +5,6 @@
 // LOCAL:
 //   Desktop/BACKUP/
 //     COMPLETE-BACKUP/
-//     DAILY-BACKUPS/
 //
 // VERCEL:
 //   No Desktop/file-system dependency for manual API backup.
@@ -126,6 +125,8 @@ const getBackupPaths = () => {
     COMPLETE_FOLDER_NAME
   );
 
+  // Keep the legacy path available for reading old Daily Backup folders.
+  // This path is no longer created or used for new backups.
   const dailyDir = path.join(
     backupDir,
     DAILY_FOLDER_NAME
@@ -164,13 +165,6 @@ const ensureBackupStructure = async () => {
 
   await fsp.mkdir(
     completeDir,
-    {
-      recursive: true,
-    }
-  );
-
-  await fsp.mkdir(
-    dailyDir,
     {
       recursive: true,
     }
@@ -1934,10 +1928,8 @@ IMPORTANT
 
 This backup is intended for business-data recovery and record keeping.
 
-Daily backups represent the complete snapshot saved for that particular date.
-
-A historical date cannot be reconstructed from today's MongoDB data if a snapshot
-was not actually saved on that date.
+Complete backups contain the shop's current available records at the time
+the backup is created.
 
 ${separator()}
 `;
@@ -4090,11 +4082,9 @@ const getBackupStorageInfo =
 module.exports = {
   // Main local backup functions
   createBackup,
-  createDailyBackup,
 
   // Browser/API ZIP functions
   createCompleteBackupZip,
-  createDailyBackupZip,
 
   // ZIP utility
   createZipBufferFromDirectory,
@@ -4103,9 +4093,6 @@ module.exports = {
   // Storage
   initializeBackupStorage,
   getBackupStorageInfo,
-
-  // Automatic local backup
-  runAutomaticDailyBackups,
 
   // Constants
   BACKUP_MODELS,

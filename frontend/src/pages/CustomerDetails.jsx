@@ -125,8 +125,19 @@ const CustomerDetails = () => {
 const getPaymentScore = (customer) => {
   return customer?.paymentScore || null;
 };
+  const formatAddedAt = (value) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return `${new Intl.DateTimeFormat('en-PK', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Karachi',
+    }).format(date)} PKT`;
+  };
   const getPhoto = (customer) => {
-    return getValue(
+    const image = getValue(
+      customer?.liveImage,
       customer?.photoUrl,
       customer?.photo,
       customer?.image,
@@ -134,6 +145,9 @@ const getPaymentScore = (customer) => {
       customer?.customerPhotoUrl,
       customer?.photoData
     );
+    if (typeof image !== 'string' || !image) return '';
+    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
+    return `data:image/jpeg;base64,${image}`;
   };
 
   const hasFingerprint = (customer) => {
@@ -415,6 +429,7 @@ const getPaymentScore = (customer) => {
               const city = getCity(customer);
               const photo = getPhoto(customer);
               const paymentScore = getPaymentScore(customer);
+              const addedAt = formatAddedAt(customer.createdAt);
 
               const fingerprintSaved = hasFingerprint(customer);
               const customerPhotoSaved = hasCustomerPhoto(customer);
@@ -467,6 +482,10 @@ const getPaymentScore = (customer) => {
                           </span>
                         )}
                       </div>
+
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                        Added at: <span className="font-bold text-slate-700">{addedAt}</span>
+                      </p>
 
                       {/* PARAMETERS GRID */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 mt-3 text-xs">

@@ -356,13 +356,14 @@ const CustomerLedger = () => {
     if (!date) return '-';
     const parsed = new Date(date);
     if (Number.isNaN(parsed.getTime())) return '-';
-    return parsed.toLocaleString('en-PK', {
+    return `${parsed.toLocaleString('en-PK', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    });
+      timeZone: 'Asia/Karachi',
+    })} PKT`;
   };
 
   const getId = (value) => {
@@ -1361,6 +1362,9 @@ const getPaymentScore = (customer) => {
     );
 
     const fingerprintCapturedAt = getFingerprintCapturedAt(safePerson);
+    const addedAt = !isGuarantor
+      ? formatDateTime(safePerson.createdAt)
+      : '';
 
     const hasPerson = Boolean(
       photo ||
@@ -1491,6 +1495,17 @@ const getPaymentScore = (customer) => {
                         <span>{city || '—'}</span>
                       </p>
                     </div>
+
+                    {!isGuarantor && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                          Customer Added At
+                        </span>
+                        <p className="font-bold text-slate-700 mt-0.5">
+                          {addedAt}
+                        </p>
+                      </div>
+                    )}
 
                     {relationship && (
                       <div>
@@ -1815,6 +1830,7 @@ const getPaymentScore = (customer) => {
               <div className="text-right text-[8.5px] font-bold text-slate-800">
                 <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
                 <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
+                <p>Added At: {formatDateTime(ledger.customer?.createdAt)}</p>
                 <p>Statement Date: {formatDateTime(new Date())}</p>
               </div>
             </div>

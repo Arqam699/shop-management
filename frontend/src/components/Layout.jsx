@@ -45,7 +45,21 @@ import {
   Bot,
   ChevronRight,
   Code2,
+  Bell,
+  Volume2,
+  VolumeX,
+  CheckCheck,
+  Trash2,
 } from 'lucide-react';
+import {
+  clearActivityNotifications,
+  getActivityNotifications,
+  getDelayUntilNextPakistanMidnight,
+  isActivitySoundEnabled,
+  markActivityNotificationRead,
+  markAllActivityNotificationsRead,
+  setActivitySoundEnabled,
+} from '../utils/activityNotifications';
 
 /* =====================================================
    ICON WRAPPER
@@ -998,8 +1012,81 @@ export const Layout = ({ children }) => {
   const [logoutModalOpen, setLogoutModalOpen] =
     useState(false);
 
+  const [activityNotifications, setActivityNotifications] =
+    useState(() => getActivityNotifications());
+
+  const [notificationsOpen, setNotificationsOpen] =
+    useState(false);
+
+  const [selectedActivityNotification, setSelectedActivityNotification] =
+    useState(null);
+
+  const [activitySoundEnabled, setActivitySoundEnabledState] =
+    useState(() => isActivitySoundEnabled());
+
   const [openMenu, setOpenMenu] =
     useState(null);
+
+  useEffect(() => {
+    const handleActivityNotifications = (event) => {
+      setActivityNotifications(
+        Array.isArray(event.detail) ? event.detail : getActivityNotifications()
+      );
+    };
+    const handleStorage = (event) => {
+      if (event.key === 'shop_activity_notifications_v1') {
+        setActivityNotifications(getActivityNotifications());
+      }
+    };
+    window.addEventListener('shop-activity-notifications', handleActivityNotifications);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('shop-activity-notifications', handleActivityNotifications);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    let midnightTimer;
+    let cancelled = false;
+
+    const scheduleMidnightClear = () => {
+      midnightTimer = window.setTimeout(() => {
+        clearActivityNotifications();
+        if (!cancelled) scheduleMidnightClear();
+      }, getDelayUntilNextPakistanMidnight());
+    };
+
+    scheduleMidnightClear();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(midnightTimer);
+    };
+  }, []);
+
+  const unreadActivityCount = activityNotifications.filter((item) => !item.read).length;
+
+  const formatNotificationTime = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-PK', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Karachi',
+    }).format(date);
+  };
+
+  const handleActivityNotificationClick = (notification) => {
+    setActivityNotifications(markActivityNotificationRead(notification.id));
+    setNotificationsOpen(false);
+    setSelectedActivityNotification(notification);
+  };
+
+  const toggleActivitySound = () => {
+    const enabled = !activitySoundEnabled;
+    setActivitySoundEnabled(enabled);
+    setActivitySoundEnabledState(enabled);
+  };
 
   /* =====================================================
      KEYBOARD
@@ -1883,6 +1970,93 @@ export const Layout = ({ children }) => {
 
           <div className="flex items-center gap-2">
 
+            {/* ACTIVITY NOTIFICATIONS */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((open) => !open)}
+                aria-label={`Notifications${unreadActivityCount ? `, ${unreadActivityCount} unread` : ''}`}
+                aria-expanded={notificationsOpen}
+                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadActivityCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[9px] font-black text-white">
+                    {unreadActivityCount > 99 ? '99+' : unreadActivityCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 top-12 z-[80] w-[min(92vw,24rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                    <div>
+                      <h2 className="text-sm font-black text-slate-900">Activity notifications</h2>
+                      <p className="text-[10px] font-semibold text-slate-400">Recent changes in your shop</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivityNotifications(markAllActivityNotificationsRead())}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" /> Read all
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={toggleActivitySound}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-600 hover:text-indigo-700"
+                    >
+                      {activitySoundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                      Beep sound {activitySoundEnabled ? 'on' : 'off'}
+                    </button>
+                    {activityNotifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearActivityNotifications();
+                          setActivityNotifications([]);
+                        }}
+                        className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-rose-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-[min(60vh,26rem)] overflow-y-auto">
+                    {activityNotifications.length === 0 ? (
+                      <div className="px-5 py-10 text-center">
+                        <Bell className="mx-auto h-7 w-7 text-slate-200" />
+                        <p className="mt-2 text-xs font-bold text-slate-500">No activity yet</p>
+                        <p className="mt-1 text-[10px] text-slate-400">New shop actions will appear here.</p>
+                      </div>
+                    ) : (
+                      activityNotifications.slice(0, 30).map((notification) => (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={() => handleActivityNotificationClick(notification)}
+                          className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-indigo-50/60 ${notification.read ? 'bg-white' : 'bg-indigo-50/40'}`}
+                        >
+                          <span className="flex items-start gap-2">
+                            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notification.read ? 'bg-slate-200' : 'bg-indigo-500'}`} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-black text-slate-800">{notification.title}</span>
+                              <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-600">{notification.message}</span>
+                              <span className="mt-1 block text-[9px] font-semibold text-slate-400">{formatNotificationTime(notification.createdAt)} PKT</span>
+                            </span>
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* CURRENCY */}
 
             <div
@@ -1962,6 +2136,82 @@ export const Layout = ({ children }) => {
           </div>
 
         </header>
+
+        {selectedActivityNotification && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+            onClick={() => setSelectedActivityNotification(null)}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="activity-detail-title"
+              className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-indigo-600">Activity details</p>
+                  <h2 id="activity-detail-title" className="mt-0.5 text-base font-black text-slate-900">
+                    {selectedActivityNotification.title}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedActivityNotification(null)}
+                  aria-label="Close notification details"
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 px-5 py-5">
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3.5">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Action performed</p>
+                  <p className="mt-1 text-sm font-black text-indigo-900">
+                    {selectedActivityNotification.action || selectedActivityNotification.title}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">What happened</p>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-700">
+                    {selectedActivityNotification.message || 'The activity was completed successfully.'}
+                  </p>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-400">
+                  {formatNotificationTime(selectedActivityNotification.createdAt)} PKT
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedActivityNotification(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Close
+                </button>
+                {selectedActivityNotification.route && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const route = selectedActivityNotification.route;
+                      setSelectedActivityNotification(null);
+                      navigate(route);
+                    }}
+                    className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-indigo-700"
+                  >
+                    Open related page
+                  </button>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
 
         {/* =================================================
             PAGE CONTENT

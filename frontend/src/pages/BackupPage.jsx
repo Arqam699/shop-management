@@ -8,7 +8,6 @@ import {
   Download,
   Loader2,
   Database,
-  CalendarDays,
   Archive,
   ShieldCheck,
   AlertCircle,
@@ -30,19 +29,6 @@ import {
 
 const BackupPage = () => {
   const [backupAction, setBackupAction] = useState(null);
-
-  /* =====================================================
-     PAKISTAN DATE
-  ===================================================== */
-
-  const getPakistanDate = () => {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Karachi',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
-  };
 
   /* =====================================================
      GET FILENAME FROM RESPONSE
@@ -288,59 +274,6 @@ const BackupPage = () => {
   };
 
   /* =====================================================
-     DELETE FILE IF EXISTS
-  ===================================================== */
-
-  const deleteFileIfExists = async (
-    directory,
-    filename
-  ) => {
-    try {
-      await directory.removeEntry(filename);
-    } catch (error) {
-      if (
-        error?.name !== 'NotFoundError'
-      ) {
-        console.warn(
-          `Could not delete ${filename}:`,
-          error
-        );
-      }
-    }
-  };
-
-  /* =====================================================
-     REMOVE OLD ZIP FILES
-  ===================================================== */
-
-  const removeOldBackupZipFiles = async (
-    directory
-  ) => {
-    try {
-      for await (
-        const entry of directory.values()
-      ) {
-        if (
-          entry.kind === 'file' &&
-          entry.name
-            .toLowerCase()
-            .endsWith('.zip')
-        ) {
-          await deleteFileIfExists(
-            directory,
-            entry.name
-          );
-        }
-      }
-    } catch (error) {
-      console.warn(
-        'Could not clean old ZIP files:',
-        error
-      );
-    }
-  };
-
-  /* =====================================================
      EXTRACT ZIP INTO LOCAL DIRECTORY
   ===================================================== */
 
@@ -471,16 +404,13 @@ const BackupPage = () => {
 
   const saveBackupInDirectory = async (
     backupRoot,
-    response,
-    backupType
+    response
   ) => {
     if (!response?.data) {
       throw new Error(
         'Backup response empty hai.'
       );
     }
-
-    const date = getPakistanDate();
 
     let zipBlob;
 
@@ -541,58 +471,11 @@ const BackupPage = () => {
     const arrayBuffer =
       await zipBlob.arrayBuffer();
 
-    /*
-     * DAILY:
-     *
-     * BACKUP/
-     *   DAILY-BACKUPS/
-     *      YYYY-MM-DD/
-     *
-     * COMPLETE:
-     *
-     * BACKUP/
-     *   COMPLETE-BACKUP/
-     */
-
-    if (backupType === 'daily') {
-      const dailyRoot =
-        await getOrCreateDirectory(
-          backupRoot,
-          'DAILY-BACKUPS'
-        );
-
-      const dateFolder =
-        await getOrCreateDirectory(
-          dailyRoot,
-          date
-        );
-
-      await removeOldBackupZipFiles(
-        dateFolder
-      );
-
-      const extractedCount =
-        await extractZipIntoDirectory(
-          arrayBuffer,
-          dateFolder
-        );
-
-      return {
-        extractedCount,
-        folder:
-          `DAILY-BACKUPS/${date}`,
-      };
-    }
-
     const completeRoot =
       await getOrCreateDirectory(
         backupRoot,
         'COMPLETE-BACKUP'
       );
-
-    await removeOldBackupZipFiles(
-      completeRoot
-    );
 
     const extractedCount =
       await extractZipIntoDirectory(
@@ -604,98 +487,6 @@ const BackupPage = () => {
       extractedCount,
       folder: 'COMPLETE-BACKUP',
     };
-  };
-
-  /* =====================================================
-     DAILY BACKUP
-  ===================================================== */
-
-  const handleDailyBackup = async () => {
-    if (backupAction) {
-      return;
-    }
-
-    try {
-      setBackupAction('daily');
-
-      toast.loading(
-        "Creating today's daily backup...",
-        {
-          id: 'backup-loading',
-        }
-      );
-
-      const backupRoot =
-        await chooseBackupDestination();
-
-      if (!backupRoot) {
-        toast.dismiss(
-          'backup-loading'
-        );
-
-        setBackupAction(null);
-        return;
-      }
-
-      toast.loading(
-        'Downloading backup data...',
-        {
-          id: 'backup-loading',
-        }
-      );
-
-      const response =
-        await api.post(
-          '/api/backup/daily',
-          {},
-          {
-            responseType: 'blob',
-            headers: {
-              Accept:
-                'application/zip',
-            },
-          }
-        );
-
-      toast.loading(
-        'Saving TXT files into BACKUP folder...',
-        {
-          id: 'backup-loading',
-        }
-      );
-
-      const result =
-        await saveBackupInDirectory(
-          backupRoot,
-          response,
-          'daily'
-        );
-
-      toast.success(
-        `Daily backup saved successfully! ${result.extractedCount} TXT files saved in ${result.folder}.`,
-        {
-          id: 'backup-loading',
-          duration: 5000,
-        }
-      );
-    } catch (error) {
-      console.error(
-        'Daily backup error:',
-        error
-      );
-
-      const message =
-        await getBackupErrorMessage(
-          error
-        );
-
-      toast.error(message, {
-        id: 'backup-loading',
-        duration: 5000,
-      });
-    } finally {
-      setBackupAction(null);
-    }
   };
 
   /* =====================================================
@@ -711,7 +502,7 @@ const BackupPage = () => {
       setBackupAction('complete');
 
       toast.loading(
-        'Creating complete backup with all daily history...',
+        'Creating complete backup with all shop history...',
         {
           id: 'backup-loading',
         }
@@ -758,8 +549,7 @@ const BackupPage = () => {
       const result =
         await saveBackupInDirectory(
           backupRoot,
-          response,
-          'complete'
+          response
         );
 
       toast.success(
@@ -942,9 +732,8 @@ const BackupPage = () => {
                   sm:text-sm
                 "
               >
-                Create daily snapshots or generate a
-                complete backup containing your available
-                shop history in human-readable TXT format.
+                Create a complete backup containing your
+                available shop history in human-readable TXT format.
               </p>
 
             </div>
@@ -1167,93 +956,9 @@ const BackupPage = () => {
               grid
               grid-cols-1
               gap-3
-              sm:grid-cols-2
+              sm:grid-cols-1
             "
           >
-
-            {/* DAILY */}
-
-            <button
-              type="button"
-              onClick={handleDailyBackup}
-              disabled={!!backupAction}
-              className="
-                group
-                relative
-                inline-flex
-                min-h-[92px]
-                items-center
-                gap-3
-                overflow-hidden
-                rounded-2xl
-                bg-gradient-to-r
-                from-emerald-600
-                to-teal-600
-                px-5
-                py-4
-                text-left
-                text-white
-                shadow-lg
-                shadow-emerald-950/20
-                transition-all
-                duration-300
-                hover:scale-[1.015]
-                hover:opacity-95
-                active:scale-[0.98]
-                disabled:cursor-not-allowed
-                disabled:opacity-60
-                disabled:hover:scale-100
-              "
-            >
-              <div
-                className="
-                  flex
-                  h-11
-                  w-11
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-xl
-                  border
-                  border-white/10
-                  bg-white/10
-                "
-              >
-                {backupAction === 'daily' ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <CalendarDays className="h-5 w-5" />
-                )}
-              </div>
-
-              <div className="min-w-0">
-
-                <span
-                  className="
-                    block
-                    text-sm
-                    font-black
-                  "
-                >
-                  {backupAction === 'daily'
-                    ? 'Creating Daily Backup...'
-                    : 'Daily Backup'}
-                </span>
-
-                <span
-                  className="
-                    mt-1
-                    block
-                    text-[10px]
-                    font-semibold
-                    text-white/70
-                  "
-                >
-                  Save today's snapshot as TXT
-                </span>
-
-              </div>
-            </button>
 
             {/* COMPLETE */}
 
@@ -1403,7 +1108,7 @@ const BackupPage = () => {
                   text-slate-800
                 "
               >
-                Daily + Complete
+                Complete Backup Only
               </p>
             </div>
 
@@ -1640,50 +1345,6 @@ const BackupPage = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
-
-          {/* DAILY BACKUP */}
-
-          <div
-            className="
-              rounded-2xl
-              border
-              border-emerald-100
-              bg-emerald-50/50
-              p-4
-            "
-          >
-            <div className="flex items-start gap-3">
-
-              <div
-                className="
-                  flex
-                  h-9
-                  w-9
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-xl
-                  bg-emerald-100
-                  text-emerald-600
-                "
-              >
-                <CalendarDays className="h-4 w-4" />
-              </div>
-
-              <div>
-                <h3 className="text-xs font-black text-slate-900">
-                  Create Daily Backup
-                </h3>
-
-                <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-slate-600 sm:text-xs">
-                  Business day complete hone ke baad
-                  Daily Backup create karna recommended hai.
-                  Is mein us din ka snapshot save hota hai.
-                </p>
-              </div>
-
-            </div>
-          </div>
 
           {/* COMPLETE BACKUP */}
 
@@ -1957,64 +1618,7 @@ const BackupPage = () => {
 
         </div>
 
-        <div
-          className="
-            mt-5
-            grid
-            grid-cols-1
-            gap-3
-            lg:grid-cols-2
-          "
-        >
-
-          {/* DAILY */}
-
-          <div
-            className="
-              rounded-2xl
-              border
-              border-slate-100
-              bg-slate-50
-              p-4
-            "
-          >
-
-            <div className="flex items-center gap-2">
-
-              <CalendarDays className="h-4 w-4 text-emerald-600" />
-
-              <span className="text-xs font-black text-slate-800">
-                Daily Backup
-              </span>
-
-            </div>
-
-            <div
-              className="
-                mt-3
-                rounded-xl
-                border
-                border-slate-200
-                bg-white
-                px-4
-                py-3
-                font-mono
-                text-[10px]
-                font-bold
-                text-slate-600
-                sm:text-xs
-              "
-            >
-              BACKUP/
-              <br />
-              └── DAILY-BACKUPS/
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;└── YYYY-MM-DD/
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── TXT files
-            </div>
-
-          </div>
+        <div className="mt-5 grid grid-cols-1 gap-3">
 
           {/* COMPLETE */}
 
