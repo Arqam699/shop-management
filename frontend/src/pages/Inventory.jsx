@@ -700,14 +700,7 @@ const Inventory = () => {
         'px-5 py-3.5 font-black text-indigo-600 tracking-wider',
       render: (p) => p.sku || '—',
     },
-    {
-      key: 'name',
-      header: 'Product Name',
-      className:
-        'px-5 py-3.5 font-black text-slate-900',
-      render: (p) => p.name,
-    },
-    {
+      {
       key: 'brandModel',
       header: 'Brand / Model',
       className:
@@ -716,6 +709,13 @@ const Inventory = () => {
         [p.brand, p.model]
           .filter(Boolean)
           .join(' • ') || '—',
+    },
+    {
+      key: 'name',
+      header: 'Product Name',
+      className:
+        'px-5 py-3.5 font-black text-slate-900',
+      render: (p) => p.name,
     },
     {
       key: 'category',
