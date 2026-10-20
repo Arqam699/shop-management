@@ -1536,20 +1536,23 @@ const createCustomer = async (
   res
 ) => {
   try {
-    const {
-      cnic
-    } = req.body;
+    const cnic =
+      typeof req.body?.cnic === 'string'
+        ? req.body.cnic.trim()
+        : '';
 
-    // ======================================
-    // DUPLICATE CNIC
-    // ======================================
+    if (!cnic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid CNIC number.',
+      });
+    }
 
+    // Only the validated string is used in this MongoDB filter.
     const existingCnic =
       await Customer.findOne({
         cnic,
-
-        shopId:
-          req.shopId
+        shopId: req.shopId,
       });
 
     if (existingCnic) {
@@ -1577,7 +1580,7 @@ const createCustomer = async (
     const customer =
       new Customer({
         ...req.body,
-
+        cnic,
         shopId:
           req.shopId,
 

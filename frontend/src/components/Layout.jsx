@@ -1606,7 +1606,7 @@ export const Layout = ({ children }) => {
       className="
         relative
         flex
-        h-screen
+        h-dvh
         overflow-hidden
         bg-[#f5f7fb]
       "
@@ -1740,11 +1740,12 @@ export const Layout = ({ children }) => {
         className="
           relative
           flex
-          h-screen
+          h-dvh
           min-w-0
           flex-1
           flex-col
-          overflow-y-auto
+          min-h-0
+          overflow-hidden
         "
       >
 
@@ -2221,7 +2222,11 @@ export const Layout = ({ children }) => {
           className="
             relative
             min-h-0
+            flex
             flex-1
+            flex-col
+            overflow-y-auto
+            overscroll-contain
             p-4
             sm:p-5
             lg:p-7

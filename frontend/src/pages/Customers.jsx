@@ -806,8 +806,8 @@ const Customers = () => {
     const scoreData = profile?.paymentScore || customer?.paymentScore;
 
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 lg:p-6 animate-[pageEnter_0.25s_ease-out]">
-        <div className="bg-white w-full max-w-7xl max-h-[92vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+      <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 lg:p-6 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeProfileModal(); } }}>
+        <div className="bg-white w-full max-w-7xl max-h-[92dvh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-200" role="dialog" aria-modal="true" aria-label="Customer profile">
           
           {/* MODAL HEADER */}
           <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white px-6 py-5 flex items-center justify-between shrink-0 border-b border-white/[0.08]">

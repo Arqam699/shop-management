@@ -83,12 +83,21 @@ const InvoiceDetails = () => {
     fetchInvoiceAndProducts();
   }, [id]);
 
+
   // =========================================================
   // PRINT
   // =========================================================
   const handlePrint = () => {
     window.print();
   };
+
+  useEffect(() => {
+    if (!invoice) return undefined;
+    window.__shopPrintCurrentView = handlePrint;
+    return () => {
+      if (window.__shopPrintCurrentView === handlePrint) delete window.__shopPrintCurrentView;
+    };
+  }, [invoice]);
 
   // =========================================================
   // PRINT MODE: portrait = 80mm slip, landscape = A4 wide, half = A4 top-half only
@@ -622,12 +631,12 @@ const InvoiceDetails = () => {
           RETURN MODAL
       ====================================================== */}
       {showReturnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowReturnModal(false); } }}>
           <form
             onSubmit={handleReturnSubmit}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
+            role="dialog" aria-modal="true" aria-label="Return items" className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg max-h-[calc(100dvh-1.5rem)] flex flex-col shadow-2xl overflow-hidden"
           >
-            <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
+            <div className="relative shrink-0 bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
                   <RotateCcw className="w-5 h-5" />
@@ -649,7 +658,7 @@ const InvoiceDetails = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-4">
               {returnError && (
                 <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -702,7 +711,7 @@ const InvoiceDetails = () => {
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+            <div className="shrink-0 p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setShowReturnModal(false)}
@@ -727,7 +736,7 @@ const InvoiceDetails = () => {
           EXCHANGE MODAL
       ====================================================== */}
       {showExchangeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowExchangeModal(false); } }}>
           <form
             onSubmit={handleExchangeSubmit}
             className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"

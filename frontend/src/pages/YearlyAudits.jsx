@@ -270,10 +270,10 @@ const YearlyAudits = () => {
           ADD YEAR MODAL
       ====================================================== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowAddModal(false); } }}>
           <form
             onSubmit={handleCreateYear}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
+            role="dialog" aria-modal="true" aria-label="Create yearly audit" className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm max-h-[calc(100dvh-1.5rem)] overflow-y-auto shadow-2xl overflow-x-hidden"
           >
             <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 border-b border-white/[0.08] flex justify-between items-center">
               <div className="flex items-center gap-2.5">

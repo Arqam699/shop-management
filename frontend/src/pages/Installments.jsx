@@ -188,6 +188,29 @@ const Installments = () => {
   };
 
   // =====================================================
+  const formatPlanDate = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    const date = new Date(dateValue);
+    return Number.isNaN(date.getTime())
+      ? 'N/A'
+      : date.toLocaleDateString('en-PK', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+  };
+
+  const formatPlanTime = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    const date = new Date(dateValue);
+    return Number.isNaN(date.getTime())
+      ? 'N/A'
+      : date.toLocaleTimeString('en-PK', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+  };
+
   // SEARCH + DATE FILTER
   // INSTALLMENT PLANS ONLY
   // =====================================================
@@ -470,6 +493,10 @@ const Installments = () => {
                   </th>
 
                   <th className="px-6 py-4">
+                    Date / Time
+                  </th>
+
+                  <th className="px-6 py-4">
                     Status
                   </th>
 
@@ -559,6 +586,15 @@ const Installments = () => {
                         {plan.planId} (
                         {plan.duration}M)
 
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <p className="font-semibold text-slate-700">
+                          {formatPlanDate(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}
+                        </p>
+                        <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+                          {formatPlanTime(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}
+                        </p>
                       </td>
 
                       <td className="px-6 py-4">

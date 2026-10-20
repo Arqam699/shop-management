@@ -1375,8 +1375,8 @@ const AddEditCustomer = () => {
           LIVE CAMERA MODAL
       ====================================================== */}
       {cameraOpen && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md p-4 flex items-center justify-center animate-[pageEnter_0.25s_ease-out]">
-          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 flex items-center justify-center overflow-y-auto animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeCamera(); } }}>
+          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[calc(100dvh-1.5rem)]" role="dialog" aria-modal="true" aria-label="Customer camera capture">
             
             {/* Camera Modal Header */}
             <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">

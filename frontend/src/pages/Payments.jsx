@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../utils/api';
 import {
   formatCnicSearchInput,
@@ -6,6 +6,7 @@ import {
   matchesMobileSearch,
 } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -41,6 +42,9 @@ import {
 
 const Payments = () => {
   const { settings } = useSettings();
+  const [searchParams] = useSearchParams();
+  const requestedReceiptId = searchParams.get('receipt');
+  const handledReceiptId = useRef('');
 
   // =====================================================
   // STATE
@@ -108,6 +112,12 @@ const Payments = () => {
       );
     }
   };
+
+  useEffect(() => {
+    if (!requestedReceiptId || handledReceiptId.current === requestedReceiptId) return;
+    handledReceiptId.current = requestedReceiptId;
+    openReceipt(requestedReceiptId);
+  }, [requestedReceiptId]);
 
   // =====================================================
   // DELETE
@@ -471,6 +481,15 @@ const Payments = () => {
     }
   }, 500);
 };
+
+  useEffect(() => {
+    if (!activeReceipt) return undefined;
+    window.__shopPrintCurrentView = handlePrint;
+    return () => {
+      if (window.__shopPrintCurrentView === handlePrint) delete window.__shopPrintCurrentView;
+    };
+  }, [activeReceipt, printOrientation]);
+
 
   // =====================================================
   // CURRENT RECEIPT / PLAN COMPUTATIONS
@@ -1088,8 +1107,8 @@ const Payments = () => {
             INVOICE GROUP RECEIPTS MODAL
         ====================================================== */}
         {selectedInvoiceGroup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print">
-            <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setSelectedInvoiceGroup(null); } }}>
+            <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)]" role="dialog" aria-modal="true" aria-label="Invoice payment history">
               
               <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center shrink-0">
                 <div>
@@ -1186,11 +1205,11 @@ const Payments = () => {
       {activeReceipt && (
         <div
           id="printable-receipt-wrapper"
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-x-hidden overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-x-hidden overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible" role="dialog" aria-modal="true" aria-label="Payment receipt preview" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setActiveReceipt(null); } }}
         >
           <div
             id="printable-receipt-modal-container"
-            className="bg-white border border-slate-200 rounded-3xl w-full min-w-0 max-w-sm my-auto shadow-2xl flex flex-col max-h-[92vh] print:shadow-none print:border-none print:max-h-full print:my-0 print:w-[80mm] print:mx-auto"
+            className="bg-white border border-slate-200 rounded-3xl w-full min-w-0 max-w-sm my-auto shadow-2xl flex flex-col max-h-[calc(100dvh-1rem)] print:shadow-none print:border-none print:max-h-full print:my-0 print:w-[80mm] print:mx-auto"
           >
             {/* PREVIEW TOOLBAR */}
             <div className="p-3 sm:p-4 border-b bg-slate-50 flex flex-col items-stretch gap-3 shrink-0 print:hidden rounded-t-3xl">

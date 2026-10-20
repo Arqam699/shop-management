@@ -7,6 +7,7 @@ import {
   matchesCnicSearch,
 } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
+import ExistingPrintPopup from '../components/ExistingPrintPopup';
 
 import {
   ArrowLeft,
@@ -91,6 +92,7 @@ const NewSale = () => {
   ========================================================= */
 
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState('');
+  const [printPopup, setPrintPopup] = useState(null);
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -100,6 +102,8 @@ const NewSale = () => {
 
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [activeCustomerIndex, setActiveCustomerIndex] = useState(0);
+  const [activeProductIndex, setActiveProductIndex] = useState(0);
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -209,8 +213,8 @@ const NewSale = () => {
     if (!search) return [];
 
     return customers
-      .filter((customer) => {
-        const searchableText = [
+      .map((customer) => {
+        const fields = [
           customer?.name,
           customer?.fullName,
           customer?.customerName,
@@ -229,17 +233,22 @@ const NewSale = () => {
           .filter((value) => value !== null && value !== undefined)
           .map((value) =>
             String(value).toLowerCase().replace(/\s+/g, ' ')
-          )
-          .join(' ');
-
-        return (
-          searchableText.includes(search) ||
-          matchesCnicSearch(
-            customer?.cnic || customer?.cnicNumber,
-            customerSearch
-          )
-        );
+          );
+        const matched = fields.some((value) => value.includes(search)) ||
+          matchesCnicSearch(customer?.cnic || customer?.cnicNumber, customerSearch);
+        if (!matched) return null;
+        const normalizedCnic = String(customer?.cnic || customer?.cnicNumber || '').toLowerCase().replace(/\s+/g, '');
+        const normalizedSearch = search.replace(/\s+/g, '');
+        const score = normalizedCnic === normalizedSearch ? 0
+          : fields.some((value) => value === search) ? 1
+          : fields.some((value) => value.startsWith(search)) ? 2
+          : fields.some((value) => value.includes(search)) ? 3
+          : 4;
+        return { customer, score };
       })
+      .filter(Boolean)
+      .sort((a, b) => a.score - b.score)
+      .map(({ customer }) => customer)
       .slice(0, 20);
   }, [customers, customerSearch]);
 
@@ -257,8 +266,8 @@ const NewSale = () => {
     if (!search) return [];
 
     return products
-      .filter((product) => {
-        const searchableText = [
+      .map((product) => {
+        const fields = [
           product?.name,
           product?.productName,
           product?.title,
@@ -267,17 +276,31 @@ const NewSale = () => {
           product?.code,
           product?.category,
           product?.brand,
+          product?.model,
+          product?.serialNumber,
+          product?.imei,
+          product?.chassisNumber,
           product?._id,
           product?.id,
         ]
           .filter((value) => value !== null && value !== undefined)
           .map((value) =>
             String(value).toLowerCase().replace(/\s+/g, ' ')
-          )
-          .join(' ');
-
-        return searchableText.includes(search);
+          );
+        if (!fields.some((value) => value.includes(search))) return null;
+        const identifiers = [product?.sku, product?.productCode, product?.code, product?.imei, product?.serialNumber, product?.chassisNumber]
+          .filter(Boolean).map((value) => String(value).toLowerCase().replace(/\s+/g, ' '));
+        const score = identifiers.some((value) => value === search) ? 0
+          : fields.some((value) => value === search) ? 1
+          : identifiers.some((value) => value.startsWith(search)) ? 2
+          : fields.some((value) => value.startsWith(search)) ? 3
+          : identifiers.some((value) => value.includes(search)) ? 4
+          : 5;
+        return { product, score };
       })
+      .filter(Boolean)
+      .sort((a, b) => a.score - b.score)
+      .map(({ product }) => product)
       .slice(0, 20);
   }, [products, productSearch]);
 
@@ -325,6 +348,34 @@ const NewSale = () => {
     setInstallmentSchedule([]);
 
     setErrorMsg('');
+  };
+
+  const handlePickerKeyDown = (event, items, activeIndex, setActiveIndex, onSelect) => {
+    if (event.key === 'Escape') {
+      setShowCustomerDropdown(false);
+      setShowProductDropdown(false);
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!items.length) return;
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      let nextIndex = activeIndex;
+      for (let attempt = 0; attempt < items.length; attempt += 1) {
+        nextIndex = (nextIndex + direction + items.length) % items.length;
+        if (Number(items[nextIndex]?.quantity ?? 1) > 0 || !('quantity' in (items[nextIndex] || {}))) break;
+      }
+      setActiveIndex(nextIndex);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (!items.length) return;
+      const item = items[activeIndex] || items[0];
+      if (item && (!('quantity' in item) || Number(item.quantity ?? 0) > 0)) {
+        onSelect(item);
+      }
+    }
   };
 
   const clearCustomer = () => {
@@ -860,10 +911,11 @@ const NewSale = () => {
   const handleQuantityChange = (
     value
   ) => {
+    const stockLimit = Math.max(1, Number(selectedProduct?.quantity ?? 1));
     setQuantity(
       Math.max(
         1,
-        Number(value || 1)
+        Math.min(stockLimit, Math.floor(Number(value || 1)))
       )
     );
 
@@ -1318,10 +1370,15 @@ if (invalidDate) {
     try {
       setIsSubmitting(true);
 
-      await api.post(
+      const response = await api.post(
         '/sales',
         payload
       );
+
+      const createdSale = response.data?.data?.sale || {};
+      if (createdSale._id) {
+        setPrintPopup({ kind: 'invoice', recordId: createdSale._id });
+      }
 
       toast.success(
         isInstallmentSale
@@ -1329,11 +1386,7 @@ if (invalidDate) {
           : 'Cash sale created successfully.'
       );
 
-      navigate(
-        isInstallmentSale
-          ? '/installments'
-          : '/sales'
-      );
+
     } catch (error) {
       console.error(
         'Create sale error:',
@@ -1381,13 +1434,13 @@ if (invalidDate) {
   ========================================================= */
 
   return (
-    <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
+    <div className={`space-y-4 xl:space-y-3 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)] ${isInstallmentSale ? 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col' : ''}`}>
 
       {/* =====================================================
           DARK HERO HEADER
       ====================================================== */}
 
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white no-print">
+      <section className={`relative shrink-0 overflow-hidden rounded-3xl bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] shadow-2xl shadow-blue-950/20 text-white no-print ${isInstallmentSale ? 'xl:rounded-2xl' : ''}`}>
 
         <div className="pointer-events-none absolute -top-32 -left-20 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl animate-pulse" />
 
@@ -1502,14 +1555,14 @@ if (invalidDate) {
 
       <form
         onSubmit={handleSubmit}
-        className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]"
+        className={`grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px] ${isInstallmentSale ? 'xl:min-h-0 xl:flex-1 xl:overflow-hidden xl:gap-4' : ''}`}
       >
 
         {/* ===================================================
             LEFT COLUMN
         ==================================================== */}
 
-        <div className="space-y-6">
+        <div className={`space-y-6 ${isInstallmentSale ? 'xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1' : ''}`}>
 
           {/* =================================================
               INVOICE NUMBER
@@ -1611,12 +1664,16 @@ if (invalidDate) {
                         e.target.value
                       )
                     );
+                    setActiveCustomerIndex(0);
 
                     setShowCustomerDropdown(
                       Boolean(e.target.value.trim())
                     );
                   }}
-                  onFocus={() => setShowCustomerDropdown(false)}
+                  onFocus={() => setShowCustomerDropdown(Boolean(customerSearch.trim()))}
+                  autoComplete="off"
+                  aria-label="Search customers by name, phone, CNIC, or customer ID"
+                  onKeyDown={(e) => handlePickerKeyDown(e, filteredCustomers, activeCustomerIndex, setActiveCustomerIndex, handleSelectCustomer)}
                   placeholder="Search by name, phone or CNIC (dashes auto)..."
                   className="w-full h-11 border border-slate-200 rounded-xl pl-10 pr-10 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
@@ -1648,7 +1705,7 @@ if (invalidDate) {
                     ) : (
 
                       filteredCustomers.map(
-                        (customer) => (
+                        (customer, index) => (
                           <button
                             key={
                               customer?._id ||
@@ -1663,7 +1720,7 @@ if (invalidDate) {
                                 customer
                               )
                             }
-                            className="flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 border border-transparent hover:border-slate-200"
+                            className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition border ${index === activeCustomerIndex ? 'bg-indigo-50 border-indigo-200' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
                           >
 
                             <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -1679,16 +1736,13 @@ if (invalidDate) {
                                   'Unnamed Customer'}
                               </p>
 
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                Phone:{' '}
-                                {customer?.phone ||
-                                  customer?.mobile ||
-                                  customer?.mobileNumber ||
-                                  '—'}{' '}
-                                • CNIC:{' '}
-                                {customer?.cnic ||
-                                  '—'}
-                              </p>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                                <span>Mobile: {customer?.phone || customer?.mobile || customer?.mobileNumber || '—'}</span>
+                                <span>CNIC: {customer?.cnic || customer?.cnicNumber || '—'}</span>
+                                {customer?.fatherName && <span>Father: {customer.fatherName}</span>}
+                                {customer?.customerId && <span>ID: {customer.customerId}</span>}
+                                {customer?.city && <span>City: {customer.city}</span>}
+                              </div>
 
                             </div>
 
@@ -1716,6 +1770,10 @@ if (invalidDate) {
 
                   <p className="font-black text-xs text-slate-900 mt-0.5">
                     {customerName}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    CNIC: {selectedCustomer?.cnic || selectedCustomer?.cnicNumber || '—'}
+                    {selectedCustomer?.fatherName ? ` · Father: ${selectedCustomer.fatherName}` : ''}
                   </p>
 
                 </div>
@@ -1793,13 +1851,17 @@ if (invalidDate) {
                     setProductSearch(
                       e.target.value
                     );
+                    setActiveProductIndex(0);
 
                     setShowProductDropdown(
                       Boolean(e.target.value.trim())
                     );
                   }}
-                  onFocus={() => setShowProductDropdown(false)}
-                  placeholder="Search inventory product by name, brand or SKU..."
+                  onFocus={() => setShowProductDropdown(Boolean(productSearch.trim()))}
+                  autoComplete="off"
+                  aria-label="Search products by name, brand, model, SKU, or serial number"
+                  onKeyDown={(e) => handlePickerKeyDown(e, filteredProducts, activeProductIndex, setActiveProductIndex, handleSelectProduct)}
+                  placeholder="Search by product, brand, model, SKU, IMEI or serial..."
                   className="w-full h-11 border border-slate-200 rounded-xl pl-10 pr-10 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
 
@@ -1830,7 +1892,7 @@ if (invalidDate) {
                     ) : (
 
                       filteredProducts.map(
-                        (product) => (
+                        (product, index) => (
                           <button
                             key={
                               product?._id ||
@@ -1845,7 +1907,8 @@ if (invalidDate) {
                                 product
                               )
                             }
-                            className="flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 border border-transparent hover:border-slate-200"
+                            disabled={Number(product?.quantity ?? 0) <= 0}
+                            className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition border disabled:cursor-not-allowed disabled:opacity-60 ${index === activeProductIndex ? 'bg-violet-50 border-violet-200' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
                           >
 
                             <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
@@ -1860,20 +1923,25 @@ if (invalidDate) {
                                   product?.title ||
                                   'Unnamed Item'}
                               </p>
-
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                SKU:{' '}
-                                {product?.sku ||
-                                  '—'}{' '}
-                                • Price:{' '}
-                                {settings?.currency ||
-                                  'PKR'}{' '}
-                                {formatMoney(
-                                  product?.salePrice ||
-                                    product?.sellingPrice ||
-                                    0
-                                )}
+                              <p className="text-[10px] font-semibold text-slate-600 mt-0.5 truncate">
+                                {[product?.brand, product?.model, product?.category].filter(Boolean).join(' · ')}
                               </p>
+
+                              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                                <span>Brand: {product?.brand || '—'}</span>
+                                <span>Model: {product?.model || '—'}</span>
+                                <span>SKU: {product?.sku || product?.productCode || product?.code || '—'}</span>
+                                <span className={`rounded-full px-2 py-0.5 font-bold ${Number(product?.quantity ?? 0) <= 0 ? 'bg-rose-100 text-rose-700' : Number(product?.quantity ?? 0) <= Number(product?.minStockLevel ?? 5) ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                  {Number(product?.quantity ?? 0) <= 0 ? 'Out of stock' : Number(product?.quantity ?? 0) <= Number(product?.minStockLevel ?? 5) ? `Low stock · ${Number(product.quantity)} left` : `In stock · ${Number(product.quantity)} available`}
+                                </span>
+                                {product?.imei && <span>IMEI: {product.imei}</span>}
+                                {product?.serialNumber && <span>Serial: {product.serialNumber}</span>}
+                                {product?.chassisNumber && <span>Chassis: {product.chassisNumber}</span>}
+                                <span className="font-bold text-violet-700">
+                                  Price: {settings?.currency || 'PKR'} {formatMoney(product?.salePrice ?? product?.sellingPrice ?? 0)}
+                                </span>
+                                {product?.warrantyPeriod && <span>Warranty: {product.warrantyPeriod}</span>}
+                              </div>
 
                             </div>
 
@@ -1901,6 +1969,18 @@ if (invalidDate) {
 
                   <p className="font-black text-xs text-slate-900 mt-0.5">
                     {productName}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    {[selectedProduct?.brand, selectedProduct?.model, selectedProduct?.category, selectedProduct?.sku ? `SKU ${selectedProduct.sku}` : ''].filter(Boolean).join(' · ')}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Available stock: {Number(selectedProduct?.quantity ?? 0)}
+                    {selectedProduct?.warrantyPeriod ? ` · Warranty: ${selectedProduct.warrantyPeriod}` : ''}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    {selectedProduct?.imei ? `IMEI: ${selectedProduct.imei}` : ''}
+                    {selectedProduct?.serialNumber ? `${selectedProduct?.imei ? ' · ' : ''}Serial: ${selectedProduct.serialNumber}` : ''}
+                    {selectedProduct?.chassisNumber ? `${selectedProduct?.imei || selectedProduct?.serialNumber ? ' · ' : ''}Chassis: ${selectedProduct.chassisNumber}` : ''}
                   </p>
 
                 </div>
@@ -2000,6 +2080,7 @@ if (invalidDate) {
                   <input
                     type="number"
                     min="1"
+                    max={Math.max(1, Number(selectedProduct?.quantity ?? 1))}
                     value={quantity}
                     onChange={(e) =>
                       handleQuantityChange(
@@ -2017,7 +2098,8 @@ if (invalidDate) {
                           1
                       )
                     }
-                    className="w-10 h-full flex items-center justify-center hover:bg-slate-200/70 transition-colors text-slate-600"
+                    disabled={Number(quantity) >= Number(selectedProduct?.quantity ?? 1)}
+                    className="w-10 h-full flex items-center justify-center hover:bg-slate-200/70 transition-colors text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -2576,9 +2658,9 @@ if (invalidDate) {
             RIGHT COLUMN
         ====================================================== */}
 
-        <div className="space-y-6">
+        <div className={`space-y-6 ${isInstallmentSale ? 'xl:min-h-0' : ''}`}>
 
-          <div className="bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-6 text-white shadow-2xl shadow-blue-950/30 space-y-6 sticky top-24">
+          <div className={`bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-6 text-white shadow-2xl shadow-blue-950/30 space-y-6 ${isInstallmentSale ? 'xl:rounded-2xl xl:p-4 xl:space-y-4' : 'sticky top-24'}`}>
 
             {/* HEADER */}
 
@@ -2792,6 +2874,14 @@ if (invalidDate) {
 
       </form>
 
+      <ExistingPrintPopup
+        kind={printPopup?.kind}
+        recordId={printPopup?.recordId}
+        onClose={() => {
+          setPrintPopup(null);
+          navigate(isInstallmentSale ? '/installments' : '/sales');
+        }}
+      />
     </div>
   );
 };

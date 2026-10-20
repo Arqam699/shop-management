@@ -43,6 +43,18 @@ const Expenses = () => {
 
   // Add Expense Modal states
   const [showAddModal, setShowAddModal] = useState(false);
+  useEffect(() => {
+    if (!showAddModal) return undefined;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusFrame = window.requestAnimationFrame(() => { document.querySelector('[aria-labelledby="expense-modal-title"] [name="title"]')?.focus(); });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [showAddModal]);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -559,11 +571,15 @@ const Expenses = () => {
       ====================================================== */}
       {showAddModal &&
         createPortal(
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]">
-          <div className="flex min-h-full items-center justify-center p-4">
+          <div role="presentation" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowAddModal(false); }
+          if (event.key === 'Tab') { const dialog = event.currentTarget.querySelector('[role="dialog"]'); const items = Array.from(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') || []); const first = items[0]; const last = items[items.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } } }} className="fixed inset-0 z-[1000] overflow-y-auto bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAddModal(false); }}>
+          <div className="flex min-h-full items-center justify-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAddModal(false); }}>
           <form
             onSubmit={handleFormSubmit}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col shadow-2xl overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="expense-modal-title"
+            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
             <div className="relative shrink-0 bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
@@ -572,7 +588,7 @@ const Expenses = () => {
                   <Wallet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black tracking-tight text-white">
+                  <h3 id="expense-modal-title" className="text-base font-black tracking-tight text-white">
                     Log Daily Expense
                   </h3>
                   <p className="text-xs text-slate-400 font-medium">Record shop expense voucher</p>
@@ -582,6 +598,7 @@ const Expenses = () => {
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
+                aria-label="Close expense form"
                 className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all"
               >
                 <X className="w-4 h-4" />
@@ -589,7 +606,7 @@ const Expenses = () => {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-4 overflow-y-auto">
+            <div className="min-h-0 flex-1 p-5 sm:p-6 space-y-4 overflow-y-auto overscroll-contain">
               {modalError && (
                 <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />

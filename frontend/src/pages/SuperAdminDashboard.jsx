@@ -3603,9 +3603,9 @@ const SuperAdminDashboard = () => {
 
       {createShopModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
 
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
 
@@ -3613,7 +3613,7 @@ const SuperAdminDashboard = () => {
                 Create New Tenant Shop
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={closeCreateShopModal}
                 className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300"
               >
@@ -3892,9 +3892,9 @@ const SuperAdminDashboard = () => {
 
       {chargeModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
 
             <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
 
@@ -3910,7 +3910,7 @@ const SuperAdminDashboard = () => {
 
               </div>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={closeChargeModal}
                 className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
@@ -3988,9 +3988,9 @@ const SuperAdminDashboard = () => {
 
       {renewModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
 
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
 
@@ -3999,7 +3999,7 @@ const SuperAdminDashboard = () => {
                 {renewModal.shopName}
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={closeRenewModal}
                 className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300"
               >
@@ -4129,9 +4129,9 @@ const SuperAdminDashboard = () => {
 
       {historyModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
 
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
 
@@ -4140,7 +4140,7 @@ const SuperAdminDashboard = () => {
                 {historyModal.shopName}
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={
                   closeHistoryModal
                 }
@@ -4260,9 +4260,9 @@ const SuperAdminDashboard = () => {
 
       {passwordHistoryModal.open && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
 
             {/* HEADER */}
 
@@ -4295,7 +4295,7 @@ const SuperAdminDashboard = () => {
 
               </div>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={
                   closePasswordHistoryModal
@@ -4604,9 +4604,9 @@ const SuperAdminDashboard = () => {
 
       {passwordModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
 
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
 
@@ -4615,7 +4615,7 @@ const SuperAdminDashboard = () => {
                 {passwordModal.shopName}
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={
                   closePasswordModal
                 }
@@ -4789,9 +4789,9 @@ const SuperAdminDashboard = () => {
 
       {deleteModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-rose-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-rose-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
 
             <div className="p-5 sm:p-6 bg-rose-600 text-white flex justify-between items-center shrink-0">
 
@@ -4799,7 +4799,7 @@ const SuperAdminDashboard = () => {
                 Permanently Delete Shop
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={
                   closeDeleteModal
                 }
@@ -4951,9 +4951,9 @@ const SuperAdminDashboard = () => {
 
       {payModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
 
             <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
 
@@ -4970,7 +4970,7 @@ const SuperAdminDashboard = () => {
 
               </div>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={closePayModal}
                 className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
@@ -5104,9 +5104,9 @@ const SuperAdminDashboard = () => {
 
       {paymentHistoryShop && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
 
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
 
@@ -5115,7 +5115,7 @@ const SuperAdminDashboard = () => {
                 {paymentHistoryShop.shopName}
               </h3>
 
-              <button
+              <button data-dialog-close
                 onClick={() =>
                   setPaymentHistoryModal(
                     null
@@ -5256,9 +5256,9 @@ const SuperAdminDashboard = () => {
 
       {notesModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
 
             <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
 
@@ -5275,7 +5275,7 @@ const SuperAdminDashboard = () => {
 
               </div>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={closeNotesModal}
                 className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"
@@ -5340,9 +5340,9 @@ const SuperAdminDashboard = () => {
 
       {announcementModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
 
             <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
 
@@ -5353,7 +5353,7 @@ const SuperAdminDashboard = () => {
                   : 'New Notice'}
               </h3>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={
                   closeAnnouncementModal
@@ -5465,9 +5465,9 @@ const SuperAdminDashboard = () => {
 
       {editShopModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); event.currentTarget.querySelector('[data-dialog-close]')?.click(); } }}>
 
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Super admin dialog" style={{ maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
 
             <div className="flex items-center justify-between bg-slate-900 p-5 text-white">
 
@@ -5483,7 +5483,7 @@ const SuperAdminDashboard = () => {
 
               </div>
 
-              <button
+              <button data-dialog-close
                 type="button"
                 onClick={closeEditShopModal}
                 className="rounded-xl bg-white/10 p-1.5 text-slate-300 hover:bg-white/20"

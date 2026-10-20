@@ -1,6 +1,7 @@
 const express = require('express');
 
 const router = express.Router();
+const { adminLoginLimiter } = require('../middleware/rateLimiters');
 
 const {
   loginAdmin,
@@ -19,6 +20,7 @@ const {
 
 router.post(
   '/login',
+  adminLoginLimiter,
   loginAdmin
 );
 

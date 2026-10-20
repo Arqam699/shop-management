@@ -231,6 +231,17 @@ const Sales = () => {
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
 
+  const formatSaleTime = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    const date = new Date(dateValue);
+    return Number.isNaN(date.getTime())
+      ? 'N/A'
+      : date.toLocaleTimeString('en-PK', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+  };
+
   // =====================================================
   // CASH SALES TABLE COLUMNS
   // =====================================================
@@ -327,14 +338,23 @@ const Sales = () => {
       header: 'Date',
       className:
         'px-5 py-3.5 text-slate-500 font-semibold whitespace-nowrap',
-      render: (sale) =>
-        new Date(
-          sale.saleDate || sale.createdAt
-        ).toLocaleDateString('en-PK', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-        }),
+      render: (sale) => {
+        const saleDate = sale.saleDate || sale.createdAt;
+        return (
+          <div className="whitespace-nowrap">
+            <p className="font-semibold text-slate-700">
+              {new Date(saleDate).toLocaleDateString('en-PK', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </p>
+            <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+              {formatSaleTime(saleDate)}
+            </p>
+          </div>
+        );
+      },
     },
     {
       key: 'actions',

@@ -26,6 +26,7 @@ import {
 
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
+import ExistingPrintPopup from '../components/ExistingPrintPopup';
 
 const InstallmentPlanDetails = () => {
   const { id } = useParams();
@@ -34,6 +35,7 @@ const InstallmentPlanDetails = () => {
   const [plan, setPlan] = useState(null);
   const [installments, setInstallments] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [printPopup, setPrintPopup] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,6 +120,18 @@ const InstallmentPlanDetails = () => {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
+    });
+  };
+
+  const formatTime = (date) => {
+    if (!date) return 'N/A';
+
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return 'N/A';
+
+    return parsed.toLocaleTimeString('en-PK', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -1042,6 +1056,11 @@ const InstallmentPlanDetails = () => {
           }
         }
 
+        const paymentId = response.data?.payment?._id;
+        if (paymentId) {
+          setPrintPopup({ kind: 'payment', recordId: paymentId });
+        }
+
         closePaymentModal(true);
 
         await fetchPlan();
@@ -1461,9 +1480,10 @@ Thank you - ${
               </span>
 
               <p className="font-bold text-slate-800 mt-0.5 truncate">
-                {formatDate(
-                  planStartDate
-                )}
+                {formatDate(planStartDate)}
+              </p>
+              <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+                {formatTime(planStartDate)}
               </p>
             </div>
 
@@ -2142,9 +2162,9 @@ Thank you - ${
 
       {showPaymentModal &&
         selectedInstallment && (
-          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-[pageEnter_0.25s_ease-out]">
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center overflow-y-auto p-3 sm:p-4 animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closePaymentModal(); } }}>
 
-            <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 max-h-[94vh] overflow-y-auto">
+            <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Record installment payment">
 
               <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex items-center justify-between">
 
@@ -3065,7 +3085,13 @@ Thank you - ${
           }
         }
       `}</style>
-    </div>
+
+          <ExistingPrintPopup
+        kind={printPopup?.kind}
+        recordId={printPopup?.recordId}
+        onClose={() => setPrintPopup(null)}
+      />
+      </div>
   );
 };
 

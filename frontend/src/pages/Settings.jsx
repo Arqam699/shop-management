@@ -731,11 +731,11 @@ const SettingsPage = () => {
       ====================================================== */}
 
       {showPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out]" onKeyDown={(event) => { if (event.key === 'Escape' && !isVerifying) { event.stopPropagation(); closePasswordModal(); } }}>
 
           <form
             onSubmit={handleVerifyPasswordSubmit}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden"
+            role="dialog" aria-modal="true" aria-label="Confirm admin password" className="bg-white border border-slate-200 rounded-3xl w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto shadow-2xl overflow-x-hidden"
           >
 
             {/* MODAL HEADER */}

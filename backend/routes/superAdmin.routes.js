@@ -1,6 +1,7 @@
 const express = require('express');
 
 const router = express.Router();
+const { superAdminLoginLimiter } = require('../middleware/rateLimiters');
 
 
 // =====================================================
@@ -50,6 +51,7 @@ const {
 
 router.post(
   '/login',
+  superAdminLoginLimiter,
   loginSuperAdmin
 );
 
