@@ -869,12 +869,6 @@ const navItems = [
   },
 
   {
-    name: 'Returns',
-    path: '/returns',
-    icon: RefreshCw,
-  },
-
-  {
     name: 'Expenses',
     path: '/expenses',
     icon: Wallet,
@@ -960,7 +954,6 @@ const PAGE_TITLES = {
   '/installments': 'Installment Sales',
   '/payments': 'Payments',
   '/invoices': 'Invoices',
-  '/returns': 'Returns',
   '/expenses': 'Expenses',
   '/audits': 'Yearly Audits',
   '/backup': 'Backup',

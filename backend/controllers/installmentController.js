@@ -6,6 +6,7 @@ const {
 const Installment = require('../models/Installment');
 const Payment = require('../models/Payment');
 const Sale = require('../models/Sale');
+const Return = require('../models/Return');
 
 // ============================================================
 // PAYMENT ID
@@ -299,11 +300,30 @@ const getInstallmentPlans = async (
       await applyPaging(buildPlansQuery())
         .lean();
 
+    const saleIds = refreshedPlans
+      .map((plan) => plan.sale?._id)
+      .filter(Boolean);
+    const returnRows = saleIds.length
+      ? await Return.find({ shopId, sale: { $in: saleIds } })
+          .populate('product', 'name brand model sku')
+          .sort({ returnDate: -1, createdAt: -1 })
+          .lean()
+      : [];
+    const returnsBySale = new Map();
+    for (const returnRow of returnRows) {
+      const saleKey = String(returnRow.sale);
+      if (!returnsBySale.has(saleKey)) returnsBySale.set(saleKey, []);
+      returnsBySale.get(saleKey).push(returnRow);
+    }
+
     // ========================================================
     // CORRECT PLAN FINANCIALS
     // ========================================================
 
     for (const plan of refreshedPlans) {
+      plan.returns = returnsBySale.get(String(plan.sale?._id)) || [];
+      plan.completedByReturn = plan.status === 'Completed' && plan.returns.length > 0;
+
       const installments =
         await Installment.find({
           shopId,
@@ -743,6 +763,11 @@ const getInstallmentPlanById = async (
           createdAt: -1
         });
 
+    const returns = await Return.find({ shopId, sale: refreshedPlan.sale?._id })
+      .populate('product', 'name brand model sku')
+      .sort({ returnDate: -1, createdAt: -1 })
+      .lean();
+
     return res.status(200).json({
       success: true,
 
@@ -752,7 +777,8 @@ const getInstallmentPlanById = async (
 
         installments,
 
-        payments
+        payments,
+        returns,
       }
     });
 

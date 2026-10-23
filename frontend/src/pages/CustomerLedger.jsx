@@ -1147,9 +1147,17 @@ const getPaymentScore = (customer) => {
           try {
             const response = await api.get(`/installments/${planId}`);
             if (response.data?.success) {
+              const details = response.data.data || {};
+              const detailedPlan = details.plan || {};
+              const planReturns = details.returns || [];
               return {
                 ...plan,
-                ...response.data.data,
+                ...detailedPlan,
+                plan: detailedPlan,
+                installments: details.installments || [],
+                payments: details.payments || [],
+                returns: planReturns,
+                completedByReturn: detailedPlan.status === 'Completed' && planReturns.length > 0,
               };
             }
           } catch (error) {
@@ -1895,15 +1903,6 @@ const getPaymentScore = (customer) => {
               <p className="text-lg font-black text-rose-600 mt-1 print:text-[11px]">{formatMoney(ledger.outstanding)}</p>
               <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">Payable Balance</p>
             </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm print-summary-card">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 print:text-[7px]">Total Returns / Refunds</span>
-                <ArrowUpCircle className="w-4 h-4 text-amber-500 no-print" />
-              </div>
-              <p className="text-lg font-black text-amber-600 mt-1 print:text-[11px]">{formatMoney(ledger.totalReturns)}</p>
-              <p className="text-[10px] text-slate-400 font-semibold print:text-[6.5px]">{ledger.returns.length} Returned Items</p>
-            </div>
           </div>
 
           {/* 4. COMPLETE SALES HISTORY */}
@@ -1993,6 +1992,10 @@ const getPaymentScore = (customer) => {
                   const remaining = getPlanRemaining(plan);
                   const status = getPlanStatus(plan);
                   const schedule = plan?.schedule || plan?.installments || plan?.paymentSchedule || [];
+                  const planReturns = Array.isArray(plan?.returns) ? plan.returns : [];
+                  const completedByReturn =
+                    (plan?.status === 'Completed' || plan?.plan?.status === 'Completed') &&
+                    (plan?.completedByReturn || planReturns.length > 0);
 
                   // Get linked invoice
                   const planInvoice = firstValue(
@@ -2019,8 +2022,7 @@ const getPaymentScore = (customer) => {
                           Total: <strong>{formatMoney(total)}</strong> • Paid: <strong className="text-emerald-600">{formatMoney(paid)}</strong> • Remaining: <strong className="text-rose-600">{formatMoney(remaining)}</strong>
                         </div>
                       </div>
-
-                      {Array.isArray(schedule) && schedule.length > 0 ? (
+{Array.isArray(schedule) && schedule.length > 0 ? (
                         <div className="overflow-x-auto border border-slate-200 rounded-xl print:rounded-none">
                           <table className="w-full text-left text-xs print-table">
                             <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200 print:bg-slate-100 print:text-[7px]">
@@ -2112,43 +2114,7 @@ const getPaymentScore = (customer) => {
               </div>
             )}
           </section>
-
-          {/* 7. RETURNS HISTORY */}
-          {ledger.returns.length > 0 && (
-            <section className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm ledger-section">
-              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between print:p-2 print:border-b-2 print:border-slate-800">
-                <h3 className="font-black text-slate-900 text-sm sm:text-base print:text-[10px]">4. Product Return / Refund Records</h3>
-                <span className="text-xs font-black text-rose-600 print:text-[8px]">{ledger.returns.length} Returns</span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs print-table">
-                  <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-200 print:bg-slate-100 print:text-[7px]">
-                    <tr>
-                      <th className="px-4 py-2">Date</th>
-                      <th className="px-4 py-2">Invoice #</th>
-                      <th className="px-4 py-2">Product</th>
-                      <th className="px-4 py-2">Reason</th>
-                      <th className="px-4 py-2 text-right">Refund Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {ledger.returns.map((ret, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-1.5 text-slate-600">{formatDate(ret?.returnDate || ret?.date)}</td>
-                        <td className="px-4 py-1.5 font-bold">{getReturnInvoiceNumber(ret)}</td>
-                        <td className="px-4 py-1.5 font-bold text-slate-800">{firstValue(ret?.product?.name, ret?.productName, '—')}</td>
-                        <td className="px-4 py-1.5 text-slate-400">{ret?.reason || '—'}</td>
-                        <td className="px-4 py-1.5 text-right font-black text-rose-600">-{formatMoney(getReturnAmount(ret))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {/* 8. FINAL OUTSTANDING BALANCE SUMMARY CARD */}
+          {/* FINAL OUTSTANDING BALANCE SUMMARY CARD */}
           <div className="bg-white border border-amber-300 rounded-3xl p-5 sm:p-6 shadow-sm final-balance">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

@@ -3,7 +3,6 @@ const Product = require('../models/Product');
 const Payment = require('../models/Payment');
 const InstallmentPlan = require('../models/InstallmentPlan');
 const Customer = require('../models/Customer');
-const Return = require('../models/Return');
 const Installment = require('../models/Installment');
 const Expense = require('../models/Expense');
 
@@ -12,32 +11,22 @@ const Expense = require('../models/Expense');
 // HELPER: CALCULATE DATE BOUNDARIES
 // ============================================================
 const getDateRanges = () => {
-  const today = new Date();
-
-  today.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  const startOfWeek =
-    new Date(today);
-
-  startOfWeek.setDate(
-    today.getDate() -
-    today.getDay()
-  );
-
-  const startOfMonth =
-    new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      1
-    );
+  // Store dates as UTC instants, but calculate the calendar boundaries in
+  // Pakistan Standard Time (UTC+05:00) regardless of the server's timezone.
+  const nowInPakistan = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  const year = nowInPakistan.getUTCFullYear();
+  const month = nowInPakistan.getUTCMonth();
+  const day = nowInPakistan.getUTCDate();
+  const pakistanMidnight = (y, m, d) => new Date(Date.UTC(y, m, d) - 5 * 60 * 60 * 1000);
+  const today = pakistanMidnight(year, month, day);
+  const tomorrow = pakistanMidnight(year, month, day + 1);
+  const startOfWeek = pakistanMidnight(year, month, day - nowInPakistan.getUTCDay());
+  const startOfMonth = pakistanMidnight(year, month, 1);
 
   return {
     today,
+    tomorrow,
+    endOfToday: new Date(tomorrow.getTime() - 1),
     startOfWeek,
     startOfMonth,
   };
@@ -61,6 +50,8 @@ const getDashboardStats = async (
 
     const {
       today,
+      tomorrow,
+      endOfToday,
       startOfWeek,
       startOfMonth,
     } = getDateRanges();
@@ -79,26 +70,9 @@ const getDashboardStats = async (
     // ========================================================
 
     const [
-      totalProducts,
-      lowStockCount,
-      outOfStockCount,
       products,
       totalCustomers,
     ] = await Promise.all([
-      Product.countDocuments({
-        shopId,
-      }),
-
-      Product.countDocuments({
-        shopId,
-        status: 'Low Stock',
-      }),
-
-      Product.countDocuments({
-        shopId,
-        status: 'Out of Stock',
-      }),
-
       Product.find({
         shopId,
       })
@@ -111,6 +85,16 @@ const getDashboardStats = async (
         shopId,
       }),
     ]);
+
+    const totalProducts = products.length;
+    const lowStockCount = products.reduce(
+      (count, product) => count + (product.status === 'Low Stock' ? 1 : 0),
+      0
+    );
+    const outOfStockCount = products.reduce(
+      (count, product) => count + (product.status === 'Out of Stock' ? 1 : 0),
+      0
+    );
 
 
     const totalStockQuantity =
@@ -155,7 +139,6 @@ const getDashboardStats = async (
       activeFinancingList,
       paymentsList,
       expensesList,
-      returns,
     ] = await Promise.all([
 
       // ------------------------------------------------------
@@ -217,14 +200,6 @@ const getDashboardStats = async (
         .lean(),
 
 
-      // ------------------------------------------------------
-      // RETURNS
-      // ------------------------------------------------------
-      Return.find({
-        shopId,
-      })
-        .select('refundAmount')
-        .lean(),
     ]);
 
 
@@ -319,25 +294,9 @@ const getDashboardStats = async (
     // 30 DAYS DATE
     // --------------------------------------------------------
 
-    const inventory30DaysStart =
-      new Date();
-
-    inventory30DaysStart.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
-    inventory30DaysStart.setDate(
-      inventory30DaysStart.getDate() -
-      30
-    );
-
-    const inventory7DaysStart = new Date(inventory30DaysStart);
-    inventory7DaysStart.setDate(inventory7DaysStart.getDate() + 23);
-    const inventoryPrevious30DaysStart = new Date(inventory30DaysStart);
-    inventoryPrevious30DaysStart.setDate(inventoryPrevious30DaysStart.getDate() - 30);
+    const inventory30DaysStart = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const inventory7DaysStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const inventoryPrevious30DaysStart = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
 
 
     // --------------------------------------------------------
@@ -847,17 +806,6 @@ const getDashboardStats = async (
     // 4. URGENT DUE / OVERDUE INSTALLMENTS
     // ========================================================
 
-    const endOfToday =
-      new Date();
-
-    endOfToday.setHours(
-      23,
-      59,
-      59,
-      999
-    );
-
-
     const urgentInstallments =
       await Installment.find({
 
@@ -909,56 +857,9 @@ const getDashboardStats = async (
     // ========================================================
 
     const [
-      todaySalesList,
-      weekSalesList,
-      monthSalesList,
       activePlans,
       overduePlans,
-      todayPayments,
     ] = await Promise.all([
-
-      // ------------------------------------------------------
-      // TODAY SALES
-      // ------------------------------------------------------
-      Sale.find({
-        shopId,
-        saleDate: {
-          $gte:
-            today,
-        },
-      })
-        .select('finalTotal')
-        .lean(),
-
-
-      // ------------------------------------------------------
-      // WEEK SALES
-      // ------------------------------------------------------
-      Sale.find({
-        shopId,
-        saleDate: {
-          $gte:
-            startOfWeek,
-        },
-      })
-        .select('finalTotal')
-        .lean(),
-
-
-      // ------------------------------------------------------
-      // MONTH SALES
-      // ------------------------------------------------------
-      Sale.find({
-        shopId,
-        saleDate: {
-          $gte:
-            startOfMonth,
-        },
-      })
-        .select('finalTotal')
-        .lean(),
-
-
       // ------------------------------------------------------
       // ACTIVE PLANS
       // ------------------------------------------------------
@@ -977,23 +878,6 @@ const getDashboardStats = async (
       }),
 
 
-      // ------------------------------------------------------
-      // TODAY PAYMENTS
-      // ------------------------------------------------------
-      Payment.find({
-        shopId,
-
-        isArchived: {
-          $ne: true,
-        },
-
-        paymentDate: {
-          $gte:
-            today,
-        },
-      })
-        .select('amount')
-        .lean(),
     ]);
 
 
@@ -1020,58 +904,30 @@ const getDashboardStats = async (
     // TODAY SALES
     // ========================================================
 
-    const todaySalesVal =
-      todaySalesList.reduce(
-        (
-          sum,
-          sale
-        ) =>
-          sum +
-          (
-            sale.finalTotal ||
-            0
-          ),
-        0
-      );
+    let todaySalesVal = 0;
+    let weekSalesVal = 0;
+    let monthSalesVal = 0;
+    let todayCollectedPayments = 0;
+
+    for (const sale of salesList) {
+      const saleDate = new Date(sale.saleDate);
+      const amount = Number(sale.finalTotal || 0);
+      if (saleDate >= today && saleDate < tomorrow) todaySalesVal += amount;
+      if (saleDate >= startOfWeek && saleDate < tomorrow) weekSalesVal += amount;
+      if (saleDate >= startOfMonth && saleDate < tomorrow) monthSalesVal += amount;
+    }
+
+    for (const payment of paymentsList) {
+      const paymentDate = new Date(payment.paymentDate);
+      if (paymentDate >= today && paymentDate < tomorrow) {
+        todayCollectedPayments += Number(payment.amount || 0);
+      }
+    }
 
 
     // ========================================================
     // WEEK SALES
     // ========================================================
-
-    const weekSalesVal =
-      weekSalesList.reduce(
-        (
-          sum,
-          sale
-        ) =>
-          sum +
-          (
-            sale.finalTotal ||
-            0
-          ),
-        0
-      );
-
-
-    // ========================================================
-    // MONTH SALES
-    // ========================================================
-
-    const monthSalesVal =
-      monthSalesList.reduce(
-        (
-          sum,
-          sale
-        ) =>
-          sum +
-          (
-            sale.finalTotal ||
-            0
-          ),
-        0
-      );
-
 
     // ========================================================
     // 7. INSTALLMENT PLAN COUNTS
@@ -1095,21 +951,6 @@ const getDashboardStats = async (
     // ========================================================
     // TODAY'S COLLECTED PAYMENTS
     // ========================================================
-
-    const todayCollectedPayments =
-      todayPayments.reduce(
-        (
-          sum,
-          payment
-        ) =>
-          sum +
-          (
-            payment.amount ||
-            0
-          ),
-        0
-      );
-
 
     // ========================================================
     // 8. PROFIT CALCULATOR
@@ -1165,41 +1006,11 @@ const getDashboardStats = async (
     }
 
 
-    // ========================================================
-    // RETURNS
-    // ========================================================
-
-    const totalRefunded =
-      returns.reduce(
-        (
-          sum,
-          returnRecord
-        ) =>
-          sum +
-          (
-            returnRecord.refundAmount ||
-            0
-          ),
-        0
-      );
-
-
-    // --------------------------------------------------------
-    // Revenue after refunds
-    // --------------------------------------------------------
-
-    const finalAdjustedRevenue =
-      totalRevenue -
-      totalRefunded;
-
-
     // --------------------------------------------------------
     // Gross Profit
     // --------------------------------------------------------
 
-    const grossProfit =
-      finalAdjustedRevenue -
-      totalCostOfSold;
+    const grossProfit = totalRevenue - totalCostOfSold;
 
 
     // ========================================================
@@ -1334,7 +1145,7 @@ const getDashboardStats = async (
         profit: {
 
           totalRevenue:
-            finalAdjustedRevenue,
+            totalRevenue,
 
           totalCost:
             totalCostOfSold,
@@ -1466,32 +1277,14 @@ const getIndexRecord = async (
     // MONTH DATE RANGE
     // ========================================================
 
-    const startDate =
-      new Date(
-        Date.UTC(
-          year,
-          monthNumber - 1,
-          1,
-          0,
-          0,
-          0,
-          0
-        )
-      );
+    const startDate = new Date(
+      Date.UTC(year, monthNumber - 1, 1) - 5 * 60 * 60 * 1000
+    );
 
 
-    const endDate =
-      new Date(
-        Date.UTC(
-          year,
-          monthNumber,
-          1,
-          0,
-          0,
-          0,
-          0
-        )
-      );
+    const endDate = new Date(
+      Date.UTC(year, monthNumber, 1) - 5 * 60 * 60 * 1000
+    );
 
 
     // ========================================================

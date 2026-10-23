@@ -1,5 +1,5 @@
 Electronics Shop Management & Installment Ledger System
-A complete, production-ready full-stack management system designed specifically for physical electronics retail stores in Pakistan. Built to digitally manage dukan operations, stock inventory, customer credit ledgers with 2 Zamanatdar (Guarantors), installment financing plans with auto-markup and carry-forward re-amortization, daily expenses, 80mm POS thermal slip printing, real-time net profit auditing, a read-only AI data assistant, and human-readable automatic backups.
+A complete, production-ready full-stack management system designed specifically for physical electronics retail stores in Pakistan. Built to digitally manage dukan operations, stock inventory, customer credit ledgers with 2 Zamanatdar (Guarantors), installment financing plans with auto-markup and carry-forward re-amortization, daily expenses, 80mm POS thermal slip printing, real-time net profit auditing, a read-only AI data assistant, and human-readable manual backups.
 
 🌟 Key Business Features
 1. Single Admin Security & Protection
@@ -54,14 +54,13 @@ Customer search by Name / Mobile / CNIC: Same naam ke multiple customers hon to 
 Strictly read-only: AI sirf data parhta hai — customer banana, payment lena ya koi tabdeeli karna allowed nahi. Write intents ko politely refuse karta hai.
 Live usage meter in the chat UI: ⚡ Smart 4/50.
 11. 💾 Human-Readable TXT Backups
-Automatic daily backup har raat 11:59 PM (Asia/Karachi) — plus 1-click manual backup from the Backup page.
-Saved on your Desktop: Desktop/BACKUP/COMPLETE-BACKUP/ aur Desktop/BACKUP/DAILY-BACKUPS/ — ZIP me readable .txt files.
-Har record ek nazar me samajh aata hai: Har sale, payment, installment, return ke top par Customer Name + Mobile, Product Name, Invoice Number — raw database IDs neeche chhupi hui.
-Koi fazool data nahi: Fingerprint/biometric templates, khaali fields, duplicate IDs aur har record me dohra shopId backup me nahi aate.
+Backup page se manual complete backup ZIP download karein. Is system mein automatic backups band hain.
+Har record ke shuru me Quick Summary hota hai: customer, mobile, product, invoice, installment aur amount ki relevant details; database IDs alag Technical References section me hoti hain.
+Readable fields: aam database fields ko samajhne layak labels milte hain, dates Pakistan time me aur amounts PKR me dikhte hain. Installments me due date, status, paid aur baqi raqam; payment allocations me har kist par lagi payment aur us ke baad ka balance dikhaya jata hai. Khaali fields aur har record me dohra shopId nahi aata.
 Privacy-safe: Shop ki subscription/renewal history, login IPs aur device details backup se excluded hain (sirf superadmin dekh sakta hai).
-Har ZIP me shamil: README.txt (wazahat), backup-summary.txt (ginti), shop.txt, aur har collection ki alag file.
+Har ZIP me shamil: README.txt, backup-summary.txt aur har collection ki human-readable TXT file.
 12. 🖥️ Clean Developer Terminal
-npm run dev par sirf zaroori lines: server URL, MongoDB status, backup folder aur daily schedule — koi debug shor nahi.
+npm run dev par sirf zaroori lines: server URL, MongoDB status aur backup folder — koi debug shor nahi.
 Backup chalne par sirf compact progress: Shop → Done. Total records: N.
 
 🛠️ Technology Stack

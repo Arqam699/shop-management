@@ -2068,13 +2068,25 @@ const CustomerProfile = () => {
             print-color-adjust: exact;
           }
 
-          .print\\:hidden {
-            display: none !important;
+          body * {
+            visibility: hidden !important;
+          }
+
+          .customer-print-slip,
+          .customer-print-slip * {
+            visibility: visible !important;
+          }
+
+          .customer-print-slip {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
 
           .customer-print-slip {
             display: block !important;
-            width: 100%;
             color: #000000;
             font-family: Arial, Helvetica, sans-serif;
           }

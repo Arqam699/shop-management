@@ -7,8 +7,7 @@ const {
   getSaleById,
   createSale,
   updateSale,
-  deleteSale,
-  exchangeSaleProduct
+  deleteSale
 } = require('../controllers/saleController');
 
 const { protect } = require('../middleware/authMiddleware');
@@ -21,11 +20,5 @@ router.route('/:id')
   .get(protect, getSaleById)
   .put(protect, updateSale)
   .delete(protect, deleteSale);
-
-router.post(
-  '/:id/exchange',
-  protect,
-  exchangeSaleProduct
-);
 
 module.exports = router;

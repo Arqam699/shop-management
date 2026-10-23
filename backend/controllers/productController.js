@@ -1,5 +1,6 @@
 
 const Product = require('../models/Product');
+const Counter = require('../models/Counter');
 const {
   getPaginationParams,
   paginatedResponse,
@@ -53,60 +54,48 @@ const checkDeletionMode = async (shopId) => {
 
 
 // ============================================================
-// GENERATE PRODUCT SKU
-//
-// IMPORTANT SaaS RULE:
-// SKU generation is PER SHOP.
-//
-// Shop A:
-// 01, 02, 03
-//
-// Shop B:
-// 01, 02, 03
-//
-// One shop cannot affect another shop's SKU sequence.
+// GENERATE A PER-SHOP NUMERIC PRODUCT ID (stored in sku).
+// New shops start at 1; existing shops continue after their highest ID.
 // ============================================================
 const generateSKU = async (shopId) => {
-  try {
-    const products = await Product.find(
-      {
-        shopId,
-      },
-      'sku'
-    );
+  const counterId = `product_${shopId}`;
+  let counter = await Counter.findById(counterId).select('seq').lean();
 
-    let maxNum = 0;
+  if (!counter) {
+    const existingSkus = await Product.find({ shopId }).select('sku').lean();
+    const maxExistingId = existingSkus.reduce((max, product) => {
+      const match = String(product.sku || '').match(/(\d+)$/);
+      const value = match ? Number(match[1]) : 0;
+      return Number.isSafeInteger(value) ? Math.max(max, value) : max;
+    }, 0);
 
-    products.forEach((product) => {
-      if (!product.sku) {
-        return;
-      }
-
-      const num = parseInt(
-        product.sku.replace(/[^0-9]/g, ''),
-        10
+    try {
+      await Counter.findOneAndUpdate(
+        { _id: counterId },
+        { $setOnInsert: { seq: maxExistingId } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       );
-
-      if (
-        !isNaN(num) &&
-        num > maxNum
-      ) {
-        maxNum = num;
-      }
-    });
-
-    return String(
-      maxNum + 1
-    ).padStart(2, '0');
-
-  } catch (error) {
-    console.error(
-      'SKU Generation Error:',
-      error
+    } catch (error) {
+      // Another request may initialize the same shop counter concurrently.
+      if (error.code !== 11000) throw error;
+    }
+  } else if (counter.seq > 0 && !(await Product.exists({ shopId }))) {
+    // If every product was deleted, don't let a leftover counter make the
+    // next product start at an old number. Compare-and-set keeps concurrent
+    // first product requests safe while resetting the empty shop to zero.
+    await Counter.updateOne(
+      { _id: counterId, seq: counter.seq },
+      { $set: { seq: 0 } }
     );
-
-    return '01';
   }
+
+  const nextCounter = await Counter.findOneAndUpdate(
+    { _id: counterId },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).select('seq').lean();
+
+  return String(nextCounter.seq);
 };
 
 

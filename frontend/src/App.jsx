@@ -96,10 +96,6 @@ const PlaceholderPage = lazy(
   () => import('./pages/PlaceholderPage')
 );
 
-const Returns = lazy(
-  () => import('./pages/Returns')
-);
-
 const Payments = lazy(
   () => import('./pages/Payments')
 );
@@ -569,22 +565,6 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <InvoiceDetails />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-
-
-              {/* =====================================================
-                  RETURNS ROUTING
-                  ===================================================== */}
-
-              <Route
-                path="/returns"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <Returns />
                     </Layout>
                   </ProtectedRoute>
                 }

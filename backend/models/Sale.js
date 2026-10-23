@@ -97,6 +97,13 @@ const saleSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Cost basis captured at checkout so future product cost edits do not
+    // rewrite historical sale profit.
+    purchasePriceAtSale: {
+      type: Number,
+      min: 0,
+    },
+
 
     // --------------------------------------------------------
     // DISCOUNT

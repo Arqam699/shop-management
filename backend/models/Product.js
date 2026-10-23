@@ -23,7 +23,7 @@ const productSchema = new mongoose.Schema(
 
     model: { type: String, required: true, trim: true },
 
-    sku: { type: String }, // Auto-generated e.g. PROD-0001
+    sku: { type: String }, // Auto-generated per-shop numeric product ID, starting at 1
 
     serialNumber: { type: String, trim: true },
 

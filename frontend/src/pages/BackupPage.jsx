@@ -18,7 +18,6 @@ import {
   Info,
   ShieldAlert,
   Cloud,
-  RefreshCw,
   Lock,
   ExternalLink,
 } from 'lucide-react';
@@ -364,16 +363,7 @@ const BackupPage = () => {
         continue;
       }
 
-      /*
-       * Backup mein sirf TXT expected hai.
-       * Safety ke liye non-text files ignore.
-       */
-
-      if (
-        !filename
-          .toLowerCase()
-          .endsWith('.txt')
-      ) {
+      if (!filename.toLowerCase().endsWith('.txt')) {
         continue;
       }
 
@@ -553,7 +543,7 @@ const BackupPage = () => {
         );
 
       toast.success(
-        `Complete backup saved successfully! ${result.extractedCount} TXT files saved in COMPLETE-BACKUP.`,
+        `Complete backup saved successfully! ${result.extractedCount} backup files saved in COMPLETE-BACKUP.`,
         {
           id: 'backup-loading',
           duration: 5000,
@@ -1039,7 +1029,7 @@ const BackupPage = () => {
                     text-white/70
                   "
                 >
-                  All available shop history as TXT
+                  Human-readable TXT backup files
                 </span>
 
               </div>
@@ -1517,50 +1507,6 @@ const BackupPage = () => {
                   Backup ke baad folder open karke check
                   karein ke expected TXT files successfully
                   create hui hain aur readable hain.
-                </p>
-              </div>
-
-            </div>
-          </div>
-
-          {/* BEFORE RESTORE */}
-
-          <div
-            className="
-              rounded-2xl
-              border
-              border-orange-100
-              bg-orange-50/50
-              p-4
-            "
-          >
-            <div className="flex items-start gap-3">
-
-              <div
-                className="
-                  flex
-                  h-9
-                  w-9
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-xl
-                  bg-orange-100
-                  text-orange-600
-                "
-              >
-                <RefreshCw className="h-4 w-4" />
-              </div>
-
-              <div>
-                <h3 className="text-xs font-black text-slate-900">
-                  Before Restore / Import
-                </h3>
-
-                <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-slate-600 sm:text-xs">
-                  Kisi bhi restore ya import operation se
-                  pehle current shop ka fresh Complete Backup
-                  create karein.
                 </p>
               </div>
 

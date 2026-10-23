@@ -37,7 +37,7 @@ const Shop = require('../models/Shop');
 // CONFIG
 // ============================================================
 
-const BACKUP_VERSION = '11.0.0';
+const BACKUP_VERSION = '12.0.0';
 const TIME_ZONE = 'Asia/Karachi';
 
 const IS_VERCEL =
@@ -216,6 +216,29 @@ const toObjectId = (value) => {
     return value;
   }
 
+  // Accept standard Extended JSON and BSON ObjectId wrappers too.
+  if (typeof value === 'object') {
+    if (typeof value.$oid === 'string') {
+      return toObjectId(value.$oid);
+    }
+    if (typeof value.toHexString === 'function') {
+      return toObjectId(value.toHexString());
+    }
+    const binary = value.buffer?.data ?? value.buffer ?? value.id?.data ?? value.id;
+    const bytes = Array.isArray(binary)
+      ? binary
+      : binary && typeof binary === 'object' && !Buffer.isBuffer(binary)
+        ? Object.keys(binary).sort((a, b) => Number(a) - Number(b)).map((key) => binary[key])
+        : binary;
+    if ((Array.isArray(bytes) || Buffer.isBuffer(bytes)) && bytes.length === 12) {
+      try {
+        return new mongoose.Types.ObjectId(Buffer.from(bytes));
+      } catch {
+        return null;
+      }
+    }
+  }
+
   if (
     typeof value === 'object' &&
     value._id
@@ -226,7 +249,7 @@ const toObjectId = (value) => {
   }
 
   const stringValue =
-    String(value).trim();
+    typeof value === 'string' ? value.trim() : String(value).trim();
 
   if (
     !/^[a-fA-F0-9]{24}$/.test(
@@ -321,6 +344,114 @@ const isValidBackupDate = (date) => {
 // ============================================================
 
 const formatFieldName = (key) => {
+  const knownLabels = {
+    _id: 'Record ID (system reference)',
+    backupCustomerName: 'Customer Name',
+    backupCustomerMobile: 'Customer Mobile',
+    backupProductName: 'Product',
+    backupInvoiceNumber: 'Invoice / Sale Number',
+    backupInstallmentNumber: 'Installment Number',
+    backupInstallmentNumbers: 'Installments Covered',
+    backupCustomerId: 'Customer ID (system reference)',
+    backupSaleId: 'Sale ID (system reference)',
+    backupProductId: 'Product ID (system reference)',
+    backupInstallmentId: 'Installment ID (system reference)',
+    backupInstallmentPlanId: 'Installment Plan ID (system reference)',
+    installmentRecordId: 'Installment Record ID (system reference)',
+    saleId: 'Sale / Invoice Number',
+    paymentId: 'Payment Number',
+    planId: 'Installment Plan ID',
+    installmentNumber: 'Installment Number',
+    installmentDuration: 'Installment Duration (months)',
+    selectedInstallmentDuration: 'Selected Installment Duration (months)',
+    customer: 'Customer Reference',
+    product: 'Product Reference',
+    sale: 'Sale / Invoice Reference',
+    installment: 'Installment Reference',
+    installmentStatus: 'Installment Status',
+    installmentPlan: 'Installment Plan Reference',
+    fullName: 'Customer Name',
+    fatherName: 'Father / Guardian Name',
+    mobileNumber: 'Mobile Number',
+    alternateMobileNumber: 'Alternate Mobile Number',
+    cnic: 'CNIC',
+    customerId: 'Customer Number',
+    email: 'Email Address',
+    address: 'Address',
+    city: 'City',
+    guarantor1: 'Guarantor 1',
+    guarantor2: 'Guarantor 2',
+    name: 'Name',
+    category: 'Category',
+    brand: 'Brand',
+    model: 'Model',
+    sku: 'SKU / Product Code',
+    serialNumber: 'Serial Number',
+    imei: 'IMEI',
+    chassisNumber: 'Chassis Number',
+    purchasePrice: 'Purchase Price (PKR)',
+    salePrice: 'Sale Price (PKR)',
+    quantity: 'Quantity',
+    minStockLevel: 'Minimum Stock Level',
+    supplier: 'Supplier',
+    warrantyPeriod: 'Warranty Period',
+    description: 'Description',
+    status: 'Status',
+    saleNumber: 'Sale / Invoice Number',
+    paymentNumber: 'Payment Number',
+    returnId: 'Return Number',
+    expenseId: 'Expense Number',
+    totalAmount: 'Total Amount (PKR)',
+    downPayment: 'Down Payment (PKR)',
+    installmentAmount: 'Installment Amount (PKR)',
+    originalAmount: 'Original Amount (PKR)',
+    remainingAmount: 'Remaining Amount (PKR)',
+    remainingAfterPayment: 'Balance After Payment (PKR)',
+    refundAmount: 'Refund Amount (PKR)',
+    discount: 'Discount (PKR)',
+    subtotal: 'Subtotal (PKR)',
+    markupAmount: 'Markup Amount (PKR)',
+    markupPercentage: 'Markup Percentage',
+    paymentType: 'Payment Type',
+    paymentMethod: 'Payment Method',
+    expenseDate: 'Expense Date',
+    returnDate: 'Return Date',
+    purchaseDate: 'Purchase Date',
+    paidDate: 'Paid Date',
+    settledDate: 'Settled Date',
+    firstDueDate: 'First Installment Due Date',
+    duration: 'Installment Duration (months)',
+    selectedDuration: 'Selected Installment Duration (months)',
+    treatDownPaymentAsFirstInstallment: 'Count Down Payment as First Installment',
+    isSettledByPlanPayment: 'Settled by Full Plan Payment',
+    originalInstallmentAmount: 'Original Installment Amount (PKR)',
+    carryForwardAmount: 'Amount Carried Forward (PKR)',
+    financedAmount: 'Amount Financed (PKR)',
+    previousRemaining: 'Balance Before Payment (PKR)',
+    installmentScheduleSnapshot: 'Installment Schedule at Sale',
+    invoiceSnapshot: 'Original Invoice Details',
+    isArchived: 'Archived Payment',
+    notes: 'Notes',
+    reason: 'Reason',
+    reference: 'Reference',
+    previousQuantity: 'Previous Stock Quantity',
+    newQuantity: 'New Stock Quantity',
+    type: 'Type',
+    allocations: 'Payment Allocation Details',
+    unitPrice: 'Unit Price (PKR)',
+    finalTotal: 'Final Sale Amount (PKR)',
+    totalWithMarkup: 'Total with Markup (PKR)',
+    remainingBalance: 'Remaining Balance (PKR)',
+    paidAmount: 'Paid Amount (PKR)',
+    amount: 'Amount (PKR)',
+    saleDate: 'Sale Date',
+    paymentDate: 'Payment Date',
+    dueDate: 'Due Date',
+    createdAt: 'Created At',
+    updatedAt: 'Last Updated At',
+  };
+  if (knownLabels[key]) return knownLabels[key];
+
   const cleaned = String(key)
     .replace(
       /([a-z])([A-Z])/g,
@@ -342,8 +473,7 @@ const formatFieldName = (key) => {
 
   return cleaned.replace(
     /^./,
-    (char) =>
-      char.toUpperCase()
+    (char) => char.toUpperCase()
   );
 };
 
@@ -523,6 +653,12 @@ const cleanObject = (
     value instanceof mongoose.Types.ObjectId
   ) {
     return value.toString();
+  }
+
+  if (value && typeof value === 'object') {
+    if (typeof value.$oid === 'string') return value.$oid;
+    if (typeof value.toHexString === 'function') return value.toHexString();
+    if (value._id) return getIdString(value._id);
   }
 
   // ----------------------------------------------------------
@@ -925,9 +1061,18 @@ const getIdString = (
   }
 
   if (
-    value instanceof mongoose.Types.ObjectId
+    value instanceof mongoose.Types.ObjectId ||
+    (value && value._bsontype === 'ObjectId' && typeof value.toHexString === 'function')
   ) {
-    return value.toString();
+    return value.toHexString ? value.toHexString() : value.toString();
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.$oid === 'string') return value.$oid;
+    if (typeof value.toHexString === 'function') return value.toHexString();
+    if (value._id) return getIdString(value._id);
+    const normalizedObjectId = toObjectId(value);
+    if (normalizedObjectId) return normalizedObjectId.toString();
   }
 
   if (
@@ -1180,6 +1325,7 @@ const getInvoiceNumber = (
         'invoice',
         'saleNumber',
         'number',
+        'saleId',
       ]
     ) || ''
   );
@@ -1416,13 +1562,8 @@ const enrichInstallments = (
         ) ||
         (
           plan
-            ? getReferenceId(
-              plan,
-              [
-                'customerId',
-                'customer',
-              ]
-            )
+            ? getFirstValue(plan, ['backupCustomerId']) ||
+              getReferenceId(plan, ['customerId', 'customer'])
             : ''
         );
 
@@ -1436,13 +1577,8 @@ const enrichInstallments = (
         ) ||
         (
           plan
-            ? getReferenceId(
-              plan,
-              [
-                'saleId',
-                'sale',
-              ]
-            )
+            ? getFirstValue(plan, ['backupSaleId']) ||
+              getReferenceId(plan, ['saleId', 'sale'])
             : ''
         );
 
@@ -1460,19 +1596,22 @@ const enrichInstallments = (
 
       const enriched = {
         backupCustomerName:
-          getCustomerName(
-            customer
-          ),
+          customer
+            ? getCustomerName(customer)
+            : getFirstValue(plan, ['backupCustomerName']) || 'Unknown Customer',
 
         backupCustomerMobile:
-          getCustomerMobile(
-            customer
-          ),
+          customer
+            ? getCustomerMobile(customer)
+            : getFirstValue(plan, ['backupCustomerMobile']) || 'Not Available',
 
         backupInvoiceNumber:
-          getInvoiceNumber(
-            sale
-          ),
+          getInvoiceNumber(sale) || getFirstValue(plan, ['backupInvoiceNumber']),
+
+        backupProductName:
+          getFirstValue(plan, ['backupProductName']) ||
+          getFirstValue(sale, ['backupProductName']) ||
+          'Unknown Product',
 
         ...installment,
 
@@ -1543,6 +1682,8 @@ const enrichPayments = (
           ]
         );
 
+      const installmentPlanId = getReferenceId(payment, ['installmentPlanId', 'installmentPlan']);
+
       const customer =
         findByIdFromMap(
           maps.customers,
@@ -1561,6 +1702,11 @@ const enrichPayments = (
           installmentId
         );
 
+      const installmentPlan = findByIdFromMap(
+        maps.installmentPlans,
+        installmentPlanId
+      );
+
       const enriched = {
         backupCustomerName:
           getCustomerName(
@@ -1577,7 +1723,39 @@ const enrichPayments = (
             sale
           ),
 
+        backupProductName:
+          getFirstValue(
+            sale,
+            ['backupProductName']
+          ) || 'Unknown Product',
+
+        backupInstallmentPlanName:
+          installmentPlan ? 'Installment Plan' : '',
+
+        backupInstallmentNumber:
+          getFirstValue(
+            installment,
+            ['installmentNumber']
+          ) || getFirstValue(payment, ['installmentNumber']),
+
+        backupInstallmentNumbers:
+          [...new Set((payment.allocations || [])
+            .map((allocation) => allocation?.installmentNumber)
+            .filter((number) => number !== null && number !== undefined))],
+
         ...payment,
+
+        allocations: (payment.allocations || []).map((allocation) => {
+          const installmentReference = getReferenceId(allocation, ['installment']);
+          const allocatedInstallment = findByIdFromMap(maps.installments, installmentReference);
+          const { installment, ...allocationFields } = allocation;
+          return {
+            ...allocationFields,
+            installmentRecordId: installmentReference || undefined,
+            dueDate: allocatedInstallment?.dueDate,
+            installmentStatus: allocatedInstallment?.status,
+          };
+        }),
 
         backupCustomerId:
           customerId ||
@@ -1590,6 +1768,9 @@ const enrichPayments = (
         backupInstallmentId:
           installmentId ||
           'Not Available',
+
+        backupInstallmentPlanId:
+          installmentPlanId || 'Not Available',
       };
 
       return stripResolvedRefs(
@@ -1598,6 +1779,7 @@ const enrichPayments = (
           [customer, ['customer', 'customerId']],
           [sale, ['sale', 'saleId']],
           [installment, ['installment', 'installmentId']],
+          [installmentPlan, ['installmentPlan', 'installmentPlanId']],
         ]
       );
     }
@@ -1756,6 +1938,129 @@ const enrichStockMovements = (
 };
 
 
+const getRecordContext = (collectionName, record) => {
+  const context = [];
+  const add = (label, value) => {
+    if (value === undefined || value === null || value === '' || value === 'Unknown Customer' || value === 'Unknown Product' || value === 'Not Available') return;
+    const display = value instanceof Date
+      ? formatPakistanDate(value)
+      : typeof value === 'number'
+        ? formatNumber(value)
+        : typeof value === 'object'
+          ? getIdString(value)
+          : String(value);
+    if (display && display !== '[object Object]') context.push(`${label}: ${display}`);
+  };
+
+  const customer = getFirstValue(record, ['backupCustomerName', 'fullName', 'customerName']);
+  const mobile = getFirstValue(record, ['backupCustomerMobile', 'mobileNumber', 'phone', 'mobile']);
+  const product = getFirstValue(record, ['backupProductName']) || (
+    record.brand || record.model || record.productName || record.name ? getProductName(record) : ''
+  );
+  const invoice = getFirstValue(record, ['backupInvoiceNumber', 'invoiceNumber', 'invoiceNo', 'saleId']);
+  const installmentNumbers = getFirstValue(record, ['backupInstallmentNumbers']);
+  const installmentNumber = getFirstValue(record, ['backupInstallmentNumber', 'installmentNumber']);
+  const planName = getFirstValue(record, ['backupInstallmentPlanName']);
+  const amount = getFirstValue(record, ['finalTotal', 'totalWithMarkup', 'totalAmount', 'refundAmount', 'amount', 'unitPrice']);
+
+  const recordNumberByCollection = {
+    customers: ['customerId'],
+    products: ['sku', 'serialNumber', 'imei'],
+    sales: ['saleId', 'invoiceNumber', 'invoiceNo'],
+    payments: ['paymentId'],
+    installmentPlans: ['planId'],
+    returns: ['returnId'],
+    expenses: ['expenseId'],
+  };
+  const recordNumber = getFirstValue(record, recordNumberByCollection[collectionName] || []);
+  if (recordNumber) add('Record Number', recordNumber);
+
+  if (collectionName === 'customers') {
+    add('Customer', customer);
+    add('Mobile', mobile);
+  } else if (collectionName === 'products') {
+    add('Product', product);
+    add('SKU / Barcode', getFirstValue(record, ['sku', 'barcode', 'productCode']));
+    add('Stock Quantity', record.quantity);
+    add('Sale Price (PKR)', record.salePrice);
+  } else if (collectionName === 'expenses') {
+    add('Expense', getFirstValue(record, ['title', 'name']));
+    add('Category', record.category);
+    add('Amount (PKR)', amount);
+    add('Date', record.expenseDate);
+  } else {
+    add('Customer', collectionName === 'installments' && (!customer || customer === 'Unknown Customer')
+      ? 'Not resolved from installment plan'
+      : customer);
+    add('Mobile', mobile);
+    add('Product', product);
+    add('Invoice', invoice);
+    add('Installment Plan', planName || getFirstValue(record, ['planId']));
+    if (Array.isArray(installmentNumbers) && installmentNumbers.length) {
+      add('Installments', installmentNumbers.join(', '));
+    } else {
+      add('Installment #', installmentNumber);
+    }
+    if (collectionName === 'installments') {
+      add('Due Date', record.dueDate);
+      add('Status', record.status);
+      add('Scheduled Amount (PKR)', record.amount);
+      add('Paid So Far (PKR)', record.paidAmount);
+      add('Remaining (PKR)', record.remainingAmount);
+    } else if (collectionName === 'sales') {
+      add('Sale Type', record.paymentType);
+      add('Sale Date', record.saleDate);
+      add('Down Payment (PKR)', record.downPayment);
+      add('Remaining Balance (PKR)', record.remainingBalance);
+    } else if (collectionName === 'installmentPlans') {
+      add('Plan Status', record.status);
+      add('Number of Monthly Installments', record.duration);
+      add('Down Payment (PKR)', record.downPayment);
+      add('Remaining Balance (PKR)', record.remainingBalance);
+      add('First Due Date', record.firstDueDate);
+    } else {
+      add(collectionName === 'returns' ? 'Refund (PKR)' : 'Amount (PKR)', amount);
+    }
+    if (collectionName === 'payments') {
+      add('Payment Method', record.paymentMethod);
+      add('Payment Date', record.paymentDate);
+      add('Plan Balance After Payment (PKR)', record.remainingAfterPayment);
+    }
+    if (collectionName === 'stockMovements') {
+      add('Movement', record.type);
+      add('Quantity Changed', record.quantity);
+      add('Reason', record.reason);
+    }
+  }
+  return context;
+};
+
+const getTechnicalReferences = (record) => {
+  const refs = [];
+  const add = (label, value) => {
+    const id = getIdString(value);
+    if (id && id !== 'Not Available') refs.push(`${label}: ${id}`);
+  };
+  add('Record ID', record._id);
+  add('Customer record ID', record.backupCustomerId);
+  add('Sale record ID', record.backupSaleId);
+  add('Product record ID', record.backupProductId);
+  add('Installment plan record ID', record.backupInstallmentPlanId);
+  add('Installment record ID', record.backupInstallmentId);
+  return refs;
+};
+
+const removeBackupDisplayFields = (record) => {
+  for (const key of Object.keys(record)) {
+    if (key.startsWith('backupCustomer') || key.startsWith('backupProduct') || key.startsWith('backupInvoice') || key.startsWith('backupSale') || key.startsWith('backupInstallment')) {
+      delete record[key];
+    }
+  }
+  delete record._id;
+  delete record.shopId;
+  return record;
+};
+
 // ============================================================
 // CREATE COLLECTION TEXT
 // ============================================================
@@ -1818,14 +2123,26 @@ const createCollectionText = (
           record
         );
 
+      const context = getRecordContext(collectionName, record);
+      const references = getTechnicalReferences(cleaned);
+      if (context.length) {
+        text += 'QUICK SUMMARY\n';
+        text += context.map((line) => `  ${line}`).join('\n');
+        text += '\n\n';
+      }
+
       // Har record me same shopId dohraya jata — insan ke
       // parhne ke liye shor hai, is liye display se hata do.
 
-      delete cleaned.shopId;
-
-      text += objectToText(
-        cleaned
-      );
+      removeBackupDisplayFields(cleaned);
+      text += 'ALL SAVED FIELDS\n';
+      text += Object.keys(cleaned).length
+        ? objectToText(cleaned)
+        : 'No additional fields.';
+      if (references.length) {
+        text += '\n\nTECHNICAL REFERENCES (for record recovery)\n';
+        text += references.map((line) => `  ${line}`).join('\n');
+      }
 
       text += '\n\n';
 
@@ -1885,6 +2202,15 @@ Backup Date: ${metadata.backupDate}
 Created At: ${metadata.createdAt}
 Database: ${metadata.database}
 Format: Human-Readable TXT
+
+HOW TO READ THE RECORD FILES
+----------------------------
+
+- QUICK SUMMARY identifies the customer, mobile, product, invoice, installment, and amount when linked data is available.
+- ALL SAVED FIELDS shows the record's remaining business fields with readable labels.
+- TECHNICAL REFERENCES lists database IDs separately for record recovery.
+- Dates and times use Pakistan time. Amounts are shown in PKR.
+- Empty fields are omitted. Zero and No values are kept because they are meaningful.
 
 SHOP
 ----
@@ -1974,13 +2300,6 @@ const createBackupInfoText = (
 
   text +=
     `Total Documents: ${metadata.totalDocuments}\n`;
-
-  text +=
-    `Restore Compatible: ${
-      metadata.restoreCompatible
-        ? 'Yes'
-        : 'No'
-    }\n`;
 
   text +=
     `Generated By: ${metadata.generatedBy}\n`;
@@ -2347,6 +2666,7 @@ const loadShopData = async (
 
     data:
       cleanedData,
+
   };
 };
 
@@ -2457,9 +2777,6 @@ const createMetadata = ({
     totalDocuments,
 
     collections,
-
-    restoreCompatible:
-      true,
 
     generatedBy:
       'Shop Management Backup Service',

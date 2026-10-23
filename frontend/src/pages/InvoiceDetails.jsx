@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
@@ -9,13 +9,9 @@ import {
   RectangleVertical,
   RectangleHorizontal,
   Scissors,
-  RefreshCw,
-  X,
   AlertCircle,
   Sparkles,
   Receipt,
-  RotateCcw,
-  Repeat,
   CheckCircle2,
   Calendar,
   User,
@@ -29,47 +25,21 @@ import {
 const InvoiceDetails = () => {
   const { id } = useParams();
   const { settings } = useSettings();
-  const navigate = useNavigate();
 
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState([]);
-
-  const [showReturnModal, setShowReturnModal] = useState(false);
-  const [returnedQty, setReturnedQty] = useState(1);
-  const [refundAmount, setRefundAmount] = useState(0);
-  const [returnReason, setReturnReason] = useState('');
-  const [processingReturn, setProcessingReturn] = useState(false);
-  const [returnError, setReturnError] = useState('');
-
-  const [showExchangeModal, setShowExchangeModal] = useState(false);
-  const [selectedNewProduct, setSelectedNewProduct] = useState('');
-  const [newProductPrice, setNewProductPrice] = useState(0);
-  const [processingExchange, setProcessingExchange] = useState(false);
-  const [exchangeError, setExchangeError] = useState('');
-
   // =========================================================
-  // FETCH INVOICE + PRODUCTS
+  // FETCH INVOICE
   // =========================================================
-  const fetchInvoiceAndProducts = async () => {
+  const fetchInvoice = async () => {
     try {
       setLoading(true);
 
-      const [saleRes, prodRes] = await Promise.all([
-        api.get(`/api/sales/${id}`),
-        api.get('/api/products'),
-      ]);
+      const saleRes = await api.get(`/api/sales/${id}`);
 
       if (saleRes.data && saleRes.data.success) {
         const sale = saleRes.data.data;
         setInvoice(sale);
-        setRefundAmount(
-          sale.finalTotal || sale.totalAmount || sale.sale?.finalTotal || 0
-        );
-      }
-
-      if (prodRes.data && prodRes.data.success) {
-        setProducts(prodRes.data.data.filter((p) => p.quantity > 0));
       }
     } catch (error) {
       console.error('Error loading tax invoice details:', error);
@@ -80,7 +50,7 @@ const InvoiceDetails = () => {
   };
 
   useEffect(() => {
-    fetchInvoiceAndProducts();
+    fetchInvoice();
   }, [id]);
 
 
@@ -147,94 +117,6 @@ const InvoiceDetails = () => {
     }
     return `data:image/jpeg;base64,${image}`;
   };
-
-  // =========================================================
-  // RETURN SUBMIT
-  // =========================================================
-  const handleReturnSubmit = async (e) => {
-    e.preventDefault();
-    setReturnError('');
-    setProcessingReturn(true);
-
-    const invoiceQty = invoice?.sale?.quantity || invoice?.quantity || 0;
-
-    if (returnedQty > invoiceQty) {
-      setReturnError(
-        `Cannot return more than purchased quantity (${invoiceQty} units).`
-      );
-      setProcessingReturn(false);
-      return;
-    }
-
-    try {
-      const saleId = invoice?.sale?._id || invoice?._id;
-      const response = await api.post('/api/returns', {
-        saleId,
-        returnedQty,
-        refundAmount,
-        reason: returnReason,
-      });
-
-      if (response.data && response.data.success) {
-        toast.success(
-          'Return processed successfully! Stock restored and dues adjusted.'
-        );
-        setShowReturnModal(false);
-        navigate('/returns');
-      }
-    } catch (error) {
-      setReturnError(
-        error.response?.data?.message || 'Failed to submit return request.'
-      );
-    } finally {
-      setProcessingReturn(false);
-    }
-  };
-
-  // =========================================================
-  // EXCHANGE PRODUCT HANDLER
-  // =========================================================
-  const handleProductChange = (e) => {
-    const prodId = e.target.value;
-    setSelectedNewProduct(prodId);
-    const found = products.find((p) => p._id === prodId);
-    setNewProductPrice(found ? found.salePrice || 0 : 0);
-  };
-
-  const handleExchangeSubmit = async (e) => {
-    e.preventDefault();
-    setExchangeError('');
-    setProcessingExchange(true);
-
-    if (!selectedNewProduct) {
-      setExchangeError('Please select a target product for exchange.');
-      setProcessingExchange(false);
-      return;
-    }
-
-    try {
-      const saleId = invoice?.sale?._id || invoice?._id;
-      const res = await api.post(`/api/sales/${saleId}/exchange`, {
-        newProductId: selectedNewProduct,
-        newPrice: newProductPrice,
-      });
-
-      if (res.data && res.data.success) {
-        toast.success(
-          'Exchange processed successfully! Stocks swapped and installments adjusted.'
-        );
-        setShowExchangeModal(false);
-        fetchInvoiceAndProducts();
-      }
-    } catch (error) {
-      setExchangeError(
-        error.response?.data?.message || 'Failed to complete exchange.'
-      );
-    } finally {
-      setProcessingExchange(false);
-    }
-  };
-
   // =========================================================
   // LOADING STATE
   // =========================================================
@@ -338,38 +220,7 @@ const InvoiceDetails = () => {
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
-          {invoiceQuantity > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowExchangeModal(true);
-                  setSelectedNewProduct('');
-                  setNewProductPrice(0);
-                  setExchangeError('');
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-black transition-all hover:scale-[1.02] active:scale-95"
-              >
-                <Repeat className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Exchange</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReturnModal(true);
-                  setReturnedQty(1);
-                  setReturnReason('');
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-black transition-all hover:scale-[1.02] active:scale-95"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
-                <span>Return</span>
-              </button>
-            </>
-          )}
-
-          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 no-print">
+<div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 no-print">
             <button
               type="button"
               onClick={() => handleOrientationChange('portrait')}
@@ -626,206 +477,6 @@ const InvoiceDetails = () => {
           </p>
         </div>
       </div>
-
-      {/* =====================================================
-          RETURN MODAL
-      ====================================================== */}
-      {showReturnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowReturnModal(false); } }}>
-          <form
-            onSubmit={handleReturnSubmit}
-            role="dialog" aria-modal="true" aria-label="Return items" className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg max-h-[calc(100dvh-1.5rem)] flex flex-col shadow-2xl overflow-hidden"
-          >
-            <div className="relative shrink-0 bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
-                  <RotateCcw className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    Process Item Return
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium">Restock item and adjust dues</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowReturnModal(false)}
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-4">
-              {returnError && (
-                <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span>{returnError}</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    Return Qty (Max: {invoiceQuantity}) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={returnedQty}
-                    onChange={(e) => setReturnedQty(Number(e.target.value))}
-                    max={invoiceQuantity}
-                    min="1"
-                    className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    {saleObj.paymentType === 'Installment' ? 'Adjust Value / Refund' : 'Refund Cash Amount'} <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(Number(e.target.value))}
-                    className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-rose-600 bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Return Reason <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                  placeholder="Explain why the customer is returning this item..."
-                  rows="3"
-                  className="w-full border border-slate-200 rounded-xl p-3 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="shrink-0 p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setShowReturnModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-black text-slate-600 transition-all"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={processingReturn}
-                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-purple-950/20 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-              >
-                {processingReturn ? 'Processing...' : 'Complete Return'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* =====================================================
-          EXCHANGE MODAL
-      ====================================================== */}
-      {showExchangeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-[pageEnter_0.25s_ease-out] no-print" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setShowExchangeModal(false); } }}>
-          <form
-            onSubmit={handleExchangeSubmit}
-            className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
-          >
-            <div className="relative bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white p-5 sm:p-6 border-b border-white/[0.08] flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center text-white shadow-md">
-                  <Repeat className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    Exchange & Swap Product
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium">Replace with new inventory item</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowExchangeModal(false)}
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {exchangeError && (
-                <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span>{exchangeError}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Select New Target Product <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={selectedNewProduct}
-                  onChange={handleProductChange}
-                  className="w-full h-11 border border-slate-200 rounded-xl px-3.5 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
-                  required
-                >
-                  <option value="">-- Choose In-Stock Product --</option>
-                  {products.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.name} ({p.brand} {p.model}) — [Available Stock: {p.quantity}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  New Product Deal Price ({settings?.currency || 'PKR'}) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  value={newProductPrice}
-                  onChange={(e) => setNewProductPrice(Number(e.target.value))}
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-900 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                  required
-                  min="0"
-                />
-              </div>
-            </div>
-
-            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setShowExchangeModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-black text-slate-600 transition-all"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={processingExchange}
-                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-              >
-                {processingExchange ? 'Processing...' : 'Complete Exchange'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
       {/* =====================================================
           COMPACT PRINT STYLESHEET
       ====================================================== */}

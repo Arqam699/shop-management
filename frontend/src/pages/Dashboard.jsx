@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
@@ -39,12 +39,49 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
+const PAKISTAN_DATE_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Karachi',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+const PAKISTAN_DATE_FORMATTER = new Intl.DateTimeFormat('en-PK', {
+  timeZone: 'Asia/Karachi',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+const PAKISTAN_DATETIME_FORMATTER = new Intl.DateTimeFormat('en-PK', {
+  timeZone: 'Asia/Karachi',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const pakistanDateKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = PAKISTAN_DATE_KEY_FORMATTER.formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
+
+const addDaysToDateKey = (dateKey, days) => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+};
+
 const Dashboard = () => {
   const { settings } = useSettings();
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const statsRequestInFlight = useRef(false);
 
   const [activeTableTab, setActiveTableTab] = useState(0);
   const [filterPreset, setFilterPreset] = useState('all');
@@ -63,14 +100,18 @@ const Dashboard = () => {
   const [indexRecordError, setIndexRecordError] = useState('');
 
   const [indexMonth, setIndexMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit',
+    }).formatToParts(new Date());
+    return `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}`;
   });
 
   // =========================================================
   // FETCH DASHBOARD DATA
   // =========================================================
   const fetchStats = async (showRefresh = false) => {
+    if (statsRequestInFlight.current) return;
+    statsRequestInFlight.current = true;
     try {
       if (showRefresh) {
         setRefreshing(true);
@@ -82,6 +123,7 @@ const Dashboard = () => {
 
       if (response.data?.success) {
         setStats(response.data.data);
+        setLastUpdatedAt(new Date());
       }
     } catch (error) {
       console.error('Failed to load dashboard metrics:', error);
@@ -89,6 +131,7 @@ const Dashboard = () => {
         toast.error('Unable to load dashboard data.');
       }
     } finally {
+      statsRequestInFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -96,6 +139,17 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchStats();
+
+    const refreshDashboard = () => {
+      if (document.visibilityState === 'visible') fetchStats(true);
+    };
+    const intervalId = window.setInterval(refreshDashboard, 60_000);
+    window.addEventListener('focus', refreshDashboard);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshDashboard);
+    };
   }, []);
 
   const fetchIndexRecord = async () => {
@@ -132,6 +186,19 @@ const Dashboard = () => {
     }
   }, [showIndexRecord, indexMonth]);
 
+  useEffect(() => {
+    if (!showIndexRecord) return undefined;
+    const intervalId = window.setInterval(fetchIndexRecord, 60_000);
+    const refreshIndexRecord = () => {
+      if (document.visibilityState === 'visible') fetchIndexRecord();
+    };
+    window.addEventListener('focus', refreshIndexRecord);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshIndexRecord);
+    };
+  }, [showIndexRecord, indexMonth]);
+
   // =========================================================
   // FORMATTERS & HELPERS
   // =========================================================
@@ -140,22 +207,12 @@ const Dashboard = () => {
 
   const formatDate = (date) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('en-PK', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    return PAKISTAN_DATE_FORMATTER.format(new Date(date));
   };
 
   const formatDateTime = (dateStr) => {
     if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleString('en-PK', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return PAKISTAN_DATETIME_FORMATTER.format(new Date(dateStr));
   };
 
   // =========================================================
@@ -184,7 +241,7 @@ const Dashboard = () => {
     const customerName =
       inst.installmentPlan?.customer?.fullName || 'Customer';
     const productName = inst.installmentPlan?.product?.name || 'Item';
-    const dueDateFormatted = new Date(inst.dueDate).toLocaleDateString('en-PK');
+    const dueDateFormatted = new Date(inst.dueDate).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' });
 
     const message = `*⚠️ URGENT INSTALLMENT REMINDER*
 ━━━━━━━━━━━━━━━━━━━━
@@ -400,6 +457,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     const [year, month] = indexMonth.split('-');
     const date = new Date(Number(year), Number(month) - 1, 1);
     return date.toLocaleDateString('en-PK', {
+      timeZone: 'Asia/Karachi',
       month: 'long',
       year: 'numeric',
     });
@@ -497,90 +555,99 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
   // =========================================================
   // DATE FILTER
   // =========================================================
-  const isDateInFilter = (dateStr) => {
+  const isDateInFilter = useCallback((dateStr) => {
     if (!dateStr) return false;
-
-    const date = new Date(dateStr);
-    date.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    const dayBeforeYesterday = new Date(today);
-    dayBeforeYesterday.setDate(today.getDate() - 2);
+    const dateKey = pakistanDateKey(dateStr);
+    const todayKey = pakistanDateKey();
+    if (!dateKey) return false;
 
     if (filterPreset === 'all') return true;
-    if (filterPreset === 'today') return date.getTime() === today.getTime();
-    if (filterPreset === 'yesterday') return date.getTime() === yesterday.getTime();
-    if (filterPreset === 'dayBeforeYesterday')
-      return date.getTime() === dayBeforeYesterday.getTime();
+    if (filterPreset === 'today') return dateKey === todayKey;
+    if (filterPreset === 'yesterday') return dateKey === addDaysToDateKey(todayKey, -1);
+    if (filterPreset === 'dayBeforeYesterday') return dateKey === addDaysToDateKey(todayKey, -2);
 
     if (filterPreset === 'week') {
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - 7);
-      return date >= startOfWeek && date <= today;
+      return dateKey >= addDaysToDateKey(todayKey, -6) && dateKey <= todayKey;
     }
 
     if (filterPreset === 'month') {
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      return date >= startOfMonth && date <= today;
+      return dateKey >= `${todayKey.slice(0, 7)}-01` && dateKey <= todayKey;
     }
 
-    if (filterPreset === 'custom' && customStartDate && customEndDate) {
-      const start = new Date(customStartDate);
-      start.setHours(0, 0, 0, 0);
-
-      const end = new Date(customEndDate);
-      end.setHours(23, 59, 59, 999);
-
-      return date >= start && date <= end;
+    if (filterPreset === 'custom') {
+      return Boolean(
+        customStartDate &&
+        customEndDate &&
+        customStartDate <= customEndDate &&
+        dateKey >= customStartDate &&
+        dateKey <= customEndDate
+      );
     }
 
     return true;
-  };
+  }, [filterPreset, customStartDate, customEndDate]);
 
   // =========================================================
   // FILTERED DATA
   // =========================================================
-  const filteredSalesList = (stats?.sales?.salesList || []).filter((s) =>
-    isDateInFilter(s.saleDate)
+  const filteredSalesList = useMemo(
+    () => (stats?.sales?.salesList || []).filter((s) => isDateInFilter(s.saleDate)),
+    [stats, isDateInFilter]
   );
-  const filteredFinancingList = (stats?.installments?.activeFinancingList || []).filter(
-    (p) => isDateInFilter(p.createdAt)
+  const filteredFinancingList = useMemo(
+    () => (stats?.installments?.activeFinancingList || []).filter((p) => isDateInFilter(p.createdAt)),
+    [stats, isDateInFilter]
   );
-  const filteredPaymentsList = (stats?.installments?.paymentsList || []).filter(
-    (pay) => isDateInFilter(pay.paymentDate)
+  const filteredPaymentsList = useMemo(
+    () => (stats?.installments?.paymentsList || []).filter((pay) => isDateInFilter(pay.paymentDate)),
+    [stats, isDateInFilter]
   );
-  const filteredExpensesList = (stats?.expenses?.expensesList || []).filter((e) =>
-    isDateInFilter(e.expenseDate)
+  const filteredExpensesList = useMemo(
+    () => (stats?.expenses?.expensesList || []).filter((e) => isDateInFilter(e.expenseDate)),
+    [stats, isDateInFilter]
   );
-
-  const cashSalesList = filteredSalesList.filter((s) => s.paymentType === 'Cash');
-  const installmentSalesList = filteredSalesList.filter(
-    (s) => s.paymentType === 'Installment'
+  const paymentsBySale = useMemo(() => {
+    const bySale = new Map();
+    filteredPaymentsList.forEach((payment) => {
+      const saleId = payment.sale?._id || payment.sale;
+      if (!saleId) return;
+      const key = String(saleId);
+      const list = bySale.get(key) || [];
+      list.push(payment);
+      bySale.set(key, list);
+    });
+    return bySale;
+  }, [filteredPaymentsList]);
+  const cashSalesList = useMemo(
+    () => filteredSalesList.filter((s) => s.paymentType === 'Cash'),
+    [filteredSalesList]
+  );
+  const installmentSalesList = useMemo(
+    () => filteredSalesList.filter((s) => s.paymentType === 'Installment'),
+    [filteredSalesList]
   );
 
   // Cash Revenue
-  const cashRevenue = cashSalesList.reduce(
-    (sum, s) => sum + Number(s.finalTotal || 0),
-    0
+  const cashRevenue = useMemo(
+    () => cashSalesList.reduce((sum, s) => sum + Number(s.finalTotal || 0), 0),
+    [cashSalesList]
   );
 
   // Cash Cost & Cash Profit
-  const cashCost = cashSalesList.reduce(
-    (sum, s) =>
-      sum + Number(s.quantity || 0) * Number(s.product?.purchasePrice || 0),
-    0
+  const cashCost = useMemo(
+    () => cashSalesList.reduce(
+      (sum, s) => sum + Number(s.quantity || 0) * Number(s.purchasePriceAtSale ?? s.product?.purchasePrice ?? 0),
+      0
+    ),
+    [cashSalesList]
   );
   const cashProfit = cashRevenue - cashCost;
 
   // Search Filter
-  const searchFilter = (item) => {
-    if (!globalSearch) return true;
-    const term = globalSearch.toLowerCase().trim();
+  const searchTerm = globalSearch.trim().toLowerCase();
+  const searchFilter = useCallback((item) => {
+    if (!searchTerm) return true;
+    const term = searchTerm;
     const custName = item.customer?.fullName?.toLowerCase() || '';
     const custPhone = item.customer?.mobileNumber || '';
     const id = (item.saleId || item.planId || '').toLowerCase();
@@ -592,19 +659,23 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       id.includes(term) ||
       prodName.includes(term)
     );
-  };
+  }, [searchTerm]);
 
-  const cashSales = cashSalesList.filter((s) => searchFilter(s));
-  const activeFinancingLedgerList = filteredFinancingList.filter((p) =>
-    searchFilter(p)
+  const cashSales = useMemo(
+    () => cashSalesList.filter((sale) => searchFilter(sale)),
+    [cashSalesList, searchFilter]
+  );
+  const activeFinancingLedgerList = useMemo(
+    () => filteredFinancingList.filter((plan) => searchFilter(plan)),
+    [filteredFinancingList, searchFilter]
   );
 
   // Detailed Cash Profit
-  const detailedCashProfitList = cashSalesList
+  const detailedCashProfitList = useMemo(() => cashSalesList
     .filter((s) => searchFilter(s))
     .map((sale) => {
       const quantity = Number(sale.quantity || 0);
-      const purchasePrice = Number(sale.product?.purchasePrice || 0);
+      const purchasePrice = Number(sale.purchasePriceAtSale ?? sale.product?.purchasePrice ?? 0);
       const originalCost = quantity * purchasePrice;
       const sellingPrice = Number(sale.finalTotal || 0);
       const profit = sellingPrice - originalCost;
@@ -617,17 +688,16 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         sellingPrice,
         profit,
       };
-    });
+    }), [cashSalesList, searchFilter]);
 
   // =========================================================
   // DETAILED INSTALLMENT PROFIT LIST
   // (Product Profit + Markup Profit Summed)
   // =========================================================
-  const detailedInstallmentProfitList = installmentSalesList
-    .filter((s) => searchFilter(s))
+  const detailedInstallmentProfitList = useMemo(() => installmentSalesList
     .map((sale) => {
       const quantity = Number(sale.quantity || 1);
-      const purchasePrice = Number(sale.product?.purchasePrice || 0);
+      const purchasePrice = Number(sale.purchasePriceAtSale ?? sale.product?.purchasePrice ?? 0);
       const originalCost = quantity * purchasePrice;
 
       // Use the immutable values saved at the time of sale. Rebuilding these
@@ -651,14 +721,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           : baseCashPrice + markupAmount;
 
       // Payments against this sale
-      const customerPayments = filteredPaymentsList.filter((payment) => {
-        const paymentSaleId = payment.sale?._id || payment.sale;
-        return (
-          paymentSaleId &&
-          sale._id &&
-          String(paymentSaleId) === String(sale._id)
-        );
-      });
+      const customerPayments = paymentsBySale.get(String(sale._id)) || [];
 
       const installmentPaymentsReceived = customerPayments.reduce((sum, payment) => {
         const isDownPay =
@@ -699,52 +762,51 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         productProfit: productBaseProfit, // Product Profit
         totalProfit,                      // Product Profit + Markup Profit
       };
-    });
+    }), [installmentSalesList, paymentsBySale]);
+  const visibleInstallmentProfitList = useMemo(
+    () => detailedInstallmentProfitList.filter((sale) => searchFilter(sale)),
+    [detailedInstallmentProfitList, searchFilter]
+  );
 
   // =========================================================
   // INSTALLMENT TOTALS (Product Profit + Markup Profit)
   // =========================================================
-  const installmentCost = detailedInstallmentProfitList.reduce(
-    (sum, s) => sum + Number(s.originalCost || 0),
-    0
-  );
-
-  const installmentBaseProductProfit = detailedInstallmentProfitList.reduce(
-    (sum, s) => sum + Number(s.productProfit || 0),
-    0
-  );
-
-  const installmentMarkupProfit = detailedInstallmentProfitList.reduce(
-    (sum, s) => sum + Number(s.markupAmount || 0),
-    0
-  );
+  const installmentTotals = useMemo(() => detailedInstallmentProfitList.reduce(
+    (totals, sale) => ({
+      cost: totals.cost + Number(sale.originalCost || 0),
+      productProfit: totals.productProfit + Number(sale.productProfit || 0),
+      markupProfit: totals.markupProfit + Number(sale.markupAmount || 0),
+      revenue: totals.revenue + Number(sale.totalCustomerPayable || 0),
+    }),
+    { cost: 0, productProfit: 0, markupProfit: 0, revenue: 0 }
+  ), [detailedInstallmentProfitList]);
+  const installmentCost = installmentTotals.cost;
+  const installmentBaseProductProfit = installmentTotals.productProfit;
+  const installmentMarkupProfit = installmentTotals.markupProfit;
 
   // ✅ Total Installment Profit = Product Profit + Markup Profit
   const installmentProfit = installmentBaseProductProfit + installmentMarkupProfit;
 
   // Installment Revenue
-  const installmentRevenue = detailedInstallmentProfitList.reduce(
-    (sum, s) => sum + Number(s.totalCustomerPayable || 0),
-    0
-  );
+  const installmentRevenue = installmentTotals.revenue;
 
   // Total Revenue (Cash + Installment Contracts)
   const totalRevenue = cashRevenue + installmentRevenue;
 
   // Collections (Safe from double counting)
-  const installmentDownPayments = installmentSalesList.reduce(
-    (sum, s) => sum + Number(s.downPayment || 0),
-    0
+  const installmentDownPayments = useMemo(
+    () => installmentSalesList.reduce((sum, s) => sum + Number(s.downPayment || 0), 0),
+    [installmentSalesList]
   );
 
-  const installmentPayments = filteredPaymentsList.reduce((sum, pay) => {
+  const installmentPayments = useMemo(() => filteredPaymentsList.reduce((sum, pay) => {
     const isDownPay =
       pay.paymentType === 'Down Payment' ||
       pay.type === 'Down Payment' ||
       pay.isDownPayment === true;
     if (isDownPay) return sum;
     return sum + Number(pay.amount || 0);
-  }, 0);
+  }, 0), [filteredPaymentsList]);
 
   const totalInstallmentPaymentsReceived =
     installmentDownPayments + installmentPayments;
@@ -752,17 +814,20 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
   const totalCollected = cashRevenue + totalInstallmentPaymentsReceived;
 
   // Overall Shop Outstanding
-  const totalOutstanding = (stats?.installments?.activeFinancingList || []).reduce(
-    (sum, p) => sum + Number(p.remainingBalance || 0),
-    0
+  const totalOutstanding = useMemo(
+    () => (stats?.installments?.activeFinancingList || []).reduce(
+      (sum, p) => sum + (p.status === 'Completed' ? 0 : Number(p.remainingBalance || 0)),
+      0
+    ),
+    [stats]
   );
 
-  // Gross Profit = Cash Profit + Total Installment Profit (Product + Markup)
+  // Gross Profit = Cash Profit + Installment Profit.
   const grossProfit = cashProfit + installmentProfit;
 
-  const totalExpensesVal = filteredExpensesList.reduce(
-    (sum, e) => sum + Number(e.amount || 0),
-    0
+  const totalExpensesVal = useMemo(
+    () => filteredExpensesList.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+    [filteredExpensesList]
   );
 
   // Net Profit
@@ -827,7 +892,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
       'Invoice ID,Customer Name,Product,Qty,Net Price,Payment Method,Date & Time';
 
     const rows = filteredSalesList.map((s) => {
-      const dateFormatted = new Date(s.saleDate).toLocaleString('en-PK');
+      const dateFormatted = new Date(s.saleDate).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
       return `"${s.saleId || ''}","${s.customer?.fullName || 'Walk-in'}","${
         s.product?.name || 'Deleted Product'
       }",${s.quantity || 0},${s.finalTotal || 0},"${s.paymentType || ''}","${dateFormatted}"`;
@@ -1162,6 +1227,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           />
           Refresh
         </button>
+        <span className="w-full text-right text-[10px] font-medium text-slate-400 sm:w-auto">
+          Auto refresh: 1 min{lastUpdatedAt ? ` · Updated ${formatDateTime(lastUpdatedAt)}` : ''}
+        </span>
 
         {/* INDEX RECORD */}
         <button
@@ -1463,7 +1531,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
               <div className="hidden print-footer px-3 py-2 border-t border-slate-300">
                 <div className="flex items-center justify-between text-[8px] font-bold text-slate-600">
                   <span>Total Records: {indexRecordRows.length}</span>
-                  <span>Printed: {new Date().toLocaleString('en-PK')}</span>
+                  <span>Printed: {new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}</span>
                 </div>
               </div>
             )}
@@ -1651,7 +1719,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">
-                  Outstanding
+                    Current Outstanding
                 </p>
                 <p className="mt-2 text-2xl lg:text-3xl font-black tracking-tight text-red-600">
                   {money(totalOutstanding)}
@@ -1721,7 +1789,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 </div>
 
                 <p className="text-xs text-slate-400 mt-1.5">
-                  Detailed profitability across cash and installment business.
+                  Sale-time product cost is used for new sales; older sales without a saved cost use the product's current cost.
                 </p>
               </div>
 
@@ -1927,7 +1995,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   </div>
 
                   <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black">
-                    {detailedInstallmentProfitList.length} Deals
+                    {visibleInstallmentProfitList.length} Deals
                   </span>
                 </div>
               </div>
@@ -2000,7 +2068,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     <Layers className="w-4 h-4 text-indigo-500" />
                   </div>
 
-                  {detailedInstallmentProfitList.length === 0 ? (
+                  {visibleInstallmentProfitList.length === 0 ? (
                     <div className="rounded-xl bg-slate-50 border border-dashed border-slate-200 py-8 text-center">
                       <CreditCard className="w-7 h-7 mx-auto text-slate-300" />
                       <p className="text-xs font-semibold text-slate-400 mt-2">
@@ -2009,7 +2077,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     </div>
                   ) : (
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-                      {detailedInstallmentProfitList.map((sale, index) => (
+                      {visibleInstallmentProfitList.map((sale, index) => (
                         <div
                           key={sale._id || index}
                           className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-200 hover:shadow-sm transition"

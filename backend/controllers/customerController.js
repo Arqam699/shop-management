@@ -631,10 +631,11 @@ const calculatePaymentScore = async ({
         ) {
           partialPayments++;
           overduePayments++;
-        } else {
-          partialPayments++;
         }
 
+        // A partial allocation to a future installment is an advance
+        // payment, not negative payment behavior. Only count it once the
+        // installment's due date has passed and a balance remains unpaid.
         continue;
       }
 

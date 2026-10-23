@@ -308,11 +308,13 @@ const Customers = () => {
 
             const response = await api.get(`/installments/${plan._id}`);
             if (response.data?.success) {
+              const planDetails = response.data.data || {};
               return {
                 planId: plan._id,
-                installments: Array.isArray(response.data.data?.installments)
-                  ? response.data.data.installments
+                installments: Array.isArray(planDetails.installments)
+                  ? planDetails.installments
                   : [],
+                returns: Array.isArray(planDetails.returns) ? planDetails.returns : [],
               };
             }
 
@@ -334,6 +336,9 @@ const Customers = () => {
       const plansWithSchedules = plans.map((plan) => ({
         ...plan,
         installments: scheduleMap[String(plan._id)] || [],
+        returns: installmentScheduleResults.find(
+          (item) => String(item.planId) === String(plan._id)
+        )?.returns || [],
       }));
 
       const sales = Array.isArray(customerData.sales) ? customerData.sales : [];
@@ -890,11 +895,6 @@ const Customers = () => {
                       icon={<Clock className="w-4 h-4" />}
                       danger={Number(summary.overdueCount) > 0}
                     />
-                    <SummaryCard
-                      title="Returns"
-                      value={summary.returnsCount || 0}
-                      icon={<RotateCcw className="w-4 h-4" />}
-                    />
                   </div>
                 </section>
 
@@ -1155,7 +1155,7 @@ const Customers = () => {
                     <div className="space-y-4 mt-4">
                       {profile.installmentPlans.map((plan) => (
                         <div key={plan._id} className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                          <div className="bg-slate-50/80 px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200">
+<div className="bg-slate-50/80 px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200">
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-black text-xs text-indigo-600">
@@ -1286,49 +1286,7 @@ const Customers = () => {
                     <EmptyHistory text="No payment history recorded." />
                   )}
                 </section>
-
-                {/* 8. RETURNS HISTORY */}
-                <section className="premium-card p-5 shadow-sm">
-                  <SectionHeader
-                    icon={<RotateCcw className="w-4 h-4" />}
-                    title="Return / Refund History"
-                    count={profile.returns?.length || 0}
-                  />
-
-                  {profile.returns?.length ? (
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl mt-4">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-[9px] font-black uppercase text-slate-400">
-                          <tr>
-                            <th className="px-4 py-3">Return ID</th>
-                            <th className="px-4 py-3">Date</th>
-                            <th className="px-4 py-3">Invoice</th>
-                            <th className="px-4 py-3">Product</th>
-                            <th className="px-4 py-3 text-center">Qty</th>
-                            <th className="px-4 py-3 text-right">Refund</th>
-                            <th className="px-4 py-3">Reason</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                          {profile.returns.map((returnItem) => (
-                            <tr key={returnItem._id} className="hover:bg-slate-50/70">
-                              <td className="px-4 py-3 font-black text-indigo-600">{returnItem.returnId || '-'}</td>
-                              <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(returnItem.returnDate || returnItem.createdAt)}</td>
-                              <td className="px-4 py-3 font-semibold text-slate-700">{returnItem.sale?.saleId || '-'}</td>
-                              <td className="px-4 py-3 font-bold text-slate-800">{returnItem.product?.name || '-'}</td>
-                              <td className="px-4 py-3 text-center font-bold">{returnItem.quantity}</td>
-                              <td className="px-4 py-3 text-right font-black text-rose-600">-{formatCurrency(returnItem.refundAmount)}</td>
-                              <td className="px-4 py-3 text-slate-500">{returnItem.reason || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <EmptyHistory text="No return history found." />
-                  )}
-                </section>
-              </>
+</>
             ) : null}
           </div>
 

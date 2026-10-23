@@ -770,6 +770,7 @@ const createSale = async (req, res) => {
           product,
           quantity: qty,
           unitPrice: price,
+          purchasePriceAtSale: Number(productDoc.purchasePrice || 0),
           discount: discountAmount,
           subtotal,
           finalTotal,
@@ -1025,6 +1026,9 @@ const createSale = async (req, res) => {
 
         unitPrice:
           price,
+
+        purchasePriceAtSale:
+          Number(productDoc.purchasePrice || 0),
 
         discount:
           discountAmount,
@@ -1991,6 +1995,9 @@ const updateSale = async (req, res) => {
       sale.product =
         product;
 
+      sale.purchasePriceAtSale =
+        Number(newProduct.purchasePrice || 0);
+
       sale.quantity =
         qty;
 
@@ -2398,6 +2405,9 @@ const updateSale = async (req, res) => {
 
     sale.product =
       product;
+
+    sale.purchasePriceAtSale =
+      Number(newProduct.purchasePrice || 0);
 
     sale.quantity =
       qty;
@@ -3531,6 +3541,5 @@ module.exports = {
   getSaleById,
   createSale,
   updateSale,
-  deleteSale,
-  exchangeSaleProduct
+  deleteSale
 };

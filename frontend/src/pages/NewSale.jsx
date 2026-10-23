@@ -1434,7 +1434,7 @@ if (invalidDate) {
   ========================================================= */
 
   return (
-    <div className={`space-y-4 xl:space-y-3 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)] ${isInstallmentSale ? 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col' : ''}`}>
+    <div className={`space-y-4 xl:space-y-3 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]`}>
 
       {/* =====================================================
           DARK HERO HEADER
@@ -1555,14 +1555,14 @@ if (invalidDate) {
 
       <form
         onSubmit={handleSubmit}
-        className={`grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px] ${isInstallmentSale ? 'xl:min-h-0 xl:flex-1 xl:overflow-hidden xl:gap-4' : ''}`}
+        className={`grid min-w-0 grid-cols-1 gap-4 sm:gap-6 ${isInstallmentSale ? '2xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] 2xl:items-start 2xl:gap-5' : 'xl:grid-cols-[minmax(0,1fr)_400px]'}`}
       >
 
         {/* ===================================================
             LEFT COLUMN
         ==================================================== */}
 
-        <div className={`space-y-6 ${isInstallmentSale ? 'xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1' : ''}`}>
+        <div className={`min-w-0 space-y-6 ${isInstallmentSale ? 'xl:space-y-5' : ''}`}>
 
           {/* =================================================
               INVOICE NUMBER
@@ -1623,7 +1623,7 @@ if (invalidDate) {
                 <div>
 
                   <h2 className="text-sm font-black text-slate-900">
-                    Customer Selection{' '}
+                    {isInstallmentSale ? 'Step 1 · Customer' : 'Customer Selection'}{' '}
                     <span className="text-rose-500">
                       *
                     </span>
@@ -1760,31 +1760,31 @@ if (invalidDate) {
             </div>
 
             {selectedCustomer && (
-              <div className="mt-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between">
+              <div className="mt-3 min-w-0 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 flex flex-wrap items-start justify-between gap-3">
 
-                <div>
+                <div className="min-w-0 flex-1">
 
                   <span className="text-[9px] uppercase font-black tracking-wider text-indigo-500">
                     Selected Customer
                   </span>
 
-                  <p className="font-black text-xs text-slate-900 mt-0.5">
+                  <p className="break-words font-black text-xs text-slate-900 mt-0.5">
                     {customerName}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-1">
+                  <p className="break-all text-[10px] text-slate-500 mt-1">
                     CNIC: {selectedCustomer?.cnic || selectedCustomer?.cnicNumber || '—'}
                     {selectedCustomer?.fatherName ? ` · Father: ${selectedCustomer.fatherName}` : ''}
                   </p>
 
                 </div>
 
-                <div className="text-right">
+                <div className="min-w-0 max-w-full shrink text-left sm:text-right">
 
                   <span className="text-[9px] uppercase font-black tracking-wider text-slate-400">
                     Mobile
                   </span>
 
-                  <p className="font-bold text-xs text-slate-700 mt-0.5">
+                  <p className="break-all font-bold text-xs text-slate-700 mt-0.5">
                     {customerPhone || '—'}
                   </p>
 
@@ -1812,7 +1812,7 @@ if (invalidDate) {
                 <div>
 
                   <h2 className="text-sm font-black text-slate-900">
-                    Inventory Product{' '}
+                    {isInstallmentSale ? 'Step 2 · Product and price' : 'Inventory Product'}{' '}
                     <span className="text-rose-500">
                       *
                     </span>
@@ -1959,25 +1959,25 @@ if (invalidDate) {
             </div>
 
             {selectedProduct && (
-              <div className="mt-3 p-3.5 rounded-2xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
+              <div className="mt-3 min-w-0 p-3.5 rounded-2xl bg-violet-50/60 border border-violet-100 flex flex-wrap items-start justify-between gap-3">
 
-                <div>
+                <div className="min-w-0 flex-1">
 
                   <span className="text-[9px] uppercase font-black tracking-wider text-violet-600">
                     Selected Product
                   </span>
 
-                  <p className="font-black text-xs text-slate-900 mt-0.5">
+                  <p className="break-words font-black text-xs text-slate-900 mt-0.5">
                     {productName}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-1">
+                  <p className="break-words text-[10px] text-slate-500 mt-1">
                     {[selectedProduct?.brand, selectedProduct?.model, selectedProduct?.category, selectedProduct?.sku ? `SKU ${selectedProduct.sku}` : ''].filter(Boolean).join(' · ')}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
+                  <p className="break-words text-[10px] text-slate-500 mt-0.5">
                     Available stock: {Number(selectedProduct?.quantity ?? 0)}
                     {selectedProduct?.warrantyPeriod ? ` · Warranty: ${selectedProduct.warrantyPeriod}` : ''}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
+                  <p className="break-all text-[10px] text-slate-500 mt-0.5">
                     {selectedProduct?.imei ? `IMEI: ${selectedProduct.imei}` : ''}
                     {selectedProduct?.serialNumber ? `${selectedProduct?.imei ? ' · ' : ''}Serial: ${selectedProduct.serialNumber}` : ''}
                     {selectedProduct?.chassisNumber ? `${selectedProduct?.imei || selectedProduct?.serialNumber ? ' · ' : ''}Chassis: ${selectedProduct.chassisNumber}` : ''}
@@ -1985,13 +1985,13 @@ if (invalidDate) {
 
                 </div>
 
-                <div className="text-right">
+                <div className="min-w-0 max-w-full shrink text-left sm:text-right">
 
                   <span className="text-[9px] uppercase font-black tracking-wider text-slate-400">
                     Unit Price
                   </span>
 
-                  <p className="font-black text-xs text-slate-900 mt-0.5">
+                  <p className="break-words font-black text-xs text-slate-900 mt-0.5">
                     {settings?.currency ||
                       'PKR'}{' '}
                     {formatMoney(
@@ -2010,7 +2010,7 @@ if (invalidDate) {
               PRICING & QUANTITY
           ================================================== */}
 
-          <section className="premium-card p-5 sm:p-6 shadow-sm space-y-4">
+          <section className={`premium-card min-w-0 p-4 sm:p-6 shadow-sm space-y-4 ${isInstallmentSale ? 'overflow-hidden' : ''}`}>
 
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -2024,7 +2024,7 @@ if (invalidDate) {
 
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`grid min-w-0 grid-cols-1 gap-4 ${isInstallmentSale ? 'md:grid-cols-2 2xl:grid-cols-3' : 'sm:grid-cols-3'}`}>
 
               {/* UNIT PRICE */}
 
@@ -2143,26 +2143,26 @@ if (invalidDate) {
 
           {isInstallmentSale && (
 
-            <section className="premium-card p-5 sm:p-6 space-y-5 animate-[pageEnter_0.3s_ease-out]">
+            <section className="premium-card min-w-0 overflow-hidden p-4 sm:p-6 space-y-5 border-l-4 border-l-amber-400 animate-[pageEnter_0.3s_ease-out]">
 
               {/* HEADER */}
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex min-w-0 flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-slate-100">
 
-                <div className="flex items-center gap-2.5">
+                <div className="flex min-w-0 items-start gap-2.5">
 
                   <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                     <CreditCard className="w-4 h-4" />
                   </div>
 
-                  <div>
+                  <div className="min-w-0 flex-1">
 
                     <h2 className="text-sm font-black text-slate-900">
-                      Installment Financing Setup
+                      Step 3 · Financing terms
                     </h2>
 
-                    <p className="text-[10px] text-slate-400">
-                      Configure down payment, markup & installment schedule
+                    <p className="text-xs text-slate-500 mt-1">
+                      Set the amount paid today, financing rate, and repayment plan.
                     </p>
 
                   </div>
@@ -2170,7 +2170,7 @@ if (invalidDate) {
                 </div>
 
                 <span
-                  className={`px-3 py-1 rounded-full text-[10px] font-black border ${
+                  className={`max-w-full self-start whitespace-normal break-words px-3 py-1 rounded-full text-[10px] font-black border ${
                     scheduleMode === 'manual'
                       ? 'bg-blue-50 border-blue-200 text-blue-700'
                       : 'bg-emerald-50 border-emerald-200 text-emerald-700'
@@ -2187,14 +2187,14 @@ if (invalidDate) {
                   CONFIG INPUTS
               ================================================== */}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-4 rounded-2xl bg-slate-50/80 p-3 sm:p-4 border border-slate-100">
 
                 {/* DOWN PAYMENT */}
 
                 <div>
 
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    Down Payment (
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Down payment today (
                     {settings?.currency ||
                       'PKR'}
                     )
@@ -2218,8 +2218,8 @@ if (invalidDate) {
 
                 <div>
 
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    Total Installments
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Number of installments
                   </label>
 
                   <input
@@ -2247,8 +2247,8 @@ if (invalidDate) {
 
                 <div>
 
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    Financing Markup (%)
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Financing markup (%)
                   </label>
 
                   <div className="relative">
@@ -2278,7 +2278,7 @@ if (invalidDate) {
                   DOWN PAYMENT CHECKBOX
               ================================================== */}
 
-              <label className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-all">
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100 cursor-pointer hover:bg-amber-50 transition-colors">
 
                 <input
                   type="checkbox"
@@ -2288,21 +2288,19 @@ if (invalidDate) {
                   onChange={
                     handleTreatDownPaymentChange
                   }
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                 />
 
                 <div>
 
-                  <p className="text-xs font-black text-slate-800">
-                    Down Payment as First Installment
+                  <p className="text-xs font-bold text-slate-800">
+                    Count down payment as installment #1
                   </p>
 
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
-
+                  <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
                     {treatDownPaymentAsFirstInstallment
-                      ? 'Down Payment pehle subtract hogi, bache hue principal amount par markup lagega aur Down Payment installment #1 count hogi.'
-                      : 'Pehle total price par markup lagega, uske baad Down Payment subtract hogi.'}
-
+                      ? 'Down payment counts as payment #1; markup applies only to the remaining balance.'
+                      : 'Down payment is separate; markup applies to the total before down payment is subtracted.'}
                   </p>
 
                 </div>
@@ -2313,32 +2311,32 @@ if (invalidDate) {
                   SCHEDULE HEADER
               ================================================== */}
 
-              <div className="space-y-4 pt-2">
+              <div className="space-y-3 pt-1">
 
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex min-w-0 flex-col xl:flex-row xl:items-center justify-between gap-3">
 
                   <div>
 
-                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">
-                      Installment Schedule
+                    <h3 className="text-sm font-black text-slate-900">
+                      Step 4 · Payment schedule
                     </h3>
 
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Choose automatic monthly dates or set every due date manually.
+                    <p className="text-xs text-slate-500 mt-1">
+                      Set payment dates and amounts.
                     </p>
 
                   </div>
 
                   {/* MODE BUTTONS */}
 
-                  <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  <div className="flex w-fit max-w-full items-center gap-1 p-1 rounded-lg bg-slate-100 border border-slate-200 self-start">
 
                     <button
                       type="button"
                       onClick={
                         switchToAutomaticSchedule
                       }
-                      className={`px-3 py-2 rounded-lg text-[10px] font-black transition-all ${
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                         scheduleMode ===
                         'auto'
                           ? 'bg-white text-emerald-700 shadow-sm border border-slate-200'
@@ -2353,7 +2351,7 @@ if (invalidDate) {
                       onClick={
                         switchToManualSchedule
                       }
-                      className={`px-3 py-2 rounded-lg text-[10px] font-black transition-all ${
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                         scheduleMode ===
                         'manual'
                           ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
@@ -2372,18 +2370,14 @@ if (invalidDate) {
                 {scheduleMode ===
                   'manual' && (
 
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-blue-50 border border-blue-100">
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
 
                     <CalendarDays className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
 
                     <div>
 
-                      <p className="text-[10px] font-black text-blue-800">
-                        Manual Date Scheduling Enabled
-                      </p>
-
-                      <p className="text-[10px] text-blue-600 mt-0.5 leading-relaxed">
-                        Har installment ki date independently select karein. Same month mein multiple installments bhi allowed hain, aur months ke darmiyan gap bhi rakh sakte hain.
+                      <p className="text-[11px] text-blue-800 leading-snug">
+                        Choose a separate due date for each payment. Dates can be in the same month or have gaps.
                       </p>
 
                     </div>
@@ -2404,13 +2398,13 @@ if (invalidDate) {
                       onClick={
                         resetSchedule
                       }
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-black text-slate-700 transition-all shadow-sm"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors"
                     >
 
                       <RotateCcw className="w-3.5 h-3.5" />
 
                       <span>
-                        Reset to Automatic Dates
+                        Reset dates
                       </span>
 
                     </button>
@@ -2425,7 +2419,7 @@ if (invalidDate) {
                   SCHEDULE ROWS
               ================================================== */}
 
-              <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
+              <div className="space-y-1.5 rounded-xl">
 
                 {installmentSchedule.length ===
                 0 ? (
@@ -2451,11 +2445,11 @@ if (invalidDate) {
 
                       <div
                         key={`${item.installmentNumber}-${index}`}
-                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl border ${
+                      className={`grid min-w-0 grid-cols-1 2xl:grid-cols-[minmax(8rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)] 2xl:items-center gap-3 px-3 py-2 rounded-lg border ${
                           scheduleMode ===
                           'manual'
-                            ? 'border-blue-200 bg-blue-50/30'
-                            : 'border-slate-200 bg-slate-50/50'
+                            ? 'border-blue-200 bg-blue-50/40'
+                            : 'border-slate-200 bg-white'
                         }`}
                       >
 
@@ -2463,52 +2457,25 @@ if (invalidDate) {
 
                         <div className="flex items-center gap-2">
 
-                          <span className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-black flex items-center justify-center">
+                          <span className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center ${scheduleMode === 'manual' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>
                             #
                             {
                               item.installmentNumber
                             }
                           </span>
 
-                          <div>
-
-                            <p className="text-xs font-black text-slate-800">
-                              Installment #
-                              {
-                                item.installmentNumber
-                              }
-                            </p>
-
-                            {scheduleMode ===
-                              'auto' && (
-                              <p className="text-[9px] text-slate-400">
-                                Automatic monthly date
-                              </p>
-                            )}
-
-                            {scheduleMode ===
-                              'manual' && (
-                              <p className="text-[9px] text-blue-500 font-bold">
-                                Manual due date
-                              </p>
-                            )}
-
-                          </div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            Installment {item.installmentNumber}
+                          </p>
 
                         </div>
 
                         {/* AMOUNT + DATE */}
 
-                        <div className="flex flex-col xs:flex-row sm:flex-row items-stretch sm:items-center gap-2">
+                        <label className="block text-[11px] font-semibold text-slate-600">
+                          Amount ({settings?.currency || 'PKR'})
 
                           {/* AMOUNT */}
-
-                          <div className="relative">
-
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
-                              {settings?.currency ||
-                                'PKR'}
-                            </span>
 
                             <input
                               type="number"
@@ -2526,17 +2493,12 @@ if (invalidDate) {
                                     .value
                                 )
                               }
-                              className="w-full sm:w-32 h-9 border border-slate-200 rounded-xl pl-9 pr-2.5 text-xs font-black text-slate-900 bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                              className="mt-1 w-full h-9 border border-slate-200 rounded-lg px-3 text-sm font-semibold text-slate-900 bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                             />
+                        </label>
 
-                          </div>
-
-                          {/* DATE */}
-
-                          <div className="relative">
-
-                            <CalendarDays className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-
+                        <label className="block text-[11px] font-semibold text-slate-600">
+                          Due date
                             <input
                               type="date"
                               value={
@@ -2552,7 +2514,7 @@ if (invalidDate) {
                                     .value
                                 )
                               }
-                              className={`w-full sm:w-40 h-9 border rounded-xl pl-8 pr-2.5 text-xs font-semibold bg-white outline-none transition-all ${
+                              className={`mt-1 w-full h-9 border rounded-lg px-3 text-sm font-semibold bg-white outline-none transition-all ${
                                 scheduleMode ===
                                 'manual'
                                   ? 'border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10'
@@ -2560,9 +2522,7 @@ if (invalidDate) {
                               }`}
                             />
 
-                          </div>
-
-                        </div>
+                        </label>
 
                       </div>
 
@@ -2581,69 +2541,31 @@ if (invalidDate) {
                 installmentSchedule.length >
                   0 && (
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-
-                    <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-
-                      <p className="text-[9px] uppercase tracking-wider font-black text-slate-400">
-                        Scheduled Count
-                      </p>
-
-                      <p className="text-sm font-black text-slate-800 mt-1">
-                        {
-                          installmentSchedule.length
-                        }
-                      </p>
-
-                    </div>
-
-                    <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-
-                      <p className="text-[9px] uppercase tracking-wider font-black text-slate-400">
-                        Schedule Total
-                      </p>
-
-                      <p className="text-sm font-black text-slate-800 mt-1">
-                        {settings?.currency ||
-                          'PKR'}{' '}
-                        {formatMoney(
-                          scheduleTotal
-                        )}
-                      </p>
-
-                    </div>
-
-                    <div
-                      className={`rounded-2xl border p-3 ${
+                  <div
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border px-3 py-2.5 mt-2 ${
                         scheduleIsBalanced
                           ? 'bg-emerald-50 border-emerald-200'
                           : 'bg-rose-50 border-rose-200'
                       }`}
-                    >
-
-                      <p className="text-[9px] uppercase tracking-wider font-black text-slate-400">
-                        Balance Check
-                      </p>
-
-                      <p
-                        className={`text-sm font-black mt-1 ${
+                  >
+                    <p className="text-xs font-semibold text-slate-700">
+                      {installmentSchedule.length} installments
+                      <span className="mx-2 text-slate-300">·</span>
+                      Total {settings?.currency || 'PKR'} {formatMoney(scheduleTotal)}
+                    </p>
+                    <p
+                      className={`text-xs font-bold ${
                           scheduleIsBalanced
                             ? 'text-emerald-700'
                             : 'text-rose-700'
                         }`}
-                      >
+                    >
                         {scheduleIsBalanced
                           ? 'Balanced'
-                          : `${
-                              settings?.currency ||
-                              'PKR'
-                            } ${formatMoney(
-                              scheduleDifference
-                            )}`}
-                      </p>
-
-                    </div>
-
+                          : scheduleDifference > 0
+                            ? `Short by ${settings?.currency || 'PKR'} ${formatMoney(scheduleDifference)} — add this amount across payments.`
+                            : `Over by ${settings?.currency || 'PKR'} ${formatMoney(Math.abs(scheduleDifference))} — reduce payments by this amount.`}
+                    </p>
                   </div>
 
                 )}
@@ -2658,9 +2580,9 @@ if (invalidDate) {
             RIGHT COLUMN
         ====================================================== */}
 
-        <div className={`space-y-6 ${isInstallmentSale ? 'xl:min-h-0' : ''}`}>
+        <div className={`min-w-0 space-y-6 ${isInstallmentSale ? '2xl:sticky 2xl:top-4' : ''}`}>
 
-          <div className={`bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-6 text-white shadow-2xl shadow-blue-950/30 space-y-6 ${isInstallmentSale ? 'xl:rounded-2xl xl:p-4 xl:space-y-4' : 'sticky top-24'}`}>
+          <div className={`min-w-0 overflow-hidden bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-4 sm:p-6 text-white shadow-2xl shadow-blue-950/30 space-y-5 ${isInstallmentSale ? '2xl:rounded-2xl 2xl:p-5 2xl:space-y-4' : 'sticky top-24'}`}>
 
             {/* HEADER */}
 
@@ -2688,7 +2610,7 @@ if (invalidDate) {
 
             <div className="space-y-3 text-xs font-semibold text-slate-300">
 
-              <div className="flex justify-between items-center">
+              <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                 <span className="text-slate-400">
                   Subtotal ({quantity} × Price)
@@ -2704,7 +2626,7 @@ if (invalidDate) {
 
               </div>
 
-              <div className="flex justify-between items-center">
+              <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                 <span className="text-slate-400">
                   Discount
@@ -2720,7 +2642,7 @@ if (invalidDate) {
 
               </div>
 
-              <div className="border-t border-white/[0.08] pt-3 flex justify-between items-center text-sm font-black text-white">
+              <div className="border-t border-white/[0.08] pt-3 flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 text-sm font-black text-white">
 
                 <span>
                   Net Total Payable
@@ -2740,7 +2662,7 @@ if (invalidDate) {
 
                 <div className="space-y-2.5 border-t border-white/[0.08] pt-3.5 text-xs text-slate-400">
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Financing Markup (
@@ -2759,7 +2681,7 @@ if (invalidDate) {
 
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Total Deal With Markup
@@ -2775,7 +2697,7 @@ if (invalidDate) {
 
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Down Payment Received
@@ -2792,7 +2714,7 @@ if (invalidDate) {
 
                   </div>
 
-                  <div className="flex justify-between items-center border-t border-white/[0.08] pt-2 font-black text-white">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-2 font-black text-white">
 
                     <span>
                       Financed Balance Dues
@@ -2808,7 +2730,7 @@ if (invalidDate) {
 
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Scheduled Installments
