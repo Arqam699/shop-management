@@ -97,13 +97,3 @@ shop-management-system/
     ├── postcss.config.js
     └── tailwind.config.js
 
-⚙️ Environment Setup (AI & Backups)
-# AI Assistant (Groq)
-GROQ_API_KEY=your_groq_key_here
-AI_MODEL=openai/gpt-oss-120b
-AI_DAILY_LIMIT=50          # 0 = unlimited
-
-# Admin seeding
-ADMIN_EMAIL=admin@shop.com
-ADMIN_PASSWORD=set_a_strong_password
-⚠️ Security: Kabhi bhi asal API keys README ya chat me paste na karein — leak hone par foran revoke/rotate karein.
