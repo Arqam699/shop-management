@@ -1283,12 +1283,13 @@ const Payments = () => {
             {/* RECEIPT CONTENT */}
             <div
               id="printable-receipt-content"
-              className="p-5 space-y-3 text-slate-900 font-mono text-xs overflow-y-auto flex-1 custom-scrollbar print:overflow-visible print:p-0"
+              className="relative isolate p-5 space-y-3 text-slate-900 font-mono text-xs overflow-y-auto flex-1 custom-scrollbar print:overflow-visible print:p-0"
             >
+              <div className="relative z-10 space-y-3">
               {/* SHOP HEADER */}
               <div className="text-center pb-2 border-b-2 border-dashed border-slate-400 space-y-0.5">
                 {/* BRAND NAME — auto-styled, prominent */}
-                <h3 className="text-2xl font-black uppercase tracking-[0.18em] text-slate-900 leading-tight">
+                <h3 className="whitespace-nowrap text-xl font-black uppercase tracking-[0.12em] text-slate-900 leading-tight">
                   {settings?.shopName || 'Electronics Shop'}
                 </h3>
                 {settings?.brandTagline && (
@@ -1316,8 +1317,11 @@ const Payments = () => {
               </div>
 
               {/* CUSTOMER & PRODUCT DETAILS */}
-              <div className="grid grid-cols-2 gap-2 py-1.5 border-b border-dashed border-slate-300 text-[10px]">
-                <div className="space-y-0.5 border-r border-dashed border-slate-300 pr-1">
+              <div className="relative isolate grid grid-cols-2 gap-2 py-1.5 border-b border-dashed border-slate-300 text-[10px]">
+                <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+                  <span className="rotate-[-28deg] whitespace-nowrap rounded-lg border-double border-4 border-emerald-700 px-3 py-1 text-3xl font-black tracking-[0.16em] text-emerald-700 opacity-25 [print-color-adjust:exact]">PAID</span>
+                </div>
+                <div className="relative z-10 space-y-0.5 border-r border-dashed border-slate-300 pr-1">
                   <span className="text-[8px] uppercase font-black text-slate-500 block">Customer:</span>
                   <p className="font-black text-slate-900 truncate">{activeReceipt.customer?.fullName || 'Walk-in'}</p>
                   <p className="text-slate-700 font-bold">{activeReceipt.customer?.mobileNumber || ''}</p>
@@ -1326,10 +1330,13 @@ const Payments = () => {
                   )}
                 </div>
 
-                <div className="space-y-0.5 pl-1">
+                <div className="relative z-10 space-y-0.5 pl-1">
                   <span className="text-[8px] uppercase font-black text-slate-500 block">Financed Item:</span>
                   <p className="font-black text-slate-900 truncate">{planDoc?.product?.name || 'Item'}</p>
-                  <p className="text-slate-700 font-bold truncate">{[planDoc?.product?.brand, planDoc?.product?.model].filter(Boolean).join(' ')}</p>
+                  {planDoc?.product?.brand && <p className="text-slate-700 font-bold truncate">Brand: {planDoc.product.brand}</p>}
+                  {planDoc?.product?.model && <p className="text-slate-700 font-bold truncate">Model: {planDoc.product.model}</p>}
+                  {planDoc?.product?.imei && <p className="text-slate-700 text-[9px] break-all">IMEI: {planDoc.product.imei}</p>}
+                  {planDoc?.product?.chassisNumber && <p className="text-slate-700 text-[9px] break-all">Chassis: {planDoc.product.chassisNumber}</p>}
                 </div>
               </div>
 
@@ -1489,7 +1496,7 @@ const Payments = () => {
                     </tbody>
                   </table>
 
-                  <p className="text-[7.5px] leading-tight font-semibold text-slate-500">
+                  <p className="no-print text-[7.5px] leading-tight font-semibold text-slate-500">
                     Result shows extra payment adjusted to future installments or the amount still due on the same installment.
                   </p>
                 </div>
@@ -1528,15 +1535,10 @@ const Payments = () => {
                 </div>
               )}
 
-              {/* SIGNATURES */}
-              <div className="pt-6 flex justify-between items-end text-center text-[9px] font-black">
-                <div className="border-t border-slate-900 w-20 pt-1">Customer Sign</div>
-                <div className="border-t border-slate-900 w-20 pt-1">Cashier Sign</div>
-              </div>
-
               <p className="text-[8px] text-center text-slate-500 uppercase tracking-widest font-black pt-1">
                 *** Thank You for Your Timely Payment ***
               </p>
+              </div>
             </div>
           </div>
         </div>

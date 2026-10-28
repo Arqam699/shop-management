@@ -61,7 +61,7 @@ const saleSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true,
+      required: function () { return this.paymentType === 'Installment'; },
     },
 
 
@@ -74,6 +74,14 @@ const saleSchema = new mongoose.Schema(
       ref: 'Product',
       required: true,
     },
+
+    items: [{
+      product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+      quantity: { type: Number, required: true, min: 1 },
+      unitPrice: { type: Number, required: true, min: 0 },
+      discount: { type: Number, min: 0, default: 0 },
+      purchasePriceAtSale: { type: Number, min: 0, default: 0 },
+    }],
 
 
     // --------------------------------------------------------
@@ -171,6 +179,13 @@ const saleSchema = new mongoose.Schema(
       type: String,
       enum: ['Cash', 'Installment'],
       default: 'Cash',
+      index: true,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ['Paid', 'Unpaid'],
+      default: 'Paid',
       index: true,
     },
 
@@ -283,8 +298,8 @@ saleSchema.pre('validate', function () {
     this.markupAmount = 0;
     this.totalWithMarkup = this.finalTotal;
 
-    this.downPayment = this.finalTotal;
-    this.remainingBalance = 0;
+    this.downPayment = this.paymentStatus === 'Unpaid' ? 0 : this.finalTotal;
+    this.remainingBalance = this.paymentStatus === 'Unpaid' ? this.finalTotal : 0;
 
     this.installmentDuration = 0;
     this.selectedInstallmentDuration = 0;

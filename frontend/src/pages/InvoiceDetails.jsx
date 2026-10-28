@@ -164,6 +164,7 @@ const InvoiceDetails = () => {
   const saleObj = invoice.sale || invoice;
   const isInstallmentInvoice =
     saleObj.paymentType === 'Installment';
+  const invoicePaymentStatus = String(saleObj.paymentStatus || (Number(saleObj.remainingBalance || 0) > 0 ? 'Unpaid' : 'Paid')).toUpperCase();
   const downPaymentPaid = Number(saleObj.downPayment || 0);
   const totalAmount = Number(
     invoice.plan?.totalAmount ??
@@ -175,7 +176,7 @@ const InvoiceDetails = () => {
   // invoice has a down payment and financing balance.
   const displayedPaymentAmount = isInstallmentInvoice
     ? downPaymentPaid
-    : totalAmount;
+    : invoicePaymentStatus === 'UNPAID' ? 0 : totalAmount;
   const remainingAmount = isInstallmentInvoice
     ? Math.max(
         Number(
@@ -185,8 +186,11 @@ const InvoiceDetails = () => {
         ),
         0
       )
-    : 0;
+      : invoicePaymentStatus === 'UNPAID' ? totalAmount : 0;
   const invoiceQuantity = saleObj.quantity || 0;
+  const invoiceItems = Array.isArray(saleObj.items) && saleObj.items.length
+    ? saleObj.items
+    : [{ product: saleObj.product, quantity: invoiceQuantity, unitPrice: saleObj.unitPrice, discount: saleObj.discount || 0 }];
   const installments = Array.isArray(invoice.installments)
     ? invoice.installments
     : [];
@@ -275,12 +279,16 @@ const InvoiceDetails = () => {
       ====================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xl shadow-slate-200/50 space-y-4 text-xs font-mono text-slate-900"
+        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono text-slate-900"
       >
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+          <span className={`rotate-[-28deg] whitespace-nowrap rounded-lg border-double border-4 px-4 py-1.5 text-4xl font-black tracking-[0.2em] ${invoicePaymentStatus === 'PAID' ? 'border-emerald-700 text-emerald-700 opacity-15' : 'border-rose-700 text-rose-700 opacity-10'}`}>{invoicePaymentStatus}</span>
+        </div>
+        <div className="relative z-10">
         {/* SHOP HEADER */}
-        <div className="text-center space-y-1 pb-3 border-b-2 border-dashed border-slate-300">
+        <div className="text-center space-y-0.5 pb-2 border-b-2 border-dashed border-slate-300">
           {/* BRAND NAME — auto-styled, prominent */}
-          <h1 className="text-2xl font-black uppercase tracking-[0.18em] text-slate-900 leading-tight">
+          <h1 className="text-xl font-black uppercase tracking-[0.12em] text-slate-900 leading-tight">
             {settings?.shopName || 'Electronics Shop'}
           </h1>
           {settings?.brandTagline && (
@@ -314,32 +322,34 @@ const InvoiceDetails = () => {
         </div>
 
         {/* CUSTOMER + PRODUCT DETAILS */}
-        <div className="grid grid-cols-2 gap-3 py-2 border-b border-dashed border-slate-300 text-[11px]">
+        <div className="py-1.5 border-b border-dashed border-slate-300 text-[10px]">
           {/* Customer Column */}
-          <div className="space-y-1 border-r border-dashed border-slate-200 pr-2">
-            <span className="text-[9px] uppercase font-black text-slate-400 block">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <span className="col-span-2 text-[9px] uppercase font-black text-slate-400 block">
               Customer Info
             </span>
-            <p className="font-black text-slate-900 truncate">
+            <p className="col-start-1 row-start-2 font-black text-slate-900 truncate">
               {saleObj.customer?.fullName || 'Walk-in Customer'}
             </p>
-            <p className="text-slate-600 font-bold text-[10px]">
+            <p className="col-start-1 row-start-3 text-slate-600 font-bold text-[9px]">
               {saleObj.customer?.mobileNumber || 'No Phone'}
             </p>
+            {saleObj.customer?.cnic && <p className="col-start-2 row-start-2 self-center text-left text-slate-600 text-[9px]">CNIC: {saleObj.customer.cnic}</p>}
+            {saleObj.customer?.alternateMobileNumber && <p className="col-start-1 text-slate-600 text-[9px]">Alt phone: {saleObj.customer.alternateMobileNumber}</p>}
             {saleObj.customer?.address && (
-              <p className="text-slate-500 text-[9px] leading-tight line-clamp-2">
-                {saleObj.customer.address}
+              <p className="col-start-2 row-start-3 self-center text-left text-slate-500 text-[9px] leading-tight">
+                Address: {saleObj.customer.address}{saleObj.customer?.city ? `, ${saleObj.customer.city}` : ''}
               </p>
             )}
           </div>
 
           {/* Product Column */}
-          <div className="space-y-1 pl-1">
+          <div className="hidden">
             <span className="text-[9px] uppercase font-black text-slate-400 block">
-              Item Details
+              Sale Details
             </span>
             <p className="font-black text-slate-900 truncate">
-              {saleObj.product?.name || 'Product'}
+              {isInstallmentInvoice ? 'Installment Sale' : 'Cash Sale'}
             </p>
             <p className="text-slate-600 font-bold text-[10px] truncate">
               {[saleObj.product?.brand, saleObj.product?.model].filter(Boolean).join(' • ')}
@@ -359,6 +369,33 @@ const InvoiceDetails = () => {
                 Chassis: {saleObj.product.chassisNumber}
               </p>
             )}
+          </div>
+        </div>
+
+        {/* ITEMIZED SHOPPING RECEIPT LINES */}
+        <div className="border-b border-dashed border-slate-300 pb-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_20px_68px] gap-1 border-b border-slate-300 pb-1 text-[9px] font-black uppercase tracking-wide"><span>Item</span><span className="text-right">Qty</span><span className="text-right">Price</span></div>
+          <div className="divide-y divide-dashed divide-slate-200">
+            {invoiceItems.map((item, index) => {
+              const itemProduct = item.product && typeof item.product === 'object' ? item.product : {};
+              const itemQty = Number(item.quantity || 0);
+              const itemPrice = Number(item.unitPrice || 0);
+              const itemDiscount = Number(item.discount || 0);
+              const lineTotal = Math.max(0, itemQty * itemPrice - itemDiscount);
+              return <div key={String(item._id || itemProduct._id || index)} className="py-1.5">
+                <div className="grid grid-cols-[minmax(0,1fr)_20px_68px] items-start gap-1">
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-[10px] font-black leading-tight">{itemProduct.name || itemProduct.productName || 'Product'}</p>
+                    {itemProduct.model && <p className="mt-0.5 break-words text-[9px] font-bold text-slate-600">Model: {itemProduct.model}</p>}
+                    {itemProduct.brand && <p className="break-words text-[8px] text-slate-500">Brand: {itemProduct.brand}</p>}
+                    {itemDiscount > 0 && <p className="text-[9px] font-bold text-slate-600">Discount: -{settings?.currency || 'PKR'} {itemDiscount.toLocaleString()}</p>}
+                    {itemProduct.imei && <p className="text-[8px] text-slate-500">IMEI: {itemProduct.imei}</p>}
+                  </div>
+                  <span className="text-right text-[10px] font-black">{itemQty}</span>
+                  <span className="text-right text-[10px] font-black">{settings?.currency || 'PKR'} {lineTotal.toLocaleString()}</span>
+                </div>
+              </div>;
+            })}
           </div>
         </div>
 
@@ -449,7 +486,7 @@ const InvoiceDetails = () => {
             </span>
           </div>
 
-          {isInstallmentInvoice && (
+          {(isInstallmentInvoice || invoicePaymentStatus === 'UNPAID') && (
             <div className="flex justify-between text-rose-600 font-black text-sm pt-1 border-t border-dotted border-slate-200">
               <span>Remaining Balance:</span>
               <span>
@@ -459,22 +496,12 @@ const InvoiceDetails = () => {
           )}
         </div>
 
-        {/* SIGNATURES BLOCK */}
-        <div className="pt-6 flex justify-between items-end text-center text-[9px] font-black">
-          <div className="border-t border-slate-800 w-24 pt-1 text-slate-800">
-            Buyer Sign
-          </div>
-
-          <div className="border-t border-slate-800 w-24 pt-1 text-slate-800">
-            Cashier Sign
-          </div>
-        </div>
-
         {/* THANK YOU FOOTER */}
         <div className="text-center pt-2 border-t border-dashed border-slate-200">
           <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">
             *** Thank You for Shopping! Visit Again ***
           </p>
+        </div>
         </div>
       </div>
       {/* =====================================================
@@ -521,7 +548,7 @@ const InvoiceDetails = () => {
             border: none !important;
             box-shadow: none !important;
             color: #000000 !important;
-            font-size: ${printOrientation === 'landscape' ? '10px' : '8.5px'} !important;
+            font-size: ${printOrientation === 'landscape' ? '9px' : '8px'} !important;
           }
 
           img {

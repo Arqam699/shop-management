@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -99,14 +99,18 @@ const NewSale = () => {
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const productSearchInputRef = useRef(null);
 
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [productDropdownPlacement, setProductDropdownPlacement] = useState('below');
+  const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(288);
   const [activeCustomerIndex, setActiveCustomerIndex] = useState(0);
   const [activeProductIndex, setActiveProductIndex] = useState(0);
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [cashItems, setCashItems] = useState([]);
 
   /* =========================================================
      SALE VALUES
@@ -115,6 +119,7 @@ const NewSale = () => {
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [cashPaymentStatus, setCashPaymentStatus] = useState('Paid');
 
   /* =========================================================
      INSTALLMENT VALUES
@@ -323,6 +328,34 @@ const NewSale = () => {
   };
 
   const handleSelectProduct = (product) => {
+    if (isCashSale) {
+      const id = String(product?._id || product?.id);
+      const price = Number(product?.salePrice ?? product?.sellingPrice ?? product?.price ?? 0) || 0;
+      setCashItems((current) => {
+        const existing = current.find((item) => String(item.product._id || item.product.id) === id);
+        if (existing) return current.map((item) => String(item.product._id || item.product.id) === id
+          ? { ...item, quantity: Math.min(Number(item.quantity) + 1, Number(product?.quantity || 0)) }
+          : item);
+        return [...current, { product, quantity: 1, unitPrice: price }];
+      });
+      setSelectedProduct(null);
+      setProductSearch('');
+      setShowProductDropdown(false);
+      setUnitPrice(0);
+      setQuantity(1);
+      setErrorMsg('');
+      requestAnimationFrame(() => {
+        const input = productSearchInputRef.current;
+        if (!input) return;
+        const bounds = input.getBoundingClientRect();
+        if (bounds.top < 12 || bounds.bottom > window.innerHeight - 12) {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        input.focus({ preventScroll: true });
+      });
+      return;
+    }
+
     setSelectedProduct(product);
 
     const price =
@@ -348,6 +381,17 @@ const NewSale = () => {
     setInstallmentSchedule([]);
 
     setErrorMsg('');
+  };
+
+  const positionProductDropdown = () => {
+    const bounds = productSearchInputRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const below = window.innerHeight - bounds.bottom - 16;
+    const above = bounds.top - 16;
+    const placeAbove = below < 220 && above > below;
+    setProductDropdownPlacement(placeAbove ? 'above' : 'below');
+    const available = Math.max(80, (placeAbove ? above : below) - 8);
+    setProductDropdownMaxHeight(Math.min(288, available));
   };
 
   const handlePickerKeyDown = (event, items, activeIndex, setActiveIndex, onSelect) => {
@@ -382,6 +426,7 @@ const NewSale = () => {
     setSelectedCustomer(null);
     setCustomerSearch('');
     setShowCustomerDropdown(false);
+    setErrorMsg('');
   };
 
   const clearProduct = () => {
@@ -399,18 +444,26 @@ const NewSale = () => {
   ========================================================= */
 
   const subtotal = useMemo(() => {
+    if (isCashSale) return cashItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
     return Math.max(
       0,
       Number(quantity || 0) * Number(unitPrice || 0)
     );
-  }, [quantity, unitPrice]);
+  }, [isCashSale, cashItems, quantity, unitPrice]);
 
   const finalTotal = useMemo(() => {
+    const appliedDiscount = isCashSale
+      ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
+      : Number(discount || 0);
     return Math.max(
       0,
-      subtotal - Number(discount || 0)
+      subtotal - appliedDiscount
     );
-  }, [subtotal, discount]);
+  }, [isCashSale, cashItems, subtotal, discount]);
+
+  const appliedDiscount = isCashSale
+    ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
+    : Number(discount || 0);
 
   /* =========================================================
      INSTALLMENT CALCULATIONS
@@ -1012,14 +1065,14 @@ const NewSale = () => {
        BASIC VALIDATION
     ------------------------------------------------------- */
 
-    if (!selectedCustomer) {
+    if (isInstallmentSale && !selectedCustomer) {
       setErrorMsg(
         'Please select a customer.'
       );
       return;
     }
 
-    if (!selectedProduct) {
+    if (isCashSale ? cashItems.length === 0 : !selectedProduct) {
       setErrorMsg(
         'Please select a product.'
       );
@@ -1274,20 +1327,19 @@ if (invalidDate) {
       customer:
         selectedCustomer,
 
-      product:
-        selectedProduct,
+      product: isCashSale ? cashItems[0]?.product : selectedProduct,
+      ...(isCashSale ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discount: Number(item.discount || 0) })) } : {}),
 
-      quantity:
-        Number(quantity),
+      quantity: isCashSale ? cashItems.reduce((sum, item) => sum + Number(item.quantity), 0) : Number(quantity),
 
-      unitPrice:
-        Number(unitPrice),
+      unitPrice: isCashSale ? 0 : Number(unitPrice),
 
-      discount:
-        Number(discount),
+      discount: Number(appliedDiscount),
 
       paymentType:
         paymentType,
+
+      paymentStatus: isCashSale ? cashPaymentStatus : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
 
       downPayment:
         isInstallmentSale
@@ -1375,9 +1427,12 @@ if (invalidDate) {
         payload
       );
 
-      const createdSale = response.data?.data?.sale || {};
-      if (createdSale._id) {
-        setPrintPopup({ kind: 'invoice', recordId: createdSale._id });
+      const createdSale = response.data?.data?.sale || response.data?.sale || response.data?.data || {};
+      const createdSaleId = createdSale._id || createdSale.id;
+      if (createdSaleId) {
+        setPrintPopup({ kind: 'invoice', recordId: createdSaleId });
+      } else {
+        toast.error('Sale was saved, but the invoice preview could not be opened.');
       }
 
       toast.success(
@@ -1623,14 +1678,12 @@ if (invalidDate) {
                 <div>
 
                   <h2 className="text-sm font-black text-slate-900">
-                    {isInstallmentSale ? 'Step 1 · Customer' : 'Customer Selection'}{' '}
-                    <span className="text-rose-500">
-                      *
-                    </span>
+                    {isInstallmentSale ? 'Step 1 · Customer' : 'Customer Selection (Optional)'}{' '}
+                    {isInstallmentSale && <span className="text-rose-500">*</span>}
                   </h2>
 
                   <p className="text-[10px] text-slate-400">
-                    Search customer by name, mobile number or CNIC
+                    {isInstallmentSale ? 'Select a customer for this installment sale.' : 'Optional: select a customer, or leave blank for a walk-in cash sale.'}
                   </p>
 
                 </div>
@@ -1659,6 +1712,7 @@ if (invalidDate) {
                   type="text"
                   value={customerSearch}
                   onChange={(e) => {
+                    setSelectedCustomer(null);
                     setCustomerSearch(
                       formatCnicSearchInput(
                         e.target.value
@@ -1845,9 +1899,11 @@ if (invalidDate) {
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
 
                 <input
+                  ref={productSearchInputRef}
                   type="text"
                   value={productSearch}
                   onChange={(e) => {
+                    positionProductDropdown();
                     setProductSearch(
                       e.target.value
                     );
@@ -1857,7 +1913,10 @@ if (invalidDate) {
                       Boolean(e.target.value.trim())
                     );
                   }}
-                  onFocus={() => setShowProductDropdown(Boolean(productSearch.trim()))}
+                  onFocus={() => {
+                    positionProductDropdown();
+                    setShowProductDropdown(Boolean(productSearch.trim()));
+                  }}
                   autoComplete="off"
                   aria-label="Search products by name, brand, model, SKU, or serial number"
                   onKeyDown={(e) => handlePickerKeyDown(e, filteredProducts, activeProductIndex, setActiveProductIndex, handleSelectProduct)}
@@ -1881,7 +1940,7 @@ if (invalidDate) {
                     }
                   />
 
-                  <div className="absolute left-0 right-0 top-full z-40 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl custom-scrollbar animate-[pageEnter_0.2s_ease-out]">
+                  <div style={{ maxHeight: `${productDropdownMaxHeight}px` }} className={`absolute left-0 right-0 z-40 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl custom-scrollbar animate-[pageEnter_0.2s_ease-out] ${productDropdownPlacement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
 
                     {filteredProducts.length === 0 ? (
 
@@ -1923,6 +1982,9 @@ if (invalidDate) {
                                   product?.title ||
                                   'Unnamed Item'}
                               </p>
+                              {isCashSale && cashItems.some((item) => String(item.product?._id || item.product?.id) === String(product?._id || product?.id)) && (
+                                <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">Selected · select again to add one</span>
+                              )}
                               <p className="text-[10px] font-semibold text-slate-600 mt-0.5 truncate">
                                 {[product?.brand, product?.model, product?.category].filter(Boolean).join(' · ')}
                               </p>
@@ -2004,13 +2066,54 @@ if (invalidDate) {
               </div>
             )}
 
+            {isCashSale && cashItems.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <h3 className="text-xs font-black text-slate-800">Cash sale items</h3>
+                {cashItems.map((item) => {
+                  const id = String(item.product._id || item.product.id);
+                  return <div key={id} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{item.product.name || item.product.productName} × {item.quantity}</span>
+                      {item.product.model && <span className="mt-0.5 block truncate text-[10px] text-slate-500">Model: {item.product.model}</span>}
+                    </span>
+                    <span className="shrink-0 font-bold">{settings?.currency || 'PKR'} {formatMoney(item.quantity * item.unitPrice)}</span>
+                    <label className="flex shrink-0 items-center gap-1 text-[10px] font-bold text-rose-600">Discount
+                      <input type="number" min="0" max={item.quantity * item.unitPrice} value={item.discount || 0} onChange={(event) => {
+                        const maxDiscount = item.quantity * item.unitPrice;
+                        const value = Math.max(0, Math.min(maxDiscount, Number(event.target.value || 0)));
+                        setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry));
+                      }} className="w-24 rounded-lg border border-rose-200 px-2 py-1 text-xs text-slate-800" />
+                    </label>
+                    <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id))} className="text-rose-600" aria-label="Remove product"><X className="h-4 w-4" /></button>
+                  </div>;
+                })}
+                <div className="flex justify-between border-t pt-2 text-xs font-black"><span>Total discount</span><span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span></div>
+              </div>
+            )}
+
           </section>
+
+          {isCashSale && (
+            <section className="premium-card p-4 sm:p-5 space-y-3">
+              <div>
+                <h2 className="text-sm font-black text-slate-900">Payment Status</h2>
+                <p className="mt-1 text-xs text-slate-500">Choose whether this cash sale has been paid.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {['Paid', 'Unpaid'].map((status) => (
+                  <button key={status} type="button" aria-pressed={cashPaymentStatus === status} onClick={() => setCashPaymentStatus(status)} className={`rounded-xl border px-4 py-3 text-sm font-black transition ${cashPaymentStatus === status ? status === 'Paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20' : 'border-rose-500 bg-rose-50 text-rose-700 ring-2 ring-rose-500/20' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* =================================================
               PRICING & QUANTITY
           ================================================== */}
 
-          <section className={`premium-card min-w-0 p-4 sm:p-6 shadow-sm space-y-4 ${isInstallmentSale ? 'overflow-hidden' : ''}`}>
+          {!isCashSale && <section className={`premium-card min-w-0 p-4 sm:p-6 shadow-sm space-y-4 ${isInstallmentSale ? 'overflow-hidden' : ''}`}>
 
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -2135,7 +2238,7 @@ if (invalidDate) {
 
             </div>
 
-          </section>
+          </section>}
 
           {/* =================================================
               INSTALLMENT CONFIGURATION
@@ -2636,7 +2739,7 @@ if (invalidDate) {
                   - {settings?.currency ||
                     'PKR'}{' '}
                   {formatMoney(
-                    discount
+                    appliedDiscount
                   )}
                 </span>
 
