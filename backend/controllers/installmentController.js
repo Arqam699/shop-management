@@ -266,8 +266,8 @@ const getInstallmentPlans = async (
     const buildPlansQuery = () =>
       InstallmentPlan.find(plansFilter)
         .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
-        .populate('product', 'name')
-        .populate('sale', 'saleId paymentType')
+        .populate('product', 'name brand model')
+        .populate('sale', 'saleId paymentType finalTotal totalWithMarkup markupAmount purchasePriceAtSale quantity unitPrice discount')
         .sort({
           createdAt: -1
         });

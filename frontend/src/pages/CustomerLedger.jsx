@@ -959,7 +959,7 @@ const getPaymentScore = (customer) => {
   const loadCustomers = async () => {
     try {
       setLoadingCustomers(true);
-      const response = await api.get('/customers');
+      const response = await api.get('/customers?includeScores=true&includeMedia=true');
       if (!response.data?.success) {
         throw new Error(
           response.data?.message || 'Failed to load customers.'

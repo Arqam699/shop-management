@@ -105,3 +105,44 @@ nav::-webkit-scrollbar-thumb {
 nav::-webkit-scrollbar-thumb:hover {
   background: rgba(96, 165, 250, 0.35);
 }
+
+.installment-ledger-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.42) transparent;
+}
+
+.installment-ledger-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.installment-ledger-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.installment-ledger-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.42);
+  border-radius: 999px;
+}
+
+.installment-ledger-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.65);
+}
+
+.datatable-vertical-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.datatable-vertical-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.datatable-vertical-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.datatable-vertical-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+}

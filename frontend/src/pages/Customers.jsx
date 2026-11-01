@@ -46,7 +46,7 @@ import {
   Award,
 } from 'lucide-react';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 const FINGERPRINT_AGENT_URL = 'http://127.0.0.1:9000';
 
@@ -140,7 +140,7 @@ const Customers = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/customers');
+      const response = await api.get('/customers?includeScores=true');
 
       if (response.data?.success && Array.isArray(response.data.data)) {
         setCustomers(response.data.data);
@@ -667,7 +667,10 @@ const Customers = () => {
           setSelectedCustomerId('');
         }
 
-        toast.success(`Customer ${customerName} profile deleted successfully.`);
+        const deletedSales = Number(response.data.deletedSales || 0);
+        toast.success(
+          `Customer ${customerName} and ${deletedSales} related sale${deletedSales === 1 ? '' : 's'} deleted successfully.`
+        );
       }
     } catch (error) {
       console.error('Error deleting customer:', error);
@@ -1665,6 +1668,8 @@ const Customers = () => {
         emptyIcon={UserCheck}
         emptyTitle="No customers found"
         emptyHint='Try switching filters to "All-Time" or click "Register Customer".'
+        maxTableHeight="65vh"
+        enablePageJump
       />
     </>
   );
@@ -1885,7 +1890,7 @@ const Customers = () => {
         }
         onConfirm={confirmDelete}
         title="Delete Customer Profile"
-        message={`Are you sure you want to permanently delete customer profile for "${deleteModal.customerName}"? This action cannot be undone.`}
+        message={`Are you sure you want to permanently delete customer profile for "${deleteModal.customerName}"? All related sales, installment plans, payments, and returns will also be deleted, and sale stock will be restored. This action cannot be undone.`}
       />
 
     </div>

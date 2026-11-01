@@ -186,6 +186,7 @@ const getProducts = async (req, res) => {
 
     let productsQuery =
       Product.find(query)
+        .select('name category brand model sku serialNumber imei chassisNumber purchasePrice salePrice quantity minStockLevel supplier warrantyPeriod purchaseDate status createdAt')
         .sort({
           createdAt: 1,
         })

@@ -6,7 +6,9 @@ const Installment = require('../models/Installment');
 const Settings = require('../models/Settings');
 const Customer = require('../models/Customer');
 const Payment = require('../models/Payment');
+const Return = require('../models/Return');
 const Counter = require('../models/Counter');
+const mongoose = require('mongoose');
 const {
   getPaginationParams,
   paginatedResponse,
@@ -1484,6 +1486,7 @@ const getSales = async (req, res) => {
       Sale.find(filter)
         .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product', 'name brand model')
+        .populate('items.product', 'name brand model')
         .sort({
           createdAt: -1
         })
@@ -1708,6 +1711,8 @@ const updateSale = async (req, res) => {
       treatDownPaymentAsFirstInstallment =
         sale.treatDownPaymentAsFirstInstallment,
 
+      items: requestedItems = null,
+
       installmentSchedule = [],
 
       installments = []
@@ -1739,15 +1744,168 @@ const updateSale = async (req, res) => {
       });
     }
 
-    const customerDoc =
-      await Customer.findOne({
-        _id:
-          customer,
+    // Cash invoices support editing their full product list. Rebuild stock
+    // from the difference between the old and new item quantities so removed
+    // products are returned to inventory and newly added products are deducted.
+    if (paymentType === 'Cash' && Array.isArray(requestedItems)) {
+      if (requestedItems.length === 0) {
+        return res.status(400).json({ message: 'A cash sale must contain at least one product.' });
+      }
 
-        shopId
+      const oldItems = Array.isArray(sale.items) && sale.items.length > 0
+        ? sale.items.map((item) => ({
+            product: item.product,
+            quantity: Number(item.quantity || 0),
+            purchasePriceAtSale: item.purchasePriceAtSale,
+          }))
+        : [{
+            product: sale.product,
+            quantity: Number(sale.quantity || 0),
+            purchasePriceAtSale: sale.purchasePriceAtSale,
+          }];
+
+      const oldQuantityByProduct = new Map();
+      const oldPurchasePriceByProduct = new Map();
+      oldItems.forEach((item) => {
+        const productId = String(item.product?._id || item.product || '');
+        if (!productId) return;
+        oldQuantityByProduct.set(
+          productId,
+          (oldQuantityByProduct.get(productId) || 0) + Number(item.quantity || 0)
+        );
+        if (!oldPurchasePriceByProduct.has(productId)) {
+          oldPurchasePriceByProduct.set(productId, item.purchasePriceAtSale);
+        }
       });
 
-    if (!customerDoc) {
+      const requestedProductIds = [];
+      const parsedItems = [];
+      for (const item of requestedItems) {
+        const productId = String(item?.product?._id || item?.product?.id || item?.product || '');
+        const quantity = Number(item?.quantity);
+        const unitPrice = roundMoney(item?.unitPrice);
+        const discount = roundMoney(item?.discount || 0);
+        if (
+          !mongoose.Types.ObjectId.isValid(productId) ||
+          !Number.isInteger(quantity) || quantity <= 0 ||
+          !Number.isFinite(unitPrice) || unitPrice < 0 ||
+          !Number.isFinite(discount) || discount < 0 ||
+          discount > roundMoney(quantity * unitPrice)
+        ) {
+          return res.status(400).json({
+            message: 'Each product needs a valid selection, quantity, price, and discount.',
+          });
+        }
+        requestedProductIds.push(productId);
+        parsedItems.push({ productId, quantity, unitPrice, discount });
+      }
+
+      const allProductIds = [...new Set([
+        ...oldQuantityByProduct.keys(),
+        ...requestedProductIds,
+      ])];
+      const productDocs = await Product.find({
+        _id: { $in: allProductIds },
+        shopId,
+      });
+      const productById = new Map(productDocs.map((doc) => [String(doc._id), doc]));
+
+      const requestedQuantityByProduct = new Map();
+      parsedItems.forEach((item) => {
+        requestedQuantityByProduct.set(
+          item.productId,
+          (requestedQuantityByProduct.get(item.productId) || 0) + item.quantity
+        );
+      });
+
+      for (const productId of requestedQuantityByProduct.keys()) {
+        if (!productById.has(productId)) {
+          return res.status(404).json({ message: 'A selected product was not found in this shop.' });
+        }
+      }
+
+      for (const [productId, productDoc] of productById) {
+        const oldQuantity = oldQuantityByProduct.get(productId) || 0;
+        const requestedQuantity = requestedQuantityByProduct.get(productId) || 0;
+        const availableAfterRestoringOldSale = Number(productDoc.quantity || 0) + oldQuantity;
+        if (requestedQuantity > availableAfterRestoringOldSale) {
+          return res.status(400).json({
+            message: `Insufficient stock for ${productDoc.name}. Available quantity: ${availableAfterRestoringOldSale}`,
+          });
+        }
+      }
+
+      for (const [productId, productDoc] of productById) {
+        const oldQuantity = oldQuantityByProduct.get(productId) || 0;
+        const requestedQuantity = requestedQuantityByProduct.get(productId) || 0;
+        const previousQuantity = Number(productDoc.quantity || 0);
+        const newQuantity = previousQuantity + oldQuantity - requestedQuantity;
+        const quantityDifference = requestedQuantity - oldQuantity;
+
+        if (quantityDifference !== 0) {
+          productDoc.quantity = newQuantity;
+          await productDoc.save();
+          await StockMovement.create({
+            shopId,
+            product: productDoc._id,
+            type: quantityDifference > 0 ? 'Sale' : 'Return',
+            quantity: Math.abs(quantityDifference),
+            previousQuantity,
+            newQuantity,
+            reason: `Cash sale ${sale.saleId} edited`,
+            reference: sale.saleId,
+          });
+        }
+      }
+
+      const normalizedItems = parsedItems.map((item) => {
+        const productDoc = productById.get(item.productId);
+        const savedPurchasePrice = oldPurchasePriceByProduct.get(item.productId);
+        return {
+          product: productDoc._id,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discount: item.discount,
+          purchasePriceAtSale: Number(savedPurchasePrice ?? productDoc.purchasePrice ?? 0),
+        };
+      });
+      const itemSubtotal = roundMoney(normalizedItems.reduce(
+        (sum, item) => sum + item.quantity * item.unitPrice,
+        0
+      ));
+      const itemDiscount = roundMoney(normalizedItems.reduce(
+        (sum, item) => sum + item.discount,
+        0
+      ));
+      const itemQuantity = normalizedItems.reduce((sum, item) => sum + item.quantity, 0);
+      const finalTotal = roundMoney(Math.max(0, itemSubtotal - itemDiscount));
+
+      sale.items = normalizedItems;
+      sale.product = normalizedItems[0].product;
+      sale.quantity = itemQuantity;
+      sale.unitPrice = itemQuantity > 0 ? itemSubtotal / itemQuantity : 0;
+      sale.purchasePriceAtSale = normalizedItems[0].purchasePriceAtSale;
+      sale.discount = itemDiscount;
+      sale.subtotal = itemSubtotal;
+      sale.finalTotal = finalTotal;
+      sale.totalWithMarkup = finalTotal;
+      sale.downPayment = sale.paymentStatus === 'Unpaid' ? 0 : finalTotal;
+      sale.remainingBalance = sale.paymentStatus === 'Unpaid' ? finalTotal : 0;
+      await sale.save();
+
+      return res.json({
+        success: true,
+        message: 'Cash sale products updated successfully.',
+        data: { sale },
+      });
+    }
+
+    const customerDoc =
+      customer
+        ? await Customer.findOne({ _id: customer, shopId })
+        : null;
+
+    if (paymentType === 'Installment' && !customerDoc) {
       return res.status(404).json({
         message:
           'Customer not found'
@@ -2757,78 +2915,6 @@ const deleteSale = async (req, res) => {
       });
     }
 
-    const hasPayments =
-      await Payment.exists({
-        shopId,
-
-        sale:
-          sale._id
-      });
-
-    if (hasPayments) {
-      return res.status(400).json({
-        message:
-          'This sale has payment history and cannot be deleted.'
-      });
-    }
-
-    const product =
-      await Product.findOne({
-        _id:
-          sale.product,
-
-        shopId
-      });
-
-    if (product) {
-      const previousQuantity =
-        Number(
-          product.quantity || 0
-        );
-
-      const newQuantity =
-        previousQuantity +
-        Number(sale.quantity);
-
-      product.quantity =
-        newQuantity;
-
-      await product.save();
-
-      await StockMovement.deleteMany({
-        shopId,
-
-        reference:
-          sale.saleId,
-
-        type:
-          'Sale'
-      });
-
-      await StockMovement.create({
-        shopId,
-
-        product:
-          product._id,
-
-        type:
-          'Return',
-
-        quantity:
-          Number(sale.quantity),
-
-        previousQuantity,
-
-        newQuantity,
-
-        reason:
-          `Sale deleted ${sale.saleId}`,
-
-        reference:
-          sale.saleId
-      });
-    }
-
     const plan =
       await InstallmentPlan.findOne({
         sale:
@@ -2836,6 +2922,76 @@ const deleteSale = async (req, res) => {
 
         shopId
       });
+
+    const saleReturns = await Return.find({
+      shopId,
+      sale: sale._id,
+    })
+      .select('product quantity')
+      .lean();
+    const returnedByProduct = new Map();
+    saleReturns.forEach((returnRow) => {
+      const productId = String(returnRow.product);
+      returnedByProduct.set(
+        productId,
+        (returnedByProduct.get(productId) || 0) + Number(returnRow.quantity || 0)
+      );
+    });
+
+    const stockRestoreByProduct = new Map();
+    const hasItemSnapshot = Array.isArray(sale.items) && sale.items.length > 0;
+    const soldItems = hasItemSnapshot
+      ? sale.items
+      : [{ product: sale.product, quantity: sale.quantity }];
+    const soldByProduct = new Map();
+    soldItems.forEach((item) => {
+      const productId = String(item.product?._id || item.product || '');
+      if (!productId) return;
+      soldByProduct.set(
+        productId,
+        (soldByProduct.get(productId) || 0) + Number(item.quantity || 0)
+      );
+    });
+    soldByProduct.forEach((soldQuantity, productId) => {
+      const returnedQuantity = hasItemSnapshot
+        ? Number(returnedByProduct.get(productId) || 0)
+        : 0; // Legacy sale.quantity has already been reduced by returns.
+      const quantityToRestore = Math.max(0, soldQuantity - returnedQuantity);
+      if (quantityToRestore > 0) {
+        stockRestoreByProduct.set(productId, quantityToRestore);
+      }
+    });
+
+    if (sale.saleId) {
+      await StockMovement.deleteMany({ shopId, reference: sale.saleId });
+    }
+    for (const [productId, quantity] of stockRestoreByProduct) {
+      const product = await Product.findOne({ _id: productId, shopId });
+      if (!product) continue;
+      const previousQuantity = Number(product.quantity || 0);
+      product.quantity = previousQuantity + quantity;
+      await product.save();
+      await StockMovement.create({
+        shopId,
+        product: product._id,
+        type: 'Return',
+        quantity,
+        previousQuantity,
+        newQuantity: product.quantity,
+        reason: `Sale deleted ${sale.saleId}`,
+        reference: sale.saleId,
+      });
+    }
+
+    const deletedPayments = await Payment.deleteMany({
+      shopId,
+      $or: [
+        { sale: sale._id },
+        ...(plan ? [{ installmentPlan: plan._id }] : []),
+      ],
+    });
+
+    await Return.deleteMany({ shopId, sale: sale._id });
 
     if (plan) {
       await Installment.deleteMany({
@@ -2863,8 +3019,8 @@ const deleteSale = async (req, res) => {
     return res.json({
       success: true,
 
-      message:
-        'Sale deleted successfully'
+      message: 'Sale and related financial records deleted successfully',
+      deletedPayments: deletedPayments.deletedCount || 0,
     });
 
     return res.status(500).json({

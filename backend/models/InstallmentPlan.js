@@ -139,6 +139,7 @@ installmentPlanSchema.index({
 });
 
 installmentPlanSchema.index({ shopId: 1, status: 1, createdAt: -1 });
+installmentPlanSchema.index({ shopId: 1, createdAt: -1 });
 installmentPlanSchema.index({ shopId: 1, customer: 1 });
 installmentPlanSchema.index({ shopId: 1, sale: 1 });
 

@@ -35,7 +35,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 const Inventory = () => {
   const { settings } = useSettings();
@@ -65,7 +65,7 @@ const Inventory = () => {
   const [
     intelligenceLoading,
     setIntelligenceLoading,
-  ] = useState(true);
+  ] = useState(false);
 
   const [
     intelligenceOpen,
@@ -185,7 +185,6 @@ const Inventory = () => {
 
   useEffect(() => {
     fetchProducts();
-    fetchInventoryIntelligence();
   }, []);
 
   // Reset to first page whenever filters change
@@ -212,6 +211,17 @@ const Inventory = () => {
         'Inventory intelligence refreshed.'
       );
     };
+
+  const toggleIntelligence = () => {
+    const willOpen = !intelligenceOpen;
+    setIntelligenceOpen(willOpen);
+
+    // Inventory insights use the heavy dashboard report endpoint. Load it
+    // only when the user opens this collapsed section, not on every visit.
+    if (willOpen && !inventoryIntelligence && !intelligenceLoading) {
+      fetchInventoryIntelligence();
+    }
+  };
 
   // =====================================================
   // DELETE LOGIC
@@ -257,7 +267,9 @@ const Inventory = () => {
           `Product "${deleteModal.productName}" deleted successfully.`
         );
 
-        fetchInventoryIntelligence();
+        if (intelligenceOpen && inventoryIntelligence) {
+          fetchInventoryIntelligence();
+        }
       } catch (error) {
         toast.error(
           error.response?.data
@@ -945,11 +957,11 @@ const Inventory = () => {
             STOCK METRICS KPI CARDS
         ====================================================== */}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3">
 
           {/* Card 1 */}
 
-          <div className="group relative overflow-hidden premium-card p-5">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
@@ -957,22 +969,22 @@ const Inventory = () => {
 
               <div>
 
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Filtered Items
                 </p>
 
-                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-slate-900">
                   {filteredProducts.length}
                 </p>
 
-                <p className="mt-1 text-xs font-semibold text-slate-400">
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
                   Products in view
                 </p>
 
               </div>
 
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <Boxes className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                <Boxes className="w-4 h-4" />
               </div>
 
             </div>
@@ -981,7 +993,7 @@ const Inventory = () => {
 
           {/* Card 2 */}
 
-          <div className="group relative overflow-hidden premium-card p-5">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-500" />
 
@@ -989,22 +1001,22 @@ const Inventory = () => {
 
               <div>
 
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Total Stock Units
                 </p>
 
-                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-slate-900">
                   {totalStockQty.toLocaleString()}
                 </p>
 
-                <p className="mt-1 text-xs font-semibold text-slate-400">
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
                   Available in warehouse
                 </p>
 
               </div>
 
-              <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <Package className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                <Package className="w-4 h-4" />
               </div>
 
             </div>
@@ -1013,7 +1025,7 @@ const Inventory = () => {
 
           {/* Card 3 */}
 
-          <div className="group relative overflow-hidden premium-card p-5">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
 
@@ -1021,24 +1033,24 @@ const Inventory = () => {
 
               <div>
 
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Inventory Value (Cost)
                 </p>
 
-                <p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-emerald-600 truncate">
+                <p className="mt-1.5 text-base sm:text-lg font-black tracking-tight text-emerald-600 truncate">
                   {formatMoney(
                     totalStockVal
                   )}
                 </p>
 
-                <p className="mt-1 text-xs font-semibold text-slate-400">
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
                   Purchase cost investment
                 </p>
 
               </div>
 
-              <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <CircleDollarSign className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <CircleDollarSign className="w-4 h-4" />
               </div>
 
             </div>
@@ -1047,7 +1059,7 @@ const Inventory = () => {
 
           {/* Card 4 */}
 
-          <div className="group relative overflow-hidden premium-card p-5">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
 
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500" />
 
@@ -1055,11 +1067,11 @@ const Inventory = () => {
 
               <div>
 
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Critical Stock
                 </p>
 
-                <p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-rose-600">
+                <p className="mt-1.5 text-base sm:text-lg font-black tracking-tight text-rose-600">
 
                   {lowStockCount}
 
@@ -1079,21 +1091,21 @@ const Inventory = () => {
 
                 </p>
 
-                <p className="mt-1 text-xs font-semibold text-slate-400">
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
                   Need re-order soon
                 </p>
 
               </div>
 
               <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
                   lowStockCount > 0 ||
                   outOfStockCount > 0
                     ? 'bg-rose-50 border-rose-100 text-rose-600'
                     : 'bg-slate-50 border-slate-200 text-slate-400'
                 }`}
               >
-                <AlertTriangle className="w-5 h-5" />
+                <AlertTriangle className="w-4 h-4" />
               </div>
 
             </div>
@@ -1108,11 +1120,11 @@ const Inventory = () => {
 
         <section className="premium-card overflow-hidden border border-blue-100 shadow-sm">
           <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-blue-50/80 via-white to-white">
-            <button type="button" onClick={() => setIntelligenceOpen((prev) => !prev)} aria-expanded={intelligenceOpen} className="flex items-center gap-4 min-w-0 text-left">
+            <button type="button" onClick={toggleIntelligence} aria-expanded={intelligenceOpen} className="flex items-center gap-4 min-w-0 text-left">
               <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20"><Sparkles className="w-6 h-6" /></div>
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl sm:text-2xl font-black text-slate-900">Inventory Intelligence</h2><span className="px-2.5 py-1 rounded-full bg-white border border-blue-200 text-xs font-bold text-blue-700">Last 30 days</span></div><p className="mt-1 text-sm text-slate-600">See what to reorder, review, or keep an eye on. Sales and movement are measured over the last 30 days.</p></div>
             </button>
-            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0"><button type="button" onClick={refreshIntelligence} disabled={intelligenceLoading} className="h-10 px-3 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-blue-700 hover:border-blue-200 flex items-center gap-2 text-sm font-bold disabled:opacity-60" title="Refresh Intelligence"><RefreshCw className={`w-4 h-4 ${intelligenceLoading ? 'animate-spin' : ''}`} />Refresh</button><button type="button" onClick={() => setIntelligenceOpen((prev) => !prev)} aria-label={intelligenceOpen ? 'Collapse inventory intelligence' : 'Open inventory intelligence'} aria-expanded={intelligenceOpen} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-700 flex items-center justify-center">{intelligenceOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</button></div>
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0"><button type="button" onClick={refreshIntelligence} disabled={intelligenceLoading} className="h-10 px-3 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-blue-700 hover:border-blue-200 flex items-center gap-2 text-sm font-bold disabled:opacity-60" title="Refresh Intelligence"><RefreshCw className={`w-4 h-4 ${intelligenceLoading ? 'animate-spin' : ''}`} />Refresh</button><button type="button" onClick={toggleIntelligence} aria-label={intelligenceOpen ? 'Collapse inventory intelligence' : 'Open inventory intelligence'} aria-expanded={intelligenceOpen} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-700 flex items-center justify-center">{intelligenceOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</button></div>
           </div>
           {intelligenceOpen && <div className="border-t border-slate-100 p-5 sm:p-6 space-y-6">
             {intelligenceLoading ? <div className="py-12 flex flex-col items-center justify-center gap-3"><div className="w-8 h-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" /><p className="text-sm font-semibold text-slate-600">Checking stock and recent sales…</p></div>
@@ -1374,6 +1386,8 @@ const Inventory = () => {
           emptyIcon={Package}
           emptyTitle="No products found"
           emptyHint='No inventory records match the current filters. Click "Add Product" to create new stock items.'
+          maxTableHeight="65vh"
+          enablePageJump
         />
 
       </div>

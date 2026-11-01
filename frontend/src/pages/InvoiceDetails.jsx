@@ -164,8 +164,17 @@ const InvoiceDetails = () => {
   const saleObj = invoice.sale || invoice;
   const isInstallmentInvoice =
     saleObj.paymentType === 'Installment';
-  const invoicePaymentStatus = String(saleObj.paymentStatus || (Number(saleObj.remainingBalance || 0) > 0 ? 'Unpaid' : 'Paid')).toUpperCase();
   const downPaymentPaid = Number(saleObj.downPayment || 0);
+  const downPaymentIsPaidFirstInstallment =
+    isInstallmentInvoice &&
+    saleObj.treatDownPaymentAsFirstInstallment === true &&
+    downPaymentPaid > 0;
+  const invoicePaymentStatus = downPaymentIsPaidFirstInstallment
+    ? 'PAID'
+    : String(
+        saleObj.paymentStatus ||
+          (Number(saleObj.remainingBalance || 0) > 0 ? 'Unpaid' : 'Paid')
+      ).toUpperCase();
   const totalAmount = Number(
     invoice.plan?.totalAmount ??
       saleObj.finalTotal ??

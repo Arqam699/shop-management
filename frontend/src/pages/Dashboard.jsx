@@ -633,12 +633,30 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     [cashSalesList]
   );
 
+  const getCashSaleCost = (sale) => {
+    if (Array.isArray(sale.items) && sale.items.length > 0) {
+      return sale.items.reduce((sum, item) => {
+        const quantity = Number(item.quantity || 0);
+        const purchasePrice = Number(
+          item.purchasePriceAtSale ??
+            item.product?.purchasePrice ??
+            (sale.items.length === 1
+              ? sale.purchasePriceAtSale ?? sale.product?.purchasePrice
+              : 0) ??
+            0
+        );
+        return sum + quantity * purchasePrice;
+      }, 0);
+    }
+
+    return Number(sale.quantity || 0) * Number(
+      sale.purchasePriceAtSale ?? sale.product?.purchasePrice ?? 0
+    );
+  };
+
   // Cash Cost & Cash Profit
   const cashCost = useMemo(
-    () => cashSalesList.reduce(
-      (sum, s) => sum + Number(s.quantity || 0) * Number(s.purchasePriceAtSale ?? s.product?.purchasePrice ?? 0),
-      0
-    ),
+    () => cashSalesList.reduce((sum, sale) => sum + getCashSaleCost(sale), 0),
     [cashSalesList]
   );
   const cashProfit = cashRevenue - cashCost;
@@ -675,8 +693,8 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     .filter((s) => searchFilter(s))
     .map((sale) => {
       const quantity = Number(sale.quantity || 0);
-      const purchasePrice = Number(sale.purchasePriceAtSale ?? sale.product?.purchasePrice ?? 0);
-      const originalCost = quantity * purchasePrice;
+      const originalCost = getCashSaleCost(sale);
+      const purchasePrice = quantity > 0 ? originalCost / quantity : 0;
       const sellingPrice = Number(sale.finalTotal || 0);
       const profit = sellingPrice - originalCost;
 

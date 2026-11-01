@@ -20,6 +20,8 @@ import {
   CalendarDays,
   CircleDollarSign,
   ArrowRight,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 const EditSale = () => {
@@ -28,6 +30,7 @@ const EditSale = () => {
   const navigate = useNavigate();
 
   const [products, setProducts] = useState([]);
+  const [cashItems, setCashItems] = useState([]);
   const [formData, setFormData] = useState({
     customerName: '',
     customerId: '',
@@ -61,7 +64,22 @@ const EditSale = () => {
         }
 
         if (saleRes.data && saleRes.data.success) {
-          const s = saleRes.data.data;
+          const s = saleRes.data.data.sale || saleRes.data.data;
+          const initialCashItems = Array.isArray(s.items) && s.items.length > 0
+            ? s.items
+            : [{
+                product: s.product,
+                quantity: s.quantity,
+                unitPrice: s.unitPrice,
+                discount: s.discount,
+                purchasePriceAtSale: s.purchasePriceAtSale,
+              }];
+          setCashItems(initialCashItems.map((item) => ({
+            product: item.product?._id || item.product || '',
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            discount: Number(item.discount || 0),
+          })));
           setFormData({
             customerName: s.customer?.fullName || '',
             customerId: s.customer?.customerId || '',
@@ -102,9 +120,36 @@ const EditSale = () => {
     }));
   };
 
-  const activeProduct = products.find((p) => p._id === formData.product);
-  const subtotal = Number(formData.quantity || 0) * Number(formData.unitPrice || 0);
-  const finalTotal = Math.max(0, subtotal - Number(formData.discount || 0));
+  const updateCashItem = (index, field, value) => {
+    setCashItems((currentItems) => currentItems.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const selectCashItemProduct = (index, productId) => {
+    const selectedProduct = products.find((product) => product._id === productId);
+    setCashItems((currentItems) => currentItems.map((item, itemIndex) =>
+      itemIndex === index
+        ? { ...item, product: productId, unitPrice: selectedProduct?.salePrice || 0 }
+        : item
+    ));
+  };
+
+  const cashSubtotal = cashItems.reduce(
+    (sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0),
+    0
+  );
+  const cashDiscount = cashItems.reduce(
+    (sum, item) => sum + Number(item.discount || 0),
+    0
+  );
+  const cashFinalTotal = Math.max(0, cashSubtotal - cashDiscount);
+  const subtotal = formData.paymentType === 'Cash'
+    ? cashSubtotal
+    : Number(formData.quantity || 0) * Number(formData.unitPrice || 0);
+  const finalTotal = formData.paymentType === 'Cash'
+    ? cashFinalTotal
+    : Math.max(0, subtotal - Number(formData.discount || 0));
   const remaining =
     formData.paymentType === 'Installment'
       ? Math.max(0, finalTotal - Number(formData.downPayment || 0))
@@ -115,14 +160,44 @@ const EditSale = () => {
     setErrorMsg('');
     setIsSaving(true);
 
-    if (Number(formData.discount) > subtotal) {
+    if (formData.paymentType === 'Cash' && cashItems.length === 0) {
+      setErrorMsg('Add at least one product to this cash sale.');
+      setIsSaving(false);
+      return;
+    }
+
+    if (formData.paymentType === 'Cash' && cashItems.some((item) =>
+      !item.product ||
+      !Number.isInteger(Number(item.quantity)) ||
+      Number(item.quantity) < 1 ||
+      !Number.isFinite(Number(item.unitPrice)) ||
+      Number(item.unitPrice) < 0 ||
+      Number(item.discount) < 0 ||
+      Number(item.discount) > Number(item.quantity) * Number(item.unitPrice)
+    )) {
+      setErrorMsg('Check each product, quantity, price, and discount before saving.');
+      setIsSaving(false);
+      return;
+    }
+
+    if (formData.paymentType !== 'Cash' && Number(formData.discount) > subtotal) {
       setErrorMsg('Discount cannot be larger than subtotal.');
       setIsSaving(false);
       return;
     }
 
     try {
-      await api.put(`/api/sales/${id}`, {
+      const payload = formData.paymentType === 'Cash'
+        ? {
+            paymentType: 'Cash',
+            items: cashItems.map((item) => ({
+              product: item.product,
+              quantity: Number(item.quantity),
+              unitPrice: Number(item.unitPrice),
+              discount: Number(item.discount || 0),
+            })),
+          }
+        : {
         product: formData.product,
         quantity: Number(formData.quantity),
         unitPrice: Number(formData.unitPrice),
@@ -136,7 +211,9 @@ const EditSale = () => {
           formData.paymentType === 'Installment'
             ? Number(formData.installmentDuration)
             : 0,
-      });
+          };
+
+      await api.put(`/api/sales/${id}`, payload);
 
       toast.success('Sale updated successfully.');
 
@@ -273,6 +350,42 @@ const EditSale = () => {
               )}
             </div>
 
+            {formData.paymentType === 'Cash' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Products in this cash sale</label>
+                    <p className="mt-1 text-[11px] font-medium text-slate-400">Remove products or add another product to the invoice.</p>
+                  </div>
+                  <button type="button" onClick={() => setCashItems((current) => [...current, { product: '', quantity: 1, unitPrice: 0, discount: 0 }])} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-700">
+                    <Plus className="h-4 w-4" /> Add Product
+                  </button>
+                </div>
+                {cashItems.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs font-semibold text-slate-500">No products added. Use “Add Product” to start this invoice.</div>}
+                {cashItems.map((item, index) => (
+                  <div key={`${item.product || 'new'}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Product {index + 1}</span>
+                      <button type="button" onClick={() => setCashItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50" aria-label={`Remove product ${index + 1}`}>
+                        <Trash2 className="h-3.5 w-3.5" /> Remove
+                      </button>
+                    </div>
+                    <select value={item.product} onChange={(event) => selectCashItemProduct(index, event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-800 outline-none focus:border-blue-500">
+                      <option value="">Select Inventory Product...</option>
+                      {products.map((product) => <option key={product._id} value={product._id}>{product.name} ({product.brand} {product.model}) — [Stock: {product.quantity}]</option>)}
+                    </select>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Quantity<input type="number" min="1" required value={item.quantity} onChange={(event) => updateCashItem(index, 'quantity', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Unit Selling Price<input type="number" min="0" required value={item.unitPrice} onChange={(event) => updateCashItem(index, 'unitPrice', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Product Discount<input type="number" min="0" value={item.discount} onChange={(event) => updateCashItem(index, 'discount', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-blue-500" /></label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {formData.paymentType !== 'Cash' && (
+              <>
             {/* Select Stock Item */}
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
@@ -327,6 +440,9 @@ const EditSale = () => {
                 />
               </div>
             </div>
+
+              </>
+            )}
 
             {/* Payment Method Selector */}
             <div>
@@ -452,8 +568,9 @@ const EditSale = () => {
                 <input
                   type="number"
                   name="discount"
-                  value={formData.discount}
+                  value={formData.paymentType === 'Cash' ? cashDiscount : formData.discount}
                   onChange={handleChange}
+                  readOnly={formData.paymentType === 'Cash'}
                   placeholder="0"
                   className="w-28 h-9 bg-white/[0.06] border border-white/[0.1] rounded-xl px-2.5 text-right text-xs font-black text-rose-400 outline-none focus:border-blue-500 focus:bg-white/[0.1] transition-all"
                   min="0"

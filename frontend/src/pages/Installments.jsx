@@ -13,17 +13,24 @@ import {
   Lock
 } from 'lucide-react';
 
+const PAGE_SIZE = 20;
+
 const Installments = () => {
   const { settings } = useSettings();
 
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
 
   // Universal Date Filter states
   const [filterPreset, setFilterPreset] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterPreset, customStartDate, customEndDate]);
 
   // =====================================================
   // FETCH INSTALLMENT PLANS ONLY
@@ -271,6 +278,28 @@ const Installments = () => {
     }
   );
 
+  const pageCount = Math.max(1, Math.ceil(filteredPlans.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagePlans = filteredPlans.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+  const firstVisiblePlan = filteredPlans.length ? (safePage - 1) * PAGE_SIZE + 1 : 0;
+  const lastVisiblePlan = Math.min(safePage * PAGE_SIZE, filteredPlans.length);
+
+  const totalPurchaseCost = filteredPlans.reduce(
+    (sum, plan) =>
+      sum + Number(plan.sale?.quantity || 0) * Number(plan.sale?.purchasePriceAtSale || 0),
+    0
+  );
+  const totalSellingPrice = filteredPlans.reduce(
+    (sum, plan) => sum + Number(plan.sale?.finalTotal || 0),
+    0
+  );
+  const totalProfit = totalSellingPrice - totalPurchaseCost;
+  const formatMoney = (amount) =>
+    `${settings?.currency || 'PKR'} ${Number(amount || 0).toLocaleString('en-PK')}`;
+
   return (
     <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
@@ -292,26 +321,26 @@ const Installments = () => {
           STATS OVERVIEW BANNER
       ================================================== */}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-3">
 
         {/* FILTERED PLANS */}
 
-        <div className="premium-card p-5 rounded-xl shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
             Filtered Installment Plans
           </span>
-          <p className="text-2xl font-extrabold text-slate-900 mt-1">
+          <p className="text-lg sm:text-xl font-extrabold text-slate-900 mt-1">
             {filteredPlans.length}
           </p>
         </div>
 
         {/* OUTSTANDING BALANCE */}
 
-        <div className="premium-card p-5 rounded-xl shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
             Outstanding Financed Balance
           </span>
-          <p className="text-2xl font-extrabold text-red-600 mt-1">
+          <p className="text-lg sm:text-xl font-extrabold text-red-600 mt-1">
             {settings.currency}{' '}
             {filteredPlans
               .reduce(
@@ -327,12 +356,12 @@ const Installments = () => {
 
         {/* OVERDUE */}
 
-        <div className="premium-card p-5 rounded-xl shadow-sm flex items-center justify-between">
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
               Overdue/Defaulter Plans
             </span>
-            <p className="text-2xl font-extrabold text-amber-600 mt-1">
+            <p className="text-lg sm:text-xl font-extrabold text-amber-600 mt-1">
               {
                 filteredPlans.filter(
                   (p) =>
@@ -351,6 +380,24 @@ const Installments = () => {
               <AlertTriangle className="w-6 h-6 text-amber-500 animate-pulse" />
             )
           }
+        </div>
+
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Purchasing Cost</span>
+          <p className="text-lg sm:text-xl font-extrabold text-amber-600 mt-1">{formatMoney(totalPurchaseCost)}</p>
+          <span className="text-[10px] text-slate-400">Cost of products sold</span>
+        </div>
+
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Selling Price</span>
+          <p className="text-lg sm:text-xl font-extrabold text-emerald-600 mt-1">{formatMoney(totalSellingPrice)}</p>
+          <span className="text-[10px] text-slate-400">Sale total after discount</span>
+        </div>
+
+        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Profit</span>
+          <p className={`text-lg sm:text-xl font-extrabold mt-1 ${totalProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{formatMoney(totalProfit)}</p>
+          <span className="text-[10px] text-slate-400">Selling price minus purchasing cost</span>
         </div>
 
       </div>
@@ -456,11 +503,11 @@ const Installments = () => {
 
         ) : (
 
-          <div className="overflow-x-auto">
+          <div className="datatable-vertical-scroll max-h-[65vh] overflow-x-auto overflow-y-auto overscroll-contain">
 
             <table className="w-full border-collapse text-left text-sm text-gray-600 font-medium">
 
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold uppercase text-gray-500">
+              <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase text-gray-500">
 
                 <tr>
 
@@ -476,8 +523,24 @@ const Installments = () => {
                     Financed Item
                   </th>
 
+                  <th className="px-6 py-4 text-center">
+                    Qty
+                  </th>
+
+                  <th className="px-6 py-4 text-right text-rose-600">
+                    Discount
+                  </th>
+
                   <th className="px-6 py-4">
-                    Total Cost
+                    Purchasing Cost
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Selling Price
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Final Total
                   </th>
 
                   <th className="px-6 py-4">
@@ -486,6 +549,10 @@ const Installments = () => {
 
                   <th className="px-6 py-4 text-red-600 font-black">
                     Remaining Dues
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Total Payable
                   </th>
 
                   <th className="px-6 py-4">
@@ -510,7 +577,7 @@ const Installments = () => {
 
               <tbody className="divide-y divide-gray-200">
 
-                {filteredPlans.map(
+                {pagePlans.map(
                   (plan) => (
 
                     <tr
@@ -544,18 +611,33 @@ const Installments = () => {
                       </td>
 
                       <td className="px-6 py-4 text-gray-800">
-                        {plan.product?.name ||
-                          'Deleted Product'}
+                        <div>
+                          <p className="font-bold text-slate-800">{plan.product?.name || 'Deleted Product'}</p>
+                          <p className="text-[10px] text-slate-400">{[plan.product?.brand, plan.product?.model].filter(Boolean).join(' · ')}</p>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 text-center font-bold text-slate-700">
+                        {plan.sale?.quantity || 0}
+                      </td>
+
+                      <td className="px-6 py-4 text-right font-bold text-rose-600">
+                        -{formatMoney(plan.sale?.discount || 0)}
+                      </td>
+
+                      <td className="px-6 py-4 text-slate-600">
+
+                        {formatMoney(Number(plan.sale?.quantity || 0) * Number(plan.sale?.purchasePriceAtSale || 0))}
+
+                      </td>
+
+                      <td className="px-6 py-4 text-slate-700">
+                        {formatMoney(Number(plan.sale?.quantity || 0) * Number(plan.sale?.unitPrice || 0))}
                       </td>
 
                       <td className="px-6 py-4 font-bold text-slate-800">
 
-                        {settings.currency}{' '}
-
-                        {(
-                          plan.totalAmount ||
-                          0
-                        ).toLocaleString()}
+                        {formatMoney(plan.sale?.finalTotal ?? plan.totalAmount ?? 0)}
 
                       </td>
 
@@ -579,6 +661,15 @@ const Installments = () => {
                           0
                         ).toLocaleString()}
 
+                      </td>
+
+                      <td className="px-6 py-4 font-black text-indigo-700">
+                        {formatMoney(
+                            plan.totalAmount ??
+                            plan.sale?.totalWithMarkup ??
+                            plan.sale?.finalTotal ??
+                            0
+                        )}
                       </td>
 
                       <td className="px-6 py-4 text-gray-500 font-bold">
@@ -637,6 +728,45 @@ const Installments = () => {
 
           </div>
 
+        )}
+
+        {!loading && filteredPlans.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] font-bold text-slate-500">
+              Showing <span className="font-black text-slate-700">{firstVisiblePlan}–{lastVisiblePlan}</span> of <span className="font-black text-slate-700">{filteredPlans.length}</span> installment plans
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                Go to page
+                <select
+                  value={safePage}
+                  onChange={(event) => setPage(Number(event.target.value))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-black text-slate-700 outline-none focus:border-indigo-400"
+                  aria-label="Jump to installment sales page"
+                >
+                  {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
+                    <option key={pageNumber} value={pageNumber}>{pageNumber}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setPage(safePage - 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={safePage >= pageCount}
+                onClick={() => setPage(safePage + 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
 
       </div>

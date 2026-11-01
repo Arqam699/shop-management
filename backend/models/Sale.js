@@ -278,6 +278,7 @@ saleSchema.index(
 
 saleSchema.index({ shopId: 1, saleDate: -1 });
 saleSchema.index({ shopId: 1, paymentType: 1, createdAt: -1 });
+saleSchema.index({ shopId: 1, createdAt: -1 });
 
 
 // ============================================================

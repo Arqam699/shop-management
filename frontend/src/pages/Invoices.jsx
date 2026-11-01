@@ -27,13 +27,12 @@ import {
   User,
   Package,
   CreditCard,
-  Banknote,
   CircleDollarSign,
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 const Invoices = () => {
   const { settings } = useSettings();
@@ -98,7 +97,7 @@ const Invoices = () => {
 
     setConfirmConfig({
       title: 'Cancel and Delete Invoice',
-      message: `WARNING: Are you sure you want to cancel and permanently delete Invoice "${saleId}"?\n\nThis will delete the sale, wipe out any associated installment schedules, and automatically RESTORE the stock quantity back to your inventory.`,
+      message: `WARNING: Are you sure you want to cancel and permanently delete Invoice "${saleId}"?\n\nThis will also permanently delete its payments, installment schedule, and returns. Sale stock will be restored, accounting for products already returned.`,
       onConfirm: async () => {
         try {
           await api.delete(`/api/sales/${id}`);
@@ -175,7 +174,10 @@ const Invoices = () => {
       invoices.filter((inv) => {
     const custName = inv.customer?.fullName?.toLowerCase() || '';
     const sId = inv.saleId?.toLowerCase() || '';
-    const prodName = inv.product?.name?.toLowerCase() || '';
+    const prodName = [
+      inv.product?.name,
+      ...(Array.isArray(inv.items) ? inv.items.map((item) => item.product?.name) : []),
+    ].filter(Boolean).join(' ').toLowerCase();
     const custCnic = inv.customer?.cnic || inv.customer?.CNIC || '';
     const custMobile = inv.customer?.mobileNumber || inv.customer?.mobile || '';
     const term = debouncedSearchTerm.toLowerCase().trim();
@@ -213,6 +215,49 @@ const Invoices = () => {
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
 
+  const getInvoiceItems = (invoice) =>
+    Array.isArray(invoice.items) && invoice.items.length > 0
+      ? invoice.items
+      : [{
+          product: invoice.product,
+          quantity: invoice.quantity,
+          unitPrice: invoice.unitPrice,
+          discount: invoice.discount,
+          purchasePriceAtSale: invoice.purchasePriceAtSale,
+        }];
+
+  const totalPurchaseCost = filteredInvoices.reduce(
+    (sum, invoice) => sum + getInvoiceItems(invoice).reduce(
+      (itemSum, item, index) => {
+        const unitCost = item.purchasePriceAtSale ??
+          (index === 0 ? invoice.purchasePriceAtSale ?? invoice.product?.purchasePrice : 0) ?? 0;
+        return itemSum + Number(item.quantity || 0) * Number(unitCost);
+      },
+      0
+    ),
+    0
+  );
+  const totalProfit = totalInvoicedVal - totalPurchaseCost;
+
+  const getFixedFinancingDues = (invoice) => {
+    if (invoice.paymentType !== 'Installment') return 0;
+
+    const downPayment = Number(invoice.downPayment || 0);
+    const countsDownPaymentAsFirst =
+      invoice.treatDownPaymentAsFirstInstallment === true;
+    const savedDealTotal = Number(invoice.totalWithMarkup || 0);
+    const totalWithMarkup = savedDealTotal > 0
+      ? savedDealTotal
+      : countsDownPaymentAsFirst
+      ? Math.max(0, Number(invoice.finalTotal || 0) - downPayment) + Number(invoice.markupAmount || 0)
+      : Number(invoice.finalTotal || 0) + Number(invoice.markupAmount || 0);
+
+    return Math.max(0, totalWithMarkup - (countsDownPaymentAsFirst ? 0 : downPayment));
+  };
+
+  const invoiceItemLineClass = (index, items) =>
+    `min-h-[48px] flex flex-col justify-center py-1.5 ${index < items.length - 1 ? 'border-b-2 border-slate-200' : ''}`;
+
   // =====================================================
   // INVOICES TABLE COLUMNS
   // =====================================================
@@ -242,10 +287,53 @@ const Invoices = () => {
     {
       key: 'product',
       header: 'Product Details',
-      className:
-        'px-5 py-3.5 text-slate-700 font-bold truncate max-w-[170px]',
-      render: (inv) =>
-        inv.product?.name || 'Deleted Product',
+      className: 'px-5 py-3.5 text-slate-700 font-bold',
+      render: (inv) => (
+        <div className="min-w-[150px]">
+          {getInvoiceItems(inv).map((item, index, items) => {
+            const product = item.product && typeof item.product === 'object'
+              ? item.product
+              : index === 0 ? inv.product : null;
+            return (
+              <div key={item._id || `${inv._id}-item-${index}`} className={invoiceItemLineClass(index, items)}>
+                <p className="max-w-[170px] truncate font-bold text-slate-800">{product?.name || 'Deleted Product'}</p>
+                <p className="text-[10px] font-semibold text-slate-400">{[product?.brand, product?.model].filter(Boolean).join(' · ')}</p>
+              </div>
+            );
+          })}
+        </div>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Qty',
+      headerClassName: 'px-5 py-4 text-center',
+      className: 'px-5 py-3.5 text-center',
+      render: (inv) => <div>{getInvoiceItems(inv).map((item, index, items) => <p key={item._id || `${inv._id}-qty-${index}`} className={`${invoiceItemLineClass(index, items)} font-black text-slate-700`}>{item.quantity || 0}</p>)}</div>,
+    },
+    {
+      key: 'discount',
+      header: 'Discount',
+      headerClassName: 'px-5 py-4 text-right text-rose-600',
+      className: 'px-5 py-3.5 text-right font-black text-rose-600',
+      render: (inv) => <div>{getInvoiceItems(inv).map((item, index, items) => <p key={item._id || `${inv._id}-discount-${index}`} className={invoiceItemLineClass(index, items)}>-{formatMoney(item.discount || 0)}</p>)}</div>,
+    },
+    {
+      key: 'purchasePriceAtSale',
+      header: 'Purchasing Price',
+      headerClassName: 'px-5 py-4 text-right',
+      className: 'px-5 py-3.5 text-right font-semibold text-slate-600',
+      render: (inv) => <div>{getInvoiceItems(inv).map((item, index, items) => {
+        const unitCost = item.purchasePriceAtSale ?? (index === 0 ? inv.purchasePriceAtSale ?? inv.product?.purchasePrice : 0) ?? 0;
+        return <p key={item._id || `${inv._id}-cost-${index}`} className={invoiceItemLineClass(index, items)}>{formatMoney(Number(item.quantity || 0) * Number(unitCost))}</p>;
+      })}</div>,
+    },
+    {
+      key: 'sellingPrice',
+      header: 'Selling Price',
+      headerClassName: 'px-5 py-4 text-right',
+      className: 'px-5 py-3.5 text-right font-semibold text-slate-700',
+      render: (inv) => <div>{getInvoiceItems(inv).map((item, index, items) => <p key={item._id || `${inv._id}-selling-${index}`} className={invoiceItemLineClass(index, items)}>{formatMoney(Number(item.quantity || 0) * Number(item.unitPrice || 0))}</p>)}</div>,
     },
     {
       key: 'finalTotal',
@@ -265,18 +353,26 @@ const Invoices = () => {
       className:
         'px-5 py-3.5 text-right font-black text-emerald-600',
       render: (inv) => (
-        <>+{formatMoney(inv.downPayment || 0)}</>
+        <>+{formatMoney(inv.paymentType === 'Installment' ? inv.downPayment || 0 : 0)}</>
       ),
     },
     {
       key: 'remainingBalance',
-      header: 'Financing Dues',
+      header: 'Original Financing Dues',
       headerClassName:
         'px-5 py-4 text-right text-rose-600 font-black',
       className:
         'px-5 py-3.5 text-right font-black text-rose-600 text-sm',
-      render: (inv) =>
-        formatMoney(inv.remainingBalance || 0),
+      render: (inv) => (
+        <div className="whitespace-nowrap">
+          <p>{formatMoney(getFixedFinancingDues(inv))}</p>
+          {inv.paymentType === 'Installment' && (
+            <p className="mt-1 text-[9px] font-semibold text-slate-400">
+              Outstanding now: {formatMoney(inv.remainingBalance || 0)}
+            </p>
+          )}
+        </div>
+      ),
     },
     {
       key: 'paymentType',
@@ -402,68 +498,90 @@ const Invoices = () => {
       {/* =====================================================
           INVOICE METRICS KPI CARDS
       ====================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         
         {/* Total Invoices Count */}
-        <div className="premium-card p-5 sm:p-6">
+        <div className="premium-card p-3 sm:p-4">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                 Filtered Invoices
               </p>
-              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+              <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-slate-900">
                 {filteredInvoices.length} Slips
               </p>
               <p className="mt-1 text-xs font-semibold text-slate-400">
                 Invoices in date range
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-              <Receipt className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <Receipt className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {/* Total Invoiced Value */}
-        <div className="premium-card p-5 sm:p-6">
+        <div className="premium-card p-3 sm:p-4">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                Total Invoiced Value
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Total Selling Price
               </p>
-              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-emerald-600 truncate">
+              <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-emerald-600 truncate">
                 {formatMoney(totalInvoicedVal)}
               </p>
-              <p className="mt-1 text-xs font-semibold text-slate-400">
-                Total gross sales billed
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                Total selling amount after discounts
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-              <CircleDollarSign className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+              <CircleDollarSign className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {/* Remaining Dues */}
-        <div className="group relative overflow-hidden bg-white rounded-3xl border border-rose-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+        <div className="group relative overflow-hidden bg-white rounded-2xl border border-rose-200/80 p-3 sm:p-4 shadow-sm">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                 Remaining Financed Dues
               </p>
-              <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-rose-600 truncate">
+              <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-rose-600 truncate">
                 {formatMoney(totalOutstandingDues)}
               </p>
-              <p className="mt-1 text-xs font-semibold text-slate-400">
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
                 Installment recovery pending
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-              <CreditCard className="w-6 h-6" />
+            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <CreditCard className="w-4 h-4" />
             </div>
+          </div>
+        </div>
+
+        <div className="premium-card p-3 sm:p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Total Purchasing Cost</p>
+              <p className="mt-1.5 truncate text-lg font-black tracking-tight text-amber-600 sm:text-xl">{formatMoney(totalPurchaseCost)}</p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">Actual cost of all invoiced products</p>
+            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-100 bg-amber-50 text-amber-600"><Package className="h-4 w-4" /></div>
+          </div>
+        </div>
+
+        <div className="premium-card p-3 sm:p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Total Profit</p>
+              <p className={`mt-1.5 truncate text-lg font-black tracking-tight sm:text-xl ${totalProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{formatMoney(totalProfit)}</p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">Selling total minus purchasing cost</p>
+            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-violet-600"><Sparkles className="h-4 w-4" /></div>
           </div>
         </div>
 
@@ -559,6 +677,8 @@ const Invoices = () => {
         emptyIcon={FileText}
         emptyTitle="No tax invoices found"
         emptyHint='Try switching filters to "All-Time" or click "New Invoice Checkout" to generate fresh sales receipts.'
+        maxTableHeight="65vh"
+        enablePageJump
       />
 
       {/* CONFIRM DELETE MODAL */}

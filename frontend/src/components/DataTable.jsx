@@ -15,6 +15,8 @@ const DataTable = ({
   skeletonRows = 8,
   rowClassName = 'hover:bg-slate-50/80 transition-colors',
   getRowClassName,
+  maxTableHeight,
+  enablePageJump = false,
 }) => {
   const totalRows = rows.length;
 
@@ -77,7 +79,10 @@ const DataTable = ({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50">
-      <div className="overflow-x-auto">
+      <div
+        className={`overflow-x-auto ${maxTableHeight ? 'datatable-vertical-scroll overflow-y-auto overscroll-contain' : ''}`}
+        style={maxTableHeight ? { maxHeight: maxTableHeight } : undefined}
+      >
         <table className="w-full text-left text-xs text-slate-600 font-medium">
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[9px] font-black uppercase tracking-wider text-slate-400 backdrop-blur">
             <tr>
@@ -134,7 +139,7 @@ const DataTable = ({
         </table>
       </div>
 
-      {totalPages > 1 && (
+      {(totalPages > 1 || enablePageJump) && (
         <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] font-bold text-slate-500">
             Showing{' '}
@@ -149,6 +154,21 @@ const DataTable = ({
           </p>
 
           <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+            {enablePageJump && (
+              <label className="mr-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                Go to page
+                <select
+                  value={safePage}
+                  onChange={(event) => onPageChange(Number(event.target.value))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-black text-slate-700 outline-none focus:border-indigo-400"
+                  aria-label="Jump to page"
+                >
+                  {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                    <option key={pageNumber} value={pageNumber}>{pageNumber}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               disabled={safePage <= 1}
@@ -160,7 +180,7 @@ const DataTable = ({
               Previous
             </button>
 
-            {visiblePages.map((pageNumber) => (
+            {!enablePageJump && visiblePages.map((pageNumber) => (
               <button
                 key={pageNumber}
                 type="button"

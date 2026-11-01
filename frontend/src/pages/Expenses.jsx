@@ -25,6 +25,8 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
+const PAGE_SIZE = 20;
+
 const Expenses = () => {
   const { settings } = useSettings();
 
@@ -40,6 +42,11 @@ const Expenses = () => {
   const [filterPreset, setFilterPreset] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterPreset, customStartDate, customEndDate]);
 
   // Add Expense Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -234,6 +241,15 @@ const Expenses = () => {
 
     return matchesSearch && matchesDate;
   });
+
+  const pageCount = Math.max(1, Math.ceil(filteredExpenses.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageExpenses = filteredExpenses.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+  const firstVisibleExpense = filteredExpenses.length ? (safePage - 1) * PAGE_SIZE + 1 : 0;
+  const lastVisibleExpense = Math.min(safePage * PAGE_SIZE, filteredExpenses.length);
 
   const totalFilteredExpensesVal = filteredExpenses.reduce(
     (sum, e) => sum + Number(e.amount || 0),
@@ -487,7 +503,7 @@ const Expenses = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="datatable-vertical-scroll max-h-[65vh] overflow-x-auto overflow-y-auto overscroll-contain">
             <table className="w-full text-left text-xs text-slate-600 font-medium">
               <thead className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-black uppercase tracking-wider text-slate-400">
                 <tr>
@@ -502,7 +518,7 @@ const Expenses = () => {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {filteredExpenses.map((e) => (
+                {pageExpenses.map((e) => (
                   <tr key={e._id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-6 py-3.5 font-black text-indigo-600 tracking-wider">
                       {e.expenseId}
@@ -562,6 +578,45 @@ const Expenses = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && filteredExpenses.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] font-bold text-slate-500">
+              Showing <span className="font-black text-slate-700">{firstVisibleExpense}–{lastVisibleExpense}</span> of <span className="font-black text-slate-700">{filteredExpenses.length}</span> expenses
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                Go to page
+                <select
+                  value={safePage}
+                  onChange={(event) => setPage(Number(event.target.value))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-black text-slate-700 outline-none focus:border-indigo-400"
+                  aria-label="Jump to expenses page"
+                >
+                  {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
+                    <option key={pageNumber} value={pageNumber}>{pageNumber}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setPage(safePage - 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={safePage >= pageCount}
+                onClick={() => setPage(safePage + 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

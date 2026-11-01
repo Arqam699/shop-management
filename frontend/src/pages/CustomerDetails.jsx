@@ -206,7 +206,7 @@ const getPaymentScore = (customer) => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/customers');
+      const response = await api.get('/customers?includeScores=true&includeMedia=true');
 
       const data = Array.isArray(response.data?.data)
         ? response.data.data

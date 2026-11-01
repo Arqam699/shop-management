@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import {
@@ -32,7 +32,7 @@ import {
   Package,
 } from 'lucide-react';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 const Sales = () => {
   const { settings } = useSettings();
@@ -228,6 +228,26 @@ const Sales = () => {
     0
   );
 
+  const totalPurchaseCost = filteredSales.reduce((sum, sale) => {
+    const items = Array.isArray(sale.items) ? sale.items : [];
+
+    if (items.length > 0) {
+      return sum + items.reduce(
+        (itemSum, item) =>
+          itemSum +
+          Number(item.quantity || 0) *
+            Number(item.purchasePriceAtSale ?? item.product?.purchasePrice ?? 0),
+        0
+      );
+    }
+
+    return sum +
+      Number(sale.quantity || 0) *
+        Number(sale.purchasePriceAtSale ?? sale.product?.purchasePrice ?? 0);
+  }, 0);
+
+  const totalCashProfit = totalCashSalesVal - totalPurchaseCost;
+
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
 
@@ -241,6 +261,20 @@ const Sales = () => {
           minute: '2-digit',
         });
   };
+
+  const getSaleItems = (sale) =>
+    Array.isArray(sale.items) && sale.items.length > 0
+      ? sale.items
+      : [{
+          product: sale.product,
+          quantity: sale.quantity,
+          unitPrice: sale.unitPrice,
+          discount: sale.discount,
+          purchasePriceAtSale: sale.purchasePriceAtSale,
+        }];
+
+  const itemLineClass = (index, items) =>
+    `min-h-[48px] flex flex-col justify-center py-1.5 ${index < items.length - 1 ? 'border-b-2 border-slate-200' : ''}`;
 
   // =====================================================
   // CASH SALES TABLE COLUMNS
@@ -272,16 +306,19 @@ const Sales = () => {
       key: 'product',
       header: 'Product Details',
       render: (sale) => (
-        <>
-          <p className="font-bold text-slate-800 truncate max-w-[150px]">
-            {sale.product?.name || 'Deleted Product'}
-          </p>
-          <p className="text-[10px] text-slate-400 font-semibold">
-            {[sale.product?.brand, sale.product?.model]
-              .filter(Boolean)
-              .join(' • ')}
-          </p>
-        </>
+        <div className="min-w-[150px]">
+          {getSaleItems(sale).map((item, index, items) => {
+            const product = item.product && typeof item.product === 'object'
+              ? item.product
+              : index === 0 ? sale.product : null;
+            return (
+              <div key={item._id || `${sale._id}-item-${index}`} className={itemLineClass(index, items)}>
+                <p className="font-bold text-slate-800 truncate max-w-[150px]">{product?.name || 'Deleted Product'}</p>
+                <p className="text-[10px] text-slate-400 font-semibold">{[product?.brand, product?.model].filter(Boolean).join(' · ')}</p>
+              </div>
+            );
+          })}
+        </div>
       ),
     },
     {
@@ -289,30 +326,31 @@ const Sales = () => {
       header: 'Qty',
       headerClassName: 'px-5 py-4 text-center',
       className: 'px-5 py-3.5 text-center',
-      render: (sale) => (
-        <span className="inline-flex min-w-7 justify-center px-2 py-0.5 rounded-md bg-slate-100 font-black text-[10px] text-slate-700">
-          {sale.quantity}
-        </span>
-      ),
-    },
-    {
-      key: 'subtotal',
-      header: 'Subtotal',
-      headerClassName: 'px-5 py-4 text-right',
-      className:
-        'px-5 py-3.5 text-right font-semibold text-slate-600',
-      render: (sale) => formatMoney(sale.subtotal),
+      render: (sale) => <div>{getSaleItems(sale).map((item, index, items) => <p key={item._id || `${sale._id}-qty-${index}`} className={`${itemLineClass(index, items)} font-black text-slate-700`}>{item.quantity || 0}</p>)}</div>,
     },
     {
       key: 'discount',
       header: 'Discount',
-      headerClassName:
-        'px-5 py-4 text-right text-rose-600',
-      className:
-        'px-5 py-3.5 text-right font-black text-rose-600',
-      render: (sale) => (
-        <>-{formatMoney(sale.discount)}</>
-      ),
+      headerClassName: 'px-5 py-4 text-right text-rose-600',
+      className: 'px-5 py-3.5 text-right font-black text-rose-600',
+      render: (sale) => <div>{getSaleItems(sale).map((item, index, items) => <p key={item._id || `${sale._id}-discount-${index}`} className={itemLineClass(index, items)}>-{formatMoney(item.discount || 0)}</p>)}</div>,
+    },
+    {
+      key: 'purchasePriceAtSale',
+      header: 'Purchasing Price',
+      headerClassName: 'px-5 py-4 text-right',
+      className: 'px-5 py-3.5 text-right font-semibold text-slate-600',
+      render: (sale) => <div>{getSaleItems(sale).map((item, index, items) => {
+        const unitCost = item.purchasePriceAtSale ?? (index === 0 ? sale.purchasePriceAtSale ?? sale.product?.purchasePrice : 0) ?? 0;
+        return <p key={item._id || `${sale._id}-cost-${index}`} className={itemLineClass(index, items)}>{formatMoney(Number(item.quantity || 0) * Number(unitCost))}</p>;
+      })}</div>,
+    },
+    {
+      key: 'sellingPrice',
+      header: 'Selling Price',
+      headerClassName: 'px-5 py-4 text-right',
+      className: 'px-5 py-3.5 text-right font-semibold text-slate-700',
+      render: (sale) => <div>{getSaleItems(sale).map((item, index, items) => <p key={item._id || `${sale._id}-selling-${index}`} className={itemLineClass(index, items)}>{formatMoney(Number(item.quantity || 0) * Number(item.unitPrice || 0))}</p>)}</div>,
     },
     {
       key: 'finalTotal',
@@ -496,46 +534,88 @@ const Sales = () => {
         {/* =====================================================
             KPI METRICS SUMMARY CARDS
         ====================================================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           
           {/* Filtered Sales Count */}
-          <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Filtered Cash Sales
                 </p>
-                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-slate-900">
                   {filteredSales.length} Orders
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-400">
                   Cash transactions in view
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <Receipt className="w-6 h-6" />
+              <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Receipt className="w-4.5 h-4.5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total Product Purchasing Cost */}
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Total Purchasing Cost
+                </p>
+                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-amber-600 truncate">
+                  {formatMoney(totalPurchaseCost)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                  Actual cost of sold products
+                </p>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Package className="w-4.5 h-4.5" />
               </div>
             </div>
           </div>
 
           {/* Total Cash Revenue */}
-          <div className="group relative overflow-hidden premium-card p-5 sm:p-6">
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                  Total Cash Revenue
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Total Selling Price
                 </p>
-                <p className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-emerald-600 truncate">
+                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-emerald-600 truncate">
                   {formatMoney(totalCashSalesVal)}
                 </p>
-                <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Instant cash received
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                  Total selling amount after discounts
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <CircleDollarSign className="w-6 h-6" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <CircleDollarSign className="w-4.5 h-4.5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Cash Sale Profit */}
+          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-indigo-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Total Profit
+                </p>
+                <p className={`mt-1.5 text-lg sm:text-xl font-black tracking-tight truncate ${totalCashProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>
+                  {formatMoney(totalCashProfit)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                  Selling price minus purchasing cost
+                </p>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-4.5 h-4.5" />
               </div>
             </div>
           </div>
@@ -631,6 +711,8 @@ const Sales = () => {
           emptyIcon={ShoppingCart}
           emptyTitle="No cash sales logged"
           emptyHint='Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.'
+          maxTableHeight="65vh"
+          enablePageJump
         />
 
       </div>
@@ -645,7 +727,7 @@ const Sales = () => {
         }
         onConfirm={confirmDelete}
         title="Delete Cash Sale Invoice"
-        message={`WARNING: Are you sure you want to delete Cash Sale Invoice "${deleteModal.invoiceNum}"? This will return the sold quantity back to your inventory stock.`}
+        message={`WARNING: Are you sure you want to delete Cash Sale Invoice "${deleteModal.invoiceNum}"? Its linked payments and returns will also be deleted, and sold stock will be restored to inventory.`}
         confirmText="Delete Sale"
         cancelText="Cancel"
         danger
@@ -655,3 +737,4 @@ const Sales = () => {
 };
 
 export default Sales;
+

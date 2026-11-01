@@ -1,4 +1,12 @@
 const Customer = require('../models/Customer');
+const Counter = require('../models/Counter');
+const Installment = require('../models/Installment');
+const InstallmentPlan = require('../models/InstallmentPlan');
+const Payment = require('../models/Payment');
+const Sale = require('../models/Sale');
+const Return = require('../models/Return');
+const Product = require('../models/Product');
+const StockMovement = require('../models/StockMovement');
 const {
   getPaginationParams,
   paginatedResponse,
@@ -71,27 +79,37 @@ const preserveStoredBiometrics = (payload) => {
 
 const generateCustomerID = async (shopId) => {
   try {
-    const customers = await Customer.find(
-      { shopId },
-      'customerId'
-    );
+    const counterId = `customer_${shopId}`;
+    const currentCounter = await Counter.findById(counterId)
+      .select('seq')
+      .lean();
 
-    let maxNum = 0;
-
-    customers.forEach((c) => {
-      if (c.customerId) {
-        const num = parseInt(
-          c.customerId.replace(/[^0-9]/g, ''),
+    if (!currentCounter) {
+      const existingCustomers = await Customer.find({ shopId })
+        .select('customerId')
+        .lean();
+      const maxCustomerNumber = existingCustomers.reduce((max, customer) => {
+        const number = parseInt(
+          String(customer.customerId || '').replace(/[^0-9]/g, ''),
           10
         );
+        return Number.isFinite(number) ? Math.max(max, number) : max;
+      }, 0);
 
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
-      }
-    });
+      await Counter.findOneAndUpdate(
+        { _id: counterId },
+        { $setOnInsert: { seq: maxCustomerNumber } },
+        { upsert: true }
+      );
+    }
 
-    return String(maxNum + 1).padStart(2, '0');
+    const counter = await Counter.findOneAndUpdate(
+      { _id: counterId },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+
+    return String(counter.seq).padStart(2, '0');
   } catch (err) {
     console.error(
       'Generate customer ID error:',
@@ -1010,10 +1028,16 @@ const getCustomers = async (req, res) => {
     const pagination =
       getPaginationParams(req);
 
+    const customerListSelect = req.query.includeMedia === 'true'
+      ? CUSTOMER_MEDIA_SELECT
+      : 'customerId fullName fatherName mobileNumber cnic city createdAt';
+
     let customersQuery =
       Customer
         .find(query)
-        .select(CUSTOMER_MEDIA_SELECT)
+        // The customer index needs contact/profile fields only. Loading
+        // customer and guarantor images here made every list response large.
+        .select(customerListSelect)
         .sort({
           createdAt: 1
         })
@@ -1034,29 +1058,100 @@ const getCustomers = async (req, res) => {
       await customersQuery;
 
     // ======================================
-    // PAYMENT SCORES
+    // PAYMENT SCORES (BATCHED)
+    // Avoid 3 separate database reads per customer. Fetch the related
+    // records for this result set in batches, then calculate each score
+    // from its in-memory group.
     // ======================================
 
-    const customersWithScores =
-      await Promise.all(
-        customers.map(
-          async (customer) => {
-            const paymentScore =
-              await calculatePaymentScore({
-                customerId:
-                  customer._id,
+    const customersWithScores = customers.map((customer) =>
+      sanitizeCustomer(customer)
+    );
 
-                shopId:
-                  req.shopId
-              });
+    // Most customer selectors (such as the sale form) only need basic
+    // contact details. Payment-score history is expensive, so load it only
+    // for the customer register that displays score badges.
+    if (req.query.includeScores === 'true' && customers.length > 0) {
+    const customerIds = customers.map((customer) => customer._id);
+    const [customerPlans, customerPayments] = customerIds.length
+      ? await Promise.all([
+          InstallmentPlan.find({
+            shopId: req.shopId,
+            customer: { $in: customerIds },
+          })
+            .select('_id customer remainingBalance')
+            .sort({ createdAt: 1 })
+            .lean(),
+          Payment.find({
+            shopId: req.shopId,
+            customer: { $in: customerIds },
+            isArchived: { $ne: true },
+          })
+            .select('customer amount paymentDate allocations installment')
+            .sort({ paymentDate: 1, createdAt: 1 })
+            .lean(),
+        ])
+      : [[], []];
 
-            return {
-              ...sanitizeCustomer(customer),
-              paymentScore
-            };
-          }
-        )
-      );
+    const plansByCustomer = new Map();
+    const customerIdByPlan = new Map();
+    customerPlans.forEach((plan) => {
+      const customerKey = String(plan.customer);
+      const customerPlansList = plansByCustomer.get(customerKey) || [];
+      customerPlansList.push(plan);
+      plansByCustomer.set(customerKey, customerPlansList);
+      customerIdByPlan.set(String(plan._id), customerKey);
+    });
+
+    const installments = customerPlans.length
+      ? await Installment.find({
+          shopId: req.shopId,
+          installmentPlan: { $in: customerPlans.map((plan) => plan._id) },
+        })
+          .select('installmentPlan installmentNumber amount originalAmount paidAmount remainingAmount dueDate status paidDate settledDate')
+          .sort({ dueDate: 1, installmentNumber: 1 })
+          .lean()
+      : [];
+
+    const installmentsByCustomer = new Map();
+    installments.forEach((installment) => {
+      const customerKey = customerIdByPlan.get(String(installment.installmentPlan));
+      if (!customerKey) return;
+      const customerInstallments = installmentsByCustomer.get(customerKey) || [];
+      customerInstallments.push(installment);
+      installmentsByCustomer.set(customerKey, customerInstallments);
+    });
+
+    const paymentsByCustomer = new Map();
+    customerPayments.forEach((payment) => {
+      const customerKey = String(payment.customer);
+      const customerPaymentsList = paymentsByCustomer.get(customerKey) || [];
+      customerPaymentsList.push(payment);
+      paymentsByCustomer.set(customerKey, customerPaymentsList);
+    });
+
+    const scoredCustomers = await Promise.all(
+      customers.map(async (customer) => {
+        const customerKey = String(customer._id);
+        const paymentScore = await calculatePaymentScore({
+          customerId: customer._id,
+          shopId: req.shopId,
+          plans: plansByCustomer.get(customerKey) || [],
+          installments: installmentsByCustomer.get(customerKey) || [],
+          payments: paymentsByCustomer.get(customerKey) || [],
+        });
+
+        return {
+          ...sanitizeCustomer(customer),
+          paymentScore,
+        };
+      })
+    );
+
+    scoredCustomers.forEach((customer, index) => {
+      customersWithScores[index].paymentScore = customer.paymentScore;
+    });
+    }
 
     // ======================================
     // RESPONSE
@@ -1819,18 +1914,10 @@ const deleteCustomer = async (
       });
     }
 
-    // ======================================
-    // DELETE
-    // ======================================
-
-    const customer =
-      await Customer.findOneAndDelete({
-        _id:
-          req.params.id,
-
-        shopId:
-          req.shopId
-      });
+    const customer = await Customer.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+    });
 
     if (!customer) {
       return res.status(404).json({
@@ -1841,6 +1928,129 @@ const deleteCustomer = async (
       });
     }
 
+    // Remove the complete customer transaction history in this shop.
+    const sales = await Sale.find({
+      shopId: req.shopId,
+      customer: customer._id,
+    })
+      .select('_id saleId product items quantity')
+      .lean();
+    const saleIds = sales.map((sale) => sale._id);
+    const plans = await InstallmentPlan.find({
+      shopId: req.shopId,
+      $or: [
+        { customer: customer._id },
+        ...(saleIds.length ? [{ sale: { $in: saleIds } }] : []),
+      ],
+    })
+      .select('_id sale')
+      .lean();
+    const planIds = plans.map((plan) => plan._id);
+    const returns = saleIds.length
+      ? await Return.find({ shopId: req.shopId, sale: { $in: saleIds } })
+          .select('sale product quantity')
+          .lean()
+      : [];
+
+    const returnsBySaleAndProduct = new Map();
+    returns.forEach((returnRow) => {
+      const key = `${String(returnRow.sale)}:${String(returnRow.product)}`;
+      returnsBySaleAndProduct.set(
+        key,
+        (returnsBySaleAndProduct.get(key) || 0) + Number(returnRow.quantity || 0)
+      );
+    });
+
+    const stockRestores = new Map();
+    sales.forEach((sale) => {
+      const hasItemSnapshot = Array.isArray(sale.items) && sale.items.length > 0;
+      const soldItems = hasItemSnapshot
+        ? sale.items
+        : [{ product: sale.product, quantity: sale.quantity }];
+
+      const soldQuantityByProduct = new Map();
+      soldItems.forEach((item) => {
+        const productId = String(item.product?._id || item.product || '');
+        if (!productId) return;
+        soldQuantityByProduct.set(
+          productId,
+          (soldQuantityByProduct.get(productId) || 0) + Number(item.quantity || 0)
+        );
+      });
+
+      soldQuantityByProduct.forEach((lineQuantity, productId) => {
+        const returnedQuantity = hasItemSnapshot
+          ? Number(returnsBySaleAndProduct.get(`${String(sale._id)}:${productId}`) || 0)
+          : 0; // Legacy sale.quantity is already reduced when a return is processed.
+        const quantityToRestore = Math.max(0, lineQuantity - returnedQuantity);
+        if (quantityToRestore <= 0) return;
+        const existing = stockRestores.get(productId) || { quantity: 0, saleIds: [] };
+        existing.quantity += quantityToRestore;
+        existing.saleIds.push(sale.saleId);
+        stockRestores.set(productId, existing);
+      });
+    });
+
+    const saleReferences = [...new Set(sales.map((sale) => sale.saleId).filter(Boolean))];
+    if (saleReferences.length) {
+      await StockMovement.deleteMany({
+        shopId: req.shopId,
+        reference: { $in: saleReferences },
+      });
+    }
+
+    for (const [productId, restore] of stockRestores) {
+      const product = await Product.findOne({ _id: productId, shopId: req.shopId });
+      if (!product) continue;
+      const previousQuantity = Number(product.quantity || 0);
+      product.quantity = previousQuantity + restore.quantity;
+      await product.save();
+
+      const references = [...new Set(restore.saleIds.filter(Boolean))];
+      await StockMovement.create({
+        shopId: req.shopId,
+        product: product._id,
+        type: 'Return',
+        quantity: restore.quantity,
+        previousQuantity,
+        newQuantity: product.quantity,
+        reason: `Customer ${customer.customerId || customer._id} and related sales deleted`,
+        reference: references.join(', '),
+      });
+    }
+
+    if (saleIds.length || planIds.length) {
+      await Payment.deleteMany({
+        shopId: req.shopId,
+        $or: [
+          { customer: customer._id },
+          ...(saleIds.length ? [{ sale: { $in: saleIds } }] : []),
+          ...(planIds.length ? [{ installmentPlan: { $in: planIds } }] : []),
+        ],
+      });
+    } else {
+      await Payment.deleteMany({ shopId: req.shopId, customer: customer._id });
+    }
+
+    if (planIds.length) {
+      await Installment.deleteMany({
+        shopId: req.shopId,
+        installmentPlan: { $in: planIds },
+      });
+      await InstallmentPlan.deleteMany({
+        shopId: req.shopId,
+        _id: { $in: planIds },
+      });
+    }
+
+    await Return.deleteMany({ shopId: req.shopId, customer: customer._id });
+    if (saleIds.length) {
+      await Return.deleteMany({ shopId: req.shopId, sale: { $in: saleIds } });
+      await Sale.deleteMany({ shopId: req.shopId, _id: { $in: saleIds } });
+    }
+
+    await Customer.deleteOne({ _id: customer._id, shopId: req.shopId });
+
     // ======================================
     // RESPONSE
     // ======================================
@@ -1848,8 +2058,8 @@ const deleteCustomer = async (
     return res.status(200).json({
       success: true,
 
-      message:
-        'Customer record deleted from system'
+      message: 'Customer and related sales deleted successfully',
+      deletedSales: saleIds.length,
     });
 
   } catch (error) {

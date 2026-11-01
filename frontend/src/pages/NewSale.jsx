@@ -617,6 +617,32 @@ const NewSale = () => {
     downPayment,
   ]);
 
+  const ledgerCurrency = settings?.currency || 'PKR';
+  const markupFormulaText = treatDownPaymentAsFirstInstallment
+    ? `(${formatMoney(finalTotal)} - ${formatMoney(downPayment)}) x ${markupPercentage}%`
+    : `${formatMoney(finalTotal)} x ${markupPercentage}%`;
+  const dealTotalFormulaText = treatDownPaymentAsFirstInstallment
+    ? `${formatMoney(calculationBaseAfterDownPayment)} + ${formatMoney(markupAmount)}`
+    : `${formatMoney(finalTotal)} + ${formatMoney(markupAmount)}`;
+  const downPaymentFormulaText = manualFinancedBalance !== null
+    ? treatDownPaymentAsFirstInstallment
+      ? `${formatMoney(finalTotal)} - (${formatMoney(manualFinancedBalance)} / (1 + ${markupPercentage}%))`
+      : `${formatMoney(totalWithMarkup)} - ${formatMoney(manualFinancedBalance)}`
+    : `Entered amount: ${formatMoney(downPayment)}`;
+  const financedBalanceFormulaText = manualFinancedBalance !== null
+    ? 'Manually entered financed balance'
+    : treatDownPaymentAsFirstInstallment
+    ? 'Deal total after markup; down payment is installment #1'
+    : `${formatMoney(totalWithMarkup)} - ${formatMoney(effectiveDownPayment)}`;
+  const averageInstallmentAmount = installmentSchedule.length
+    ? financedBalance / installmentSchedule.length
+    : 0;
+  const totalPayableAfterMarkup =
+    effectiveDownPayment + financedBalance;
+  const totalPayableFormulaText = manualFinancedBalance !== null
+    ? `${formatMoney(effectiveDownPayment)} + ${formatMoney(financedBalance)}`
+    : `${formatMoney(finalTotal)} + ${formatMoney(markupAmount)}`;
+
   /* =========================================================
      INSTALLMENT COUNT
   ========================================================= */
@@ -1610,7 +1636,7 @@ if (invalidDate) {
 
       <form
         onSubmit={handleSubmit}
-        className={`grid min-w-0 grid-cols-1 gap-4 sm:gap-6 ${isInstallmentSale ? '2xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] 2xl:items-start 2xl:gap-5' : 'xl:grid-cols-[minmax(0,1fr)_400px]'}`}
+        className={`grid min-w-0 grid-cols-1 gap-4 sm:gap-6 ${isInstallmentSale ? 'xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] xl:items-start xl:gap-5' : 'xl:grid-cols-[minmax(0,1fr)_400px]'}`}
       >
 
         {/* ===================================================
@@ -2683,9 +2709,9 @@ if (invalidDate) {
             RIGHT COLUMN
         ====================================================== */}
 
-        <div className={`min-w-0 space-y-6 ${isInstallmentSale ? '2xl:sticky 2xl:top-4' : ''}`}>
+        <div className={`min-w-0 space-y-6 ${isInstallmentSale ? 'xl:sticky xl:top-4' : ''}`}>
 
-          <div className={`min-w-0 overflow-hidden bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-4 sm:p-6 text-white shadow-2xl shadow-blue-950/30 space-y-5 ${isInstallmentSale ? '2xl:rounded-2xl 2xl:p-5 2xl:space-y-4' : 'sticky top-24'}`}>
+          <div className={`min-w-0 bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] border border-white/[0.08] rounded-3xl p-4 sm:p-6 text-white shadow-2xl shadow-blue-950/30 space-y-5 ${isInstallmentSale ? 'flex h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden xl:rounded-2xl xl:p-5 xl:space-y-4' : 'overflow-hidden sticky top-24'}`}>
 
             {/* HEADER */}
 
@@ -2711,7 +2737,7 @@ if (invalidDate) {
                 PRICE CALCULATIONS
             ================================================== */}
 
-            <div className="space-y-3 text-xs font-semibold text-slate-300">
+            <div className={`space-y-3 pb-2 text-xs font-semibold text-slate-300 ${isInstallmentSale ? 'installment-ledger-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-3' : ''}`}>
 
               <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
@@ -2719,7 +2745,7 @@ if (invalidDate) {
                   Subtotal ({quantity} × Price)
                 </span>
 
-                <span className="font-bold text-white text-sm">
+                <span className={`font-bold text-white text-sm ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                   {settings?.currency ||
                     'PKR'}{' '}
                   {formatMoney(
@@ -2729,13 +2755,19 @@ if (invalidDate) {
 
               </div>
 
+              {isInstallmentSale && (
+                <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                  Formula: {quantity} x {ledgerCurrency} {formatMoney(unitPrice)} = {ledgerCurrency} {formatMoney(subtotal)}
+                </p>
+              )}
+
               <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                 <span className="text-slate-400">
                   Discount
                 </span>
 
-                <span className="font-bold text-rose-400">
+                <span className={`font-bold text-rose-400 ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                   - {settings?.currency ||
                     'PKR'}{' '}
                   {formatMoney(
@@ -2745,13 +2777,19 @@ if (invalidDate) {
 
               </div>
 
+              {isInstallmentSale && (
+                <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                  Formula: product discount entered = {ledgerCurrency} {formatMoney(appliedDiscount)}
+                </p>
+              )}
+
               <div className="border-t border-white/[0.08] pt-3 flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 text-sm font-black text-white">
 
                 <span>
                   Net Total Payable
                 </span>
 
-                <span className="text-base text-emerald-400">
+                <span className={`text-base text-emerald-400 ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                   {settings?.currency ||
                     'PKR'}{' '}
                   {formatMoney(
@@ -2760,6 +2798,12 @@ if (invalidDate) {
                 </span>
 
               </div>
+
+              {isInstallmentSale && (
+                <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                  Formula: subtotal - discount = {ledgerCurrency} {formatMoney(subtotal)} - {ledgerCurrency} {formatMoney(appliedDiscount)} = {ledgerCurrency} {formatMoney(finalTotal)}
+                </p>
+              )}
 
               {isInstallmentSale && (
 
@@ -2773,7 +2817,7 @@ if (invalidDate) {
                       %)
                     </span>
 
-                    <span className="text-amber-400 font-bold">
+                    <span className={`text-amber-400 font-bold ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                       +
                       {settings?.currency ||
                         'PKR'}{' '}
@@ -2784,13 +2828,17 @@ if (invalidDate) {
 
                   </div>
 
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                    Formula: {markupFormulaText} = {ledgerCurrency} {formatMoney(markupAmount)}
+                  </p>
+
                   <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Total Deal With Markup
                     </span>
 
-                    <span className="text-white font-bold">
+                    <span className={`text-white font-bold ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                       {settings?.currency ||
                         'PKR'}{' '}
                       {formatMoney(
@@ -2800,13 +2848,17 @@ if (invalidDate) {
 
                   </div>
 
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                    Formula: {dealTotalFormulaText} = {ledgerCurrency} {formatMoney(totalWithMarkup)}
+                  </p>
+
                   <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Down Payment Received
                     </span>
 
-                    <span className="text-emerald-400 font-bold">
+                    <span className={`text-emerald-400 font-bold ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                       -
                       {settings?.currency ||
                         'PKR'}{' '}
@@ -2817,13 +2869,17 @@ if (invalidDate) {
 
                   </div>
 
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                    Formula: {downPaymentFormulaText} = {ledgerCurrency} {formatMoney(effectiveDownPayment)}
+                  </p>
+
                   <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-2 font-black text-white">
 
                     <span>
                       Financed Balance Dues
                     </span>
 
-                    <span className="text-indigo-400 text-sm">
+                    <span className={`text-indigo-400 text-sm ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                       {settings?.currency ||
                         'PKR'}{' '}
                       {formatMoney(
@@ -2833,19 +2889,40 @@ if (invalidDate) {
 
                   </div>
 
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                    Formula: {financedBalanceFormulaText} = {ledgerCurrency} {formatMoney(financedBalance)}
+                  </p>
+
                   <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Scheduled Installments
                     </span>
 
-                    <span className="text-blue-300 font-bold">
+                    <span className={`text-blue-300 font-bold ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
                       {
                         installmentSchedule.length
                       }
                     </span>
 
                   </div>
+
+                  {installmentSchedule.length > 0 && (
+                    <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
+                      Formula: financed balance / {installmentSchedule.length} = about {ledgerCurrency} {formatMoney(averageInstallmentAmount)} per installment; final payment adjusts for rounding.
+                    </p>
+                  )}
+
+                  <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/15 pt-3 font-black text-white">
+                    <span>Total Payable After Markup</span>
+                    <span className="shrink-0 whitespace-nowrap text-right text-lg text-emerald-300">
+                      {ledgerCurrency} {formatMoney(totalPayableAfterMarkup)}
+                    </span>
+                  </div>
+
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-400">
+                    Formula: {totalPayableFormulaText} = {ledgerCurrency} {formatMoney(totalPayableAfterMarkup)}
+                  </p>
 
                 </div>
 
@@ -2857,7 +2934,7 @@ if (invalidDate) {
                 FINALIZE BUTTON
             ================================================== */}
 
-            <div className="sticky bottom-3 z-40 rounded-2xl bg-slate-950/95 p-2 shadow-xl shadow-slate-950/20 backdrop-blur-md">
+            <div className={`${isInstallmentSale ? 'z-40 shrink-0' : 'sticky bottom-3 z-40'} rounded-2xl bg-slate-950/95 p-2 shadow-xl shadow-slate-950/20 backdrop-blur-md`}>
               <button
                 type="submit"
                 disabled={
