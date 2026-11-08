@@ -1769,6 +1769,9 @@ const updateSale = async (req, res) => {
       customer =
         sale.customer,
 
+      saleDate =
+        sale.saleDate,
+
       product =
         sale.product,
 
@@ -1808,6 +1811,11 @@ const updateSale = async (req, res) => {
       installments = []
     } = req.body;
 
+    const updatedSaleDate = normalizeDate(saleDate);
+    if (!updatedSaleDate) {
+      return res.status(400).json({ message: 'Please provide a valid sale date.' });
+    }
+
     const customInstallments =
       Array.isArray(installmentSchedule) &&
       installmentSchedule.length > 0
@@ -1838,6 +1846,14 @@ const updateSale = async (req, res) => {
     // from the difference between the old and new item quantities so removed
     // products are returned to inventory and newly added products are deducted.
     if (paymentType === 'Cash' && Array.isArray(requestedItems)) {
+      let customerDoc = null;
+      if (customer) {
+        if (!mongoose.Types.ObjectId.isValid(String(customer))) {
+          return res.status(404).json({ message: 'Customer not found.' });
+        }
+        customerDoc = await Customer.findOne({ _id: customer, shopId });
+        if (!customerDoc) return res.status(404).json({ message: 'Customer not found.' });
+      }
       if (requestedItems.length === 0) {
         return res.status(400).json({ message: 'A cash sale must contain at least one product.' });
       }
@@ -1979,6 +1995,8 @@ const updateSale = async (req, res) => {
       sale.subtotal = itemSubtotal;
       sale.finalTotal = finalTotal;
       sale.totalWithMarkup = finalTotal;
+      sale.customer = customerDoc?._id || null;
+      sale.saleDate = updatedSaleDate;
       sale.downPayment = sale.paymentStatus === 'Unpaid' ? 0 : finalTotal;
       sale.remainingBalance = sale.paymentStatus === 'Unpaid' ? finalTotal : 0;
       await sale.save();

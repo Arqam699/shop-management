@@ -30,10 +30,13 @@ const EditSale = () => {
   const navigate = useNavigate();
 
   const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [cashItems, setCashItems] = useState([]);
   const [formData, setFormData] = useState({
     customerName: '',
     customerId: '',
+    customerRef: '',
+    saleDate: '',
     product: '',
     quantity: 1,
     unitPrice: 0,
@@ -54,14 +57,17 @@ const EditSale = () => {
     const loadData = async () => {
       try {
         setFetching(true);
-        const [prodRes, saleRes] = await Promise.all([
+        const [prodRes, customerRes, saleRes] = await Promise.all([
           api.get('/api/products'),
+          api.get('/customers'),
           api.get(`/api/sales/${id}`),
         ]);
 
         if (prodRes.data && prodRes.data.success) {
           setProducts(prodRes.data.data);
         }
+        const customerData = customerRes?.data?.customers || customerRes?.data?.data?.customers || customerRes?.data?.results || customerRes?.data?.data || customerRes?.data || [];
+        setCustomers(Array.isArray(customerData) ? customerData : []);
 
         if (saleRes.data && saleRes.data.success) {
           const s = saleRes.data.data.sale || saleRes.data.data;
@@ -83,6 +89,10 @@ const EditSale = () => {
           setFormData({
             customerName: s.customer?.fullName || '',
             customerId: s.customer?.customerId || '',
+            customerRef: s.customer?._id || '',
+            saleDate: s.saleDate
+              ? new Date(new Date(s.saleDate).getTime() - new Date(s.saleDate).getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+              : '',
             product: s.product?._id || '',
             quantity: s.quantity,
             unitPrice: s.unitPrice,
@@ -107,6 +117,17 @@ const EditSale = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCustomerChange = (e) => {
+    const customerRef = e.target.value;
+    const selected = customers.find((customer) => String(customer._id) === customerRef);
+    setFormData((prev) => ({
+      ...prev,
+      customerRef,
+      customerName: selected?.fullName || '',
+      customerId: selected?.customerId || '',
+    }));
   };
 
   const handleProductChange = (e) => {
@@ -190,6 +211,8 @@ const EditSale = () => {
       const payload = formData.paymentType === 'Cash'
         ? {
             paymentType: 'Cash',
+            customer: formData.customerRef || null,
+            saleDate: formData.saleDate ? new Date(`${formData.saleDate}T12:00:00`).toISOString() : null,
             items: cashItems.map((item) => ({
               product: item.product,
               quantity: Number(item.quantity),
@@ -203,6 +226,7 @@ const EditSale = () => {
         unitPrice: Number(formData.unitPrice),
         discount: Number(formData.discount),
         paymentType: formData.paymentType,
+        customer: formData.customerRef || null,
         downPayment:
           formData.paymentType === 'Installment'
             ? Number(formData.downPayment)
@@ -328,6 +352,24 @@ const EditSale = () => {
           <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-7 shadow-sm space-y-5">
 
             {/* Customer Information Box */}
+            {formData.paymentType === 'Cash' ? (
+              <div className="grid gap-4 rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="saleDate" className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Sale date</label>
+                  <input id="saleDate" name="saleDate" type="date" required value={formData.saleDate} onChange={handleChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Customer (Optional)</label>
+                  <div className="flex gap-2">
+                    <select value={formData.customerRef} onChange={handleCustomerChange} className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500">
+                      <option value="">No customer / Walk-in</option>
+                      {customers.map((customer) => <option key={customer._id} value={customer._id}>{customer.customerId || 'No ID'} — {customer.fullName || 'Unnamed'}{customer.mobileNumber ? ` — ${customer.mobileNumber}` : ''}</option>)}
+                    </select>
+                    {formData.customerRef && <button type="button" onClick={() => handleCustomerChange({ target: { value: '' } })} className="rounded-xl border border-rose-200 px-3 text-xs font-bold text-rose-600 hover:bg-rose-50">Remove</button>}
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/5 via-violet-500/5 to-transparent border border-blue-500/15 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
@@ -349,6 +391,7 @@ const EditSale = () => {
                 </span>
               )}
             </div>
+            )}
 
             {formData.paymentType === 'Cash' && (
               <div className="space-y-4">

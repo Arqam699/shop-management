@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { BookOpen, Plus, RefreshCw, ReceiptText, Package, TrendingUp } from 'lucide-react';
+import { BookOpen, Plus, RefreshCw, ReceiptText, Package, TrendingUp, Download, Search, X } from 'lucide-react';
 
 const BookWiseAudit = () => {
   const { settings } = useSettings();
@@ -11,6 +12,7 @@ const BookWiseAudit = () => {
   const [bookName, setBookName] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [saleSearch, setSaleSearch] = useState('');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   const [savingSaleId, setSavingSaleId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,7 +51,11 @@ const BookWiseAudit = () => {
   const productGroups = useMemo(() => {
     if (!selectedBook) return [];
     const groups = new Map();
-    for (const sale of selectedBook.sales || []) {
+    const searchTerm = invoiceSearch.trim().toLowerCase();
+    const orderedSales = [...(selectedBook.sales || [])]
+      .filter((sale) => !searchTerm || String(sale.invoice || '').toLowerCase().includes(searchTerm))
+      .sort((a, b) => String(a.invoice).localeCompare(String(b.invoice), undefined, { numeric: true, sensitivity: 'base' }));
+    for (const sale of orderedSales) {
       for (const line of sale.lines || []) {
         const key = String(line.productId || line.product?._id || line.product?.name || 'deleted');
         if (!groups.has(key)) groups.set(key, { product: line.product || {}, lines: [] });
@@ -71,7 +77,52 @@ const BookWiseAudit = () => {
         profit: group.lines.reduce((sum, line) => sum + line.profit, 0),
       };
     });
-  }, [selectedBook]);
+  }, [selectedBook, invoiceSearch]);
+
+  const exportBook = async () => {
+    if (!selectedBook) return;
+    const rows = [
+      ['Book', 'Product', 'Invoice', 'Date', 'Sale type', 'Quantity', 'Purchase price', 'Purchase cost', 'Line amount', 'Profit'],
+      ...productGroups.flatMap((group) => group.lines.map((line) => [
+        selectedBook.name,
+        group.product.name || 'Deleted product',
+        line.invoice,
+        line.saleDate ? new Date(line.saleDate).toLocaleDateString() : '',
+        line.paymentType,
+        line.quantity,
+        line.purchasePrice,
+        line.purchaseTotal,
+        line.sellingTotal,
+        line.profit,
+      ])),
+    ];
+    const xmlEscape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]));
+    const columnName = (number) => {
+      let name = '';
+      for (let n = number + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+      return name;
+    };
+    const worksheetRows = rows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
+      const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
+      if (typeof value === 'number' && Number.isFinite(value)) return `<c r="${ref}"><v>${value}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+    }).join('')}</row>`).join('');
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+    zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+    zip.file('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Book Audit" sheetId="1" r:id="rId1"/></sheets></workbook>');
+    zip.file('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+    zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${worksheetRows}</sheetData></worksheet>`);
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${selectedBook.name.replace(/[\\/:*?"<>|]/g, '_')}_Book_Audit.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const createBook = async (event) => {
     event.preventDefault();
@@ -148,7 +199,12 @@ const BookWiseAudit = () => {
             </div>
           </details>
           {selectedBook && <>
-            <div className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-indigo-600" /><h2 className="text-xl font-black text-slate-900">{selectedBook.name}</h2></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-indigo-600" /><h2 className="text-xl font-black text-slate-900">{selectedBook.name}</h2></div><button type="button" onClick={exportBook} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Download className="h-4 w-4" />Export Excel</button></div>
+            <div className="relative max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={invoiceSearch} onChange={(event) => setInvoiceSearch(event.target.value)} placeholder="Search invoice number..." aria-label="Search invoices in this book" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm outline-none focus:border-indigo-500" />
+              {invoiceSearch && <button type="button" onClick={() => setInvoiceSearch('')} aria-label="Clear invoice search" className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {[
                 ['Invoices', selectedBook.summary?.invoices || 0, ReceiptText],
@@ -158,7 +214,7 @@ const BookWiseAudit = () => {
                 ['Profit', money(selectedBook.summary?.profit), TrendingUp],
               ].map(([label, value, Icon]) => <div key={label} className="premium-card p-4">{Icon && <Icon className="mb-2 h-4 w-4 text-indigo-500" />}<p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-lg font-black text-slate-900">{value}</p></div>)}
             </div>
-            {productGroups.length === 0 ? <div className="premium-card p-8 text-center text-sm text-slate-500">No sales are linked to this book yet.</div> : <div className="space-y-4">
+            {productGroups.length === 0 ? <div className="premium-card p-8 text-center text-sm text-slate-500">{invoiceSearch.trim() ? `No invoices match “${invoiceSearch.trim()}”.` : 'No sales are linked to this book yet.'}</div> : <div className="space-y-4">
               {productGroups.map((group) => <section key={group.id} className="premium-card overflow-hidden">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-4">
                   <div className="flex items-start gap-3"><div className="rounded-xl bg-indigo-50 p-2 text-indigo-600"><Package className="h-4 w-4" /></div><div><h3 className="font-black text-slate-900">{group.product.name || 'Deleted product'}</h3><p className="mt-1 text-xs text-slate-500">{[group.product.brand, group.product.model, group.product.sku && `SKU ${group.product.sku}`].filter(Boolean).join(' · ') || 'Product details unavailable'}</p></div></div>
