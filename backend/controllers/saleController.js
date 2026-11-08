@@ -8,6 +8,7 @@ const Customer = require('../models/Customer');
 const Payment = require('../models/Payment');
 const Return = require('../models/Return');
 const Counter = require('../models/Counter');
+const Book = require('../models/Book');
 const mongoose = require('mongoose');
 const {
   getPaginationParams,
@@ -521,6 +522,10 @@ const createSale = async (req, res) => {
 
     const {
       manualInvoiceNumber,
+      saleDate,
+      bookId,
+      purchasePriceAtSale,
+      stockAdjustment = 0,
       customer,
       product,
       items = [],
@@ -618,9 +623,19 @@ const createSale = async (req, res) => {
       return res.status(400).json({ message: 'Payment status must be Paid or Unpaid.' });
     }
 
+    const selectedBook = bookId ? await Book.findOne({ _id: bookId, shopId }) : null;
+    if (bookId && !selectedBook) {
+      return res.status(404).json({ message: 'Selected book was not found.' });
+    }
+
     // ========================================================
     // CASH
     // ========================================================
+
+    const recordedSaleDate = saleDate ? normalizeDate(saleDate) : new Date();
+    if (!recordedSaleDate) {
+      return res.status(400).json({ message: 'Sale date and time are invalid.' });
+    }
 
     if (paymentType === 'Cash') {
       const hasInstallmentData =
@@ -688,16 +703,25 @@ const createSale = async (req, res) => {
         const itemQty = Number(item?.quantity);
         const itemPrice = roundMoney(item?.unitPrice);
         const itemDiscount = roundMoney(item?.discount || 0);
-        if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isFinite(itemDiscount) || itemDiscount < 0 || itemDiscount > roundMoney(itemQty * itemPrice)) {
+        const stockAdjustment = Number(item?.stockAdjustment || 0);
+        if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isFinite(itemDiscount) || itemDiscount < 0 || itemDiscount > roundMoney(itemQty * itemPrice) || !Number.isInteger(stockAdjustment)) {
           return res.status(400).json({ message: 'Each sale item needs a valid product, quantity, and price.' });
         }
         const productDoc = await Product.findOne({ _id: itemProductId, shopId });
         if (!productDoc) return res.status(404).json({ message: 'A sale product was not found.' });
-        const alreadyRequested = normalizedItems.filter((entry) => String(entry.product._id) === String(productDoc._id)).reduce((sum, entry) => sum + entry.quantity, 0);
-        if (Number(productDoc.quantity || 0) < itemQty + alreadyRequested) {
-          return res.status(400).json({ message: `Insufficient stock for ${productDoc.name}. Available quantity: ${productDoc.quantity}` });
+        const itemPurchasePrice = item?.purchasePriceAtSale === undefined
+          ? Number(productDoc.purchasePrice || 0)
+          : roundMoney(item.purchasePriceAtSale);
+        if (!Number.isFinite(itemPurchasePrice) || itemPurchasePrice < 0) {
+          return res.status(400).json({ message: `Purchase price for ${productDoc.name} must be a valid non-negative amount.` });
         }
-        normalizedItems.push({ product: productDoc, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, purchasePriceAtSale: Number(productDoc.purchasePrice || 0) });
+        const alreadyRequested = normalizedItems.filter((entry) => String(entry.product._id) === String(productDoc._id)).reduce((sum, entry) => sum + entry.quantity, 0);
+        const previousAdjustments = normalizedItems.filter((entry) => String(entry.product._id) === String(productDoc._id)).reduce((sum, entry) => sum + entry.stockAdjustment, 0);
+        const availableAfterAdjustment = Number(productDoc.quantity || 0) + previousAdjustments + stockAdjustment;
+        if (availableAfterAdjustment < 0 || availableAfterAdjustment < itemQty + alreadyRequested) {
+          return res.status(400).json({ message: `Insufficient stock for ${productDoc.name}. Current quantity: ${productDoc.quantity}. Adjust stock before selling.` });
+        }
+        normalizedItems.push({ product: productDoc, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, stockAdjustment, purchasePriceAtSale: itemPurchasePrice });
       }
       const itemsSubtotal = roundMoney(normalizedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
       const itemsDiscount = roundMoney(normalizedItems.reduce((sum, item) => sum + item.discount, 0));
@@ -707,9 +731,25 @@ const createSale = async (req, res) => {
       const invoiceNumber = manualInvoiceNumber ? String(manualInvoiceNumber).trim() : saleId;
       if (await Sale.findOne({ shopId, saleId: invoiceNumber })) return res.status(400).json({ message: 'Invoice number already exists.' });
       const saleItems = normalizedItems.map(({ product: itemProduct, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, purchasePriceAtSale }) => ({ product: itemProduct._id, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, purchasePriceAtSale }));
-      const sale = await Sale.create({ shopId, saleId: invoiceNumber, customer, product: saleItems[0].product, items: saleItems, quantity: saleItems.reduce((sum, item) => sum + item.quantity, 0), unitPrice: itemsSubtotal / saleItems.reduce((sum, item) => sum + item.quantity, 0), purchasePriceAtSale: normalizedItems[0].purchasePriceAtSale, discount: itemsDiscount, subtotal: itemsSubtotal, finalTotal: itemsFinalTotal, markupPercentage: 0, markupAmount: 0, totalWithMarkup: itemsFinalTotal, paymentType: 'Cash', paymentStatus, downPayment: paymentStatus === 'Unpaid' ? 0 : itemsFinalTotal, remainingBalance: paymentStatus === 'Unpaid' ? itemsFinalTotal : 0, installmentDuration: 0, selectedInstallmentDuration: 0, treatDownPaymentAsFirstInstallment: false, installmentScheduleSnapshot: [], saleDate: new Date() });
+      const sale = await Sale.create({ shopId, saleId: invoiceNumber, book: selectedBook?._id, customer, product: saleItems[0].product, items: saleItems, quantity: saleItems.reduce((sum, item) => sum + item.quantity, 0), unitPrice: itemsSubtotal / saleItems.reduce((sum, item) => sum + item.quantity, 0), purchasePriceAtSale: normalizedItems[0].purchasePriceAtSale, discount: itemsDiscount, subtotal: itemsSubtotal, finalTotal: itemsFinalTotal, markupPercentage: 0, markupAmount: 0, totalWithMarkup: itemsFinalTotal, paymentType: 'Cash', paymentStatus, downPayment: paymentStatus === 'Unpaid' ? 0 : itemsFinalTotal, remainingBalance: paymentStatus === 'Unpaid' ? itemsFinalTotal : 0, installmentDuration: 0, selectedInstallmentDuration: 0, treatDownPaymentAsFirstInstallment: false, installmentScheduleSnapshot: [], saleDate: recordedSaleDate });
       for (const item of normalizedItems) {
-        const previousQuantity = Number(item.product.quantity || 0);
+        let previousQuantity = Number(item.product.quantity || 0);
+        if (item.stockAdjustment !== 0) {
+          const adjustedQuantity = previousQuantity + item.stockAdjustment;
+          item.product.quantity = adjustedQuantity;
+          await item.product.save();
+          await StockMovement.create({
+            shopId,
+            product: item.product._id,
+            type: 'Adjustment',
+            quantity: Math.abs(item.stockAdjustment),
+            previousQuantity,
+            newQuantity: adjustedQuantity,
+            reason: 'Cash sale stock adjustment',
+            reference: invoiceNumber,
+          });
+          previousQuantity = adjustedQuantity;
+        }
         item.product.quantity = previousQuantity - item.quantity;
         await item.product.save();
         await createSaleStockMovement({ shopId, product: item.product._id, quantity: item.quantity, previousQuantity, newQuantity: item.product.quantity, reference: invoiceNumber, reason: `Sale ${invoiceNumber}` });
@@ -734,14 +774,20 @@ const createSale = async (req, res) => {
       });
     }
 
-    const currentStock =
-      Number(productDoc.quantity || 0);
-
-    if (currentStock < qty) {
+    const currentStock = Number(productDoc.quantity || 0);
+    const installmentStockAdjustment = paymentType === 'Installment' ? Number(stockAdjustment || 0) : 0;
+    const stockAfterAdjustment = currentStock + installmentStockAdjustment;
+    if (!Number.isInteger(installmentStockAdjustment) || stockAfterAdjustment < 0 || stockAfterAdjustment < qty) {
       return res.status(400).json({
         message:
-          `Insufficient stock. Available quantity: ${currentStock}`
+          `Insufficient stock. Current quantity: ${currentStock}. Adjust stock before selling.`
       });
+    }
+    const salePurchasePrice = purchasePriceAtSale === undefined
+      ? Number(productDoc.purchasePrice || 0)
+      : roundMoney(purchasePriceAtSale);
+    if (!Number.isFinite(salePurchasePrice) || salePurchasePrice < 0) {
+      return res.status(400).json({ message: 'Purchase price must be a valid non-negative amount.' });
     }
 
     // ========================================================
@@ -806,11 +852,12 @@ const createSale = async (req, res) => {
         await Sale.create({
           shopId,
           saleId: invoiceNumber,
+          book: selectedBook?._id,
           customer,
           product,
           quantity: qty,
           unitPrice: price,
-          purchasePriceAtSale: Number(productDoc.purchasePrice || 0),
+          purchasePriceAtSale: salePurchasePrice,
           discount: discountAmount,
           subtotal,
           finalTotal,
@@ -825,7 +872,7 @@ const createSale = async (req, res) => {
           selectedInstallmentDuration: 0,
           treatDownPaymentAsFirstInstallment: false,
           installmentScheduleSnapshot: [],
-          saleDate: new Date()
+          saleDate: recordedSaleDate
         });
 
       await createSaleStockMovement({
@@ -1036,8 +1083,24 @@ const createSale = async (req, res) => {
     // STOCK
     // ========================================================
 
-    const previousQuantity =
-      Number(productDoc.quantity || 0);
+    let previousQuantity = currentStock;
+
+    if (installmentStockAdjustment !== 0) {
+      const adjustedQuantity = currentStock + installmentStockAdjustment;
+      productDoc.quantity = adjustedQuantity;
+      await productDoc.save();
+      await StockMovement.create({
+        shopId,
+        product: productDoc._id,
+        type: 'Adjustment',
+        quantity: Math.abs(installmentStockAdjustment),
+        previousQuantity: currentStock,
+        newQuantity: adjustedQuantity,
+        reason: 'Installment sale stock adjustment',
+        reference: invoiceNumber,
+      });
+      previousQuantity = adjustedQuantity;
+    }
 
     const newQuantity =
       previousQuantity - qty;
@@ -1058,6 +1121,9 @@ const createSale = async (req, res) => {
         saleId:
           invoiceNumber,
 
+        book:
+          selectedBook?._id,
+
         customer,
 
         product,
@@ -1069,7 +1135,7 @@ const createSale = async (req, res) => {
           price,
 
         purchasePriceAtSale:
-          Number(productDoc.purchasePrice || 0),
+          salePurchasePrice,
 
         discount:
           discountAmount,
@@ -1120,7 +1186,7 @@ const createSale = async (req, res) => {
           ),
 
         saleDate:
-          new Date()
+          recordedSaleDate
       });
 
     // ========================================================
@@ -1487,6 +1553,7 @@ const getSales = async (req, res) => {
         .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product', 'name brand model')
         .populate('items.product', 'name brand model')
+        .populate('book', 'name')
         .sort({
           createdAt: -1
         })
@@ -1561,7 +1628,8 @@ const getSaleById = async (req, res) => {
       })
         .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
-        .populate('items.product');
+        .populate('items.product')
+        .populate('book', 'name');
 
     if (!sale) {
       return res.status(404).json({
@@ -1627,6 +1695,28 @@ const getSaleById = async (req, res) => {
       error:
         error.message
     });
+  }
+};
+
+const updateSaleBook = async (req, res) => {
+  try {
+    const sale = await Sale.findOne({ _id: req.params.id, shopId: req.shopId });
+    if (!sale) return res.status(404).json({ success: false, message: 'Sale not found.' });
+    const bookId = req.body?.bookId ? String(req.body.bookId).trim() : '';
+    if (bookId) {
+      const book = await Book.findOne({ _id: bookId, shopId: req.shopId });
+      if (!book) return res.status(404).json({ success: false, message: 'Selected book was not found.' });
+      sale.book = book._id;
+    } else {
+      sale.book = undefined;
+    }
+
+    await sale.save();
+    await sale.populate('book', 'name');
+    return res.json({ success: true, data: sale, message: 'Sale book updated successfully.' });
+  } catch (error) {
+    console.error('Update sale book error:', error);
+    return res.status(500).json({ success: false, message: 'Could not update the sale book.' });
   }
 };
 
@@ -3738,6 +3828,7 @@ const exchangeSaleProduct = async (
 module.exports = {
   getSales,
   getSaleById,
+  updateSaleBook,
   createSale,
   updateSale,
   deleteSale

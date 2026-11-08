@@ -53,6 +53,12 @@ const saleSchema = new mongoose.Schema(
       type: String,
     },
 
+    book: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Book',
+      index: true,
+    },
+
 
     // --------------------------------------------------------
     // CUSTOMER

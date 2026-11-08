@@ -213,7 +213,10 @@ const Sales = () => {
     const matchesDate = isDateInFilter(sale.saleDate || sale.createdAt);
 
       return matchesSearch && matchesDate;
-    }),
+    }).sort((a, b) =>
+      String(a.saleId || '').localeCompare(String(b.saleId || ''), undefined, { numeric: true, sensitivity: 'base' })
+      || new Date(a.saleDate || a.createdAt || 0) - new Date(b.saleDate || b.createdAt || 0)
+    ),
     [
       sales,
       debouncedSearchTerm,

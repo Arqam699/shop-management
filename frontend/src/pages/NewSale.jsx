@@ -54,6 +54,12 @@ const formatDateInput = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatDateTimeLocal = (date) => {
+  const d = new Date(date);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 /* =========================================================
    COMPONENT
 ========================================================= */
@@ -96,6 +102,7 @@ const NewSale = () => {
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [books, setBooks] = useState([]);
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -109,6 +116,10 @@ const NewSale = () => {
   const [activeProductIndex, setActiveProductIndex] = useState(0);
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedBookId, setSelectedBookId] = useState('');
+  const [showNewCashCustomerForm, setShowNewCashCustomerForm] = useState(false);
+  const [newCashCustomer, setNewCashCustomer] = useState({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill' });
+  const [savingCashCustomer, setSavingCashCustomer] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cashItems, setCashItems] = useState([]);
 
@@ -118,8 +129,11 @@ const NewSale = () => {
 
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
+  const [purchasePriceAtSale, setPurchasePriceAtSale] = useState(0);
+  const [stockAdjustment, setStockAdjustment] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [cashPaymentStatus, setCashPaymentStatus] = useState('Paid');
+  const [cashSaleDate, setCashSaleDate] = useState(() => formatDateTimeLocal(new Date()));
 
   /* =========================================================
      INSTALLMENT VALUES
@@ -165,9 +179,10 @@ const NewSale = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [customersResponse, productsResponse] = await Promise.all([
+        const [customersResponse, productsResponse, booksResponse] = await Promise.all([
           api.get('/customers'),
           api.get('/products'),
+          api.get('/api/books'),
         ]);
 
         const customerData =
@@ -188,6 +203,8 @@ const NewSale = () => {
 
         setCustomers(Array.isArray(customerData) ? customerData : []);
         setProducts(Array.isArray(productData) ? productData : []);
+        const bookData = booksResponse?.data?.data || [];
+        setBooks(Array.isArray(bookData) ? bookData : []);
       } catch (error) {
         console.error('New Sale load error:', error);
 
@@ -327,6 +344,30 @@ const NewSale = () => {
     setErrorMsg('');
   };
 
+  const handleCreateCashCustomer = async () => {
+    const payload = Object.fromEntries(Object.entries(newCashCustomer).map(([key, value]) => [key, value.trim()]));
+    const cnicDigits = payload.cnic.replace(/\D/g, '');
+    const mobileDigits = payload.mobileNumber.replace(/\D/g, '');
+    if (!payload.fullName || !payload.fatherName || !payload.address || !payload.city || cnicDigits.length !== 13 || mobileDigits.length !== 11 || !mobileDigits.startsWith('03')) {
+      toast.error('Enter the required details, a 13 digit CNIC, and a Pakistani mobile number with 11 digits.');
+      return;
+    }
+    try {
+      setSavingCashCustomer(true);
+      const response = await api.post('/customers', { ...payload, cnic: `${cnicDigits.slice(0, 5)}-${cnicDigits.slice(5, 12)}-${cnicDigits.slice(12)}`, mobileNumber: `${mobileDigits.slice(0, 4)}-${mobileDigits.slice(4)}` });
+      const createdCustomer = response?.data?.data || response?.data?.customer || response?.data;
+      setCustomers((current) => [createdCustomer, ...current.filter((item) => String(item._id || item.id) !== String(createdCustomer._id || createdCustomer.id))]);
+      handleSelectCustomer(createdCustomer);
+      setShowNewCashCustomerForm(false);
+      setNewCashCustomer({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill' });
+      toast.success('Customer saved and selected for this sale.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Could not save the customer.');
+    } finally {
+      setSavingCashCustomer(false);
+    }
+  };
+
   const handleSelectProduct = (product) => {
     if (isCashSale) {
       const id = String(product?._id || product?.id);
@@ -334,9 +375,9 @@ const NewSale = () => {
       setCashItems((current) => {
         const existing = current.find((item) => String(item.product._id || item.product.id) === id);
         if (existing) return current.map((item) => String(item.product._id || item.product.id) === id
-          ? { ...item, quantity: Math.min(Number(item.quantity) + 1, Number(product?.quantity || 0)) }
+          ? { ...item, quantity: Math.min(Number(item.quantity) + 1, Math.max(1, Number(product?.quantity || 0) + Number(item.stockAdjustment || 0))) }
           : item);
-        return [...current, { product, quantity: 1, unitPrice: price }];
+        return [...current, { product, quantity: 1, unitPrice: price, purchasePriceAtSale: Number(product?.purchasePrice || 0), stockAdjustment: 0 }];
       });
       setSelectedProduct(null);
       setProductSearch('');
@@ -365,6 +406,8 @@ const NewSale = () => {
       0;
 
     setUnitPrice(Number(price) || 0);
+    setPurchasePriceAtSale(Number(product?.purchasePrice || 0));
+    setStockAdjustment(0);
     setQuantity(1);
 
     setProductSearch(
@@ -407,7 +450,7 @@ const NewSale = () => {
       let nextIndex = activeIndex;
       for (let attempt = 0; attempt < items.length; attempt += 1) {
         nextIndex = (nextIndex + direction + items.length) % items.length;
-        if (Number(items[nextIndex]?.quantity ?? 1) > 0 || !('quantity' in (items[nextIndex] || {}))) break;
+        if (isCashSale || isInstallmentSale || Number(items[nextIndex]?.quantity ?? 1) > 0 || !('quantity' in (items[nextIndex] || {}))) break;
       }
       setActiveIndex(nextIndex);
       return;
@@ -433,6 +476,8 @@ const NewSale = () => {
     setSelectedProduct(null);
     setProductSearch('');
     setUnitPrice(0);
+    setPurchasePriceAtSale(0);
+    setStockAdjustment(0);
     setQuantity(1);
     setManualFinancedBalance(null);
     setInstallmentSchedule([]);
@@ -990,7 +1035,7 @@ const NewSale = () => {
   const handleQuantityChange = (
     value
   ) => {
-    const stockLimit = Math.max(1, Number(selectedProduct?.quantity ?? 1));
+    const stockLimit = Math.max(1, Number(selectedProduct?.quantity ?? 1) + Number(stockAdjustment || 0));
     setQuantity(
       Math.max(
         1,
@@ -1087,9 +1132,19 @@ const NewSale = () => {
 
     setErrorMsg('');
 
+    if (!cashSaleDate || Number.isNaN(new Date(cashSaleDate).getTime())) {
+      setErrorMsg('Please enter a valid sale date and time.');
+      return;
+    }
+
     /* -------------------------------------------------------
        BASIC VALIDATION
     ------------------------------------------------------- */
+
+    if (!selectedBookId) {
+      setErrorMsg('Please select a book for this sale.');
+      return;
+    }
 
     if (isInstallmentSale && !selectedCustomer) {
       setErrorMsg(
@@ -1354,7 +1409,7 @@ if (invalidDate) {
         selectedCustomer,
 
       product: isCashSale ? cashItems[0]?.product : selectedProduct,
-      ...(isCashSale ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discount: Number(item.discount || 0) })) } : {}),
+      ...(isCashSale ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0), discount: Number(item.discount || 0), stockAdjustment: Math.trunc(Number(item.stockAdjustment || 0)) })) } : {}),
 
       quantity: isCashSale ? cashItems.reduce((sum, item) => sum + Number(item.quantity), 0) : Number(quantity),
 
@@ -1364,6 +1419,11 @@ if (invalidDate) {
 
       paymentType:
         paymentType,
+
+      bookId: selectedBookId,
+
+      saleDate: new Date(cashSaleDate).toISOString(),
+      ...(isInstallmentSale ? { purchasePriceAtSale: Number(purchasePriceAtSale), stockAdjustment: Math.trunc(Number(stockAdjustment || 0)) } : {}),
 
       paymentStatus: isCashSale ? cashPaymentStatus : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
 
@@ -1688,6 +1748,28 @@ if (invalidDate) {
           </section>
 
           {/* =================================================
+              BOOK SELECTION
+          ================================================== */}
+
+          <section className="premium-card p-4 sm:p-5 space-y-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Sale book <span className="text-rose-500">*</span></h2>
+              <p className="mt-1 text-[10px] text-slate-400">Choose which book this sale should be recorded in.</p>
+            </div>
+            {books.length > 0 ? (
+              <select value={selectedBookId} onChange={(event) => setSelectedBookId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-md">
+                <option value="">Select a book...</option>
+                {books.map((book) => <option key={book._id} value={book._id}>{book.name}</option>)}
+              </select>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                <span>Create a book first to record this sale book-wise.</span>
+                <button type="button" onClick={() => navigate('/book-audit')} className="font-black underline underline-offset-2">Open Book-wise Audit</button>
+              </div>
+            )}
+          </section>
+
+          {/* =================================================
               CUSTOMER SEARCH
           ================================================== */}
 
@@ -1716,17 +1798,41 @@ if (invalidDate) {
 
               </div>
 
-              {selectedCustomer && (
-                <button
-                  type="button"
-                  onClick={clearCustomer}
-                  className="text-xs font-black text-rose-500 hover:text-rose-700"
-                >
-                  Clear Selection
-                </button>
-              )}
+              <div className="flex shrink-0 items-center gap-3">
+                <button type="button" onClick={() => setShowNewCashCustomerForm((open) => !open)} className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 hover:bg-indigo-100">{showNewCashCustomerForm ? 'Cancel' : '+ Add Customer'}</button>
+                {selectedCustomer && <button type="button" onClick={clearCustomer} className="text-xs font-black text-rose-500 hover:text-rose-700">Clear Selection</button>}
+              </div>
 
             </div>
+
+            {showNewCashCustomerForm && (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+                <div><h3 className="text-sm font-black text-slate-900">Add customer to this sale</h3><p className="mt-1 text-[10px] text-slate-500">The customer will be saved to your customer list and selected for this sale.</p></div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ['fullName', 'Customer name'],
+                    ['fatherName', 'Father name'],
+                    ['mobileNumber', 'Mobile number'],
+                    ['cnic', 'CNIC'],
+                    ['address', 'Address'],
+                    ['city', 'City'],
+                  ].map(([key, label]) => (
+                    <label key={key} className={`block text-[10px] font-bold text-slate-600 ${key === 'address' ? 'sm:col-span-2' : ''}`}>{label}
+                      <input type="text" inputMode={key === 'mobileNumber' || key === 'cnic' ? 'numeric' : undefined} maxLength={key === 'cnic' ? 15 : key === 'mobileNumber' ? 12 : undefined} placeholder={key === 'cnic' ? '12345-1234567-1' : key === 'mobileNumber' ? '0300-1234567' : ''} value={newCashCustomer[key]} onChange={(event) => setNewCashCustomer((current) => {
+                        let value = event.target.value;
+                        if (key === 'cnic') value = formatCnicSearchInput(value);
+                        if (key === 'mobileNumber') {
+                          const digits = value.replace(/\D/g, '').slice(0, 11);
+                          value = digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+                        }
+                        return { ...current, [key]: value };
+                      })} className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 outline-none focus:border-indigo-500" />
+                    </label>
+                  ))}
+                </div>
+                <button type="button" disabled={savingCashCustomer} onClick={handleCreateCashCustomer} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">{savingCashCustomer ? 'Saving customer…' : 'Save & Select Customer'}</button>
+              </div>
+            )}
 
             <div className="relative z-30">
 
@@ -1992,7 +2098,6 @@ if (invalidDate) {
                                 product
                               )
                             }
-                            disabled={Number(product?.quantity ?? 0) <= 0}
                             className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition border disabled:cursor-not-allowed disabled:opacity-60 ${index === activeProductIndex ? 'bg-violet-50 border-violet-200' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
                           >
 
@@ -2065,6 +2170,16 @@ if (invalidDate) {
                     Available stock: {Number(selectedProduct?.quantity ?? 0)}
                     {selectedProduct?.warrantyPeriod ? ` · Warranty: ${selectedProduct.warrantyPeriod}` : ''}
                   </p>
+                  {isInstallmentSale && <label className="mt-2 block text-[10px] font-bold text-slate-600">Stock change (+ add / - remove)
+                    <input type="number" min={-Number(selectedProduct?.quantity || 0)} step="1" value={stockAdjustment} onChange={(event) => {
+                      const nextAdjustment = Math.trunc(Number(event.target.value) || 0);
+                      setStockAdjustment(nextAdjustment);
+                      const maxQuantity = Math.max(1, Number(selectedProduct?.quantity || 0) + nextAdjustment);
+                      setQuantity((current) => Math.min(Number(current || 1), maxQuantity));
+                      setManualFinancedBalance(null);
+                      setScheduleMode('auto');
+                    }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
+                  </label>}
                   <p className="break-all text-[10px] text-slate-500 mt-0.5">
                     {selectedProduct?.imei ? `IMEI: ${selectedProduct.imei}` : ''}
                     {selectedProduct?.serialNumber ? `${selectedProduct?.imei ? ' · ' : ''}Serial: ${selectedProduct.serialNumber}` : ''}
@@ -2092,31 +2207,87 @@ if (invalidDate) {
               </div>
             )}
 
+
+
             {isCashSale && cashItems.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                <h3 className="text-xs font-black text-slate-800">Cash sale items</h3>
-                {cashItems.map((item) => {
-                  const id = String(item.product._id || item.product.id);
-                  return <div key={id} className="flex items-center justify-between gap-3 text-xs">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{item.product.name || item.product.productName} × {item.quantity}</span>
-                      {item.product.model && <span className="mt-0.5 block truncate text-[10px] text-slate-500">Model: {item.product.model}</span>}
-                    </span>
-                    <span className="shrink-0 font-bold">{settings?.currency || 'PKR'} {formatMoney(item.quantity * item.unitPrice)}</span>
-                    <label className="flex shrink-0 items-center gap-1 text-[10px] font-bold text-rose-600">Discount
-                      <input type="number" min="0" max={item.quantity * item.unitPrice} value={item.discount || 0} onChange={(event) => {
-                        const maxDiscount = item.quantity * item.unitPrice;
-                        const value = Math.max(0, Math.min(maxDiscount, Number(event.target.value || 0)));
-                        setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry));
-                      }} className="w-24 rounded-lg border border-rose-200 px-2 py-1 text-xs text-slate-800" />
-                    </label>
-                    <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id))} className="text-rose-600" aria-label="Remove product"><X className="h-4 w-4" /></button>
-                  </div>;
-                })}
-                <div className="flex justify-between border-t pt-2 text-xs font-black"><span>Total discount</span><span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span></div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-black text-emerald-800">Selected products</h3>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">{cashItems.length} item{cashItems.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="space-y-2">
+                  {cashItems.map((item) => (
+                    <div key={String(item.product._id || item.product.id)} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold text-slate-800">{item.product.name || item.product.productName}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-500">{[item.product.brand, item.product.model, item.product.category].filter(Boolean).join(' · ') || 'Product'}</p>
+                        {[item.product.sku, item.product.imei, item.product.serialNumber, item.product.chassisNumber].some(Boolean) && <p className="mt-0.5 break-all text-[10px] text-slate-500">{[item.product.sku && `SKU: ${item.product.sku}`, item.product.imei && `IMEI: ${item.product.imei}`, item.product.serialNumber && `Serial: ${item.product.serialNumber}`, item.product.chassisNumber && `Chassis: ${item.product.chassisNumber}`].filter(Boolean).join(' · ')}</p>}
+                        <p className="mt-1 text-[10px] font-bold text-slate-600">Current inventory stock: {Number(item.product.quantity ?? 0)}</p>
+                        <label className="mt-2 block text-[10px] font-bold text-slate-600">Stock change (+ add / - remove)
+                          <input type="number" min={-Number(item.product.quantity || 0)} step="1" value={item.stockAdjustment || 0} onChange={(event) => {
+                            const stockAdjustment = Math.trunc(Number(event.target.value) || 0);
+                            const maxSaleQuantity = Math.max(1, Number(item.product.quantity || 0) + stockAdjustment);
+                            setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
+                              ? { ...entry, stockAdjustment, quantity: Math.min(Number(entry.quantity || 1), maxSaleQuantity) }
+                              : entry));
+                          }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
+                        </label>
+                        <label className="mt-2 block text-[10px] font-bold text-slate-600">Purchase price ({settings?.currency || 'PKR'})
+                          <input type="number" min="0" step="0.01" value={item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0} onChange={(event) => {
+                            const purchasePriceAtSale = Math.max(0, Number(event.target.value || 0));
+                            setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
+                              ? { ...entry, purchasePriceAtSale }
+                              : entry));
+                          }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
+                        </label>
+                        <label className="mt-2 block text-[10px] font-bold text-slate-600">Unit price ({settings?.currency || 'PKR'})
+                          <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => {
+                            const unitPrice = Math.max(0, Number(event.target.value || 0));
+                            setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
+                              ? { ...entry, unitPrice, discount: Math.min(Number(entry.discount || 0), Number(entry.quantity || 0) * unitPrice) }
+                              : entry));
+                          }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
+                        </label>
+                      </div>
+                      <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== String(item.product._id || item.product.id)))} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700" aria-label={`Remove ${item.product.name || item.product.productName}`} title="Remove product">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+          </section>
 
+          {isCashSale && (
+            <section className="premium-card min-w-0 p-4 sm:p-6 space-y-4 animate-[pageEnter_0.3s_ease-out]">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Calculator className="h-4 w-4" /></div>
+                <h2 className="text-sm font-black text-slate-900">Quantity &amp; Discount</h2>
+              </div>
+              {cashItems.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-semibold text-slate-400">Select a product above to set its quantity and discount.</p> : (
+                <div className="space-y-3">
+                  {cashItems.map((item) => {
+                    const id = String(item.product._id || item.product.id);
+                    const maxQuantity = Math.max(1, Number(item.product.quantity || 0) + Number(item.stockAdjustment || 0));
+                    const maxDiscount = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+                    return <div key={id} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:p-4">
+                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { const quantity = Math.max(1, Math.min(maxQuantity, Math.floor(Number(event.target.value) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: Math.min(Number(entry.discount || 0), quantity * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount || 0} onChange={(event) => { const value = Math.max(0, Math.min(maxDiscount, Number(event.target.value || 0))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
+                      <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id))} className="inline-flex h-10 items-center justify-center gap-1 rounded-xl px-3 text-xs font-bold text-rose-600 hover:bg-rose-50" aria-label="Remove product"><X className="h-4 w-4" /><span className="sm:hidden">Remove</span></button>
+                    </div>;
+                  })}
+                  <div className="flex justify-between rounded-xl bg-rose-50 px-4 py-3 text-xs font-black"><span className="text-slate-700">Total discount</span><span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span></div>
+                </div>
+              )}
+            </section>
+          )}
+          <section className="premium-card p-4 sm:p-5 space-y-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Sale date &amp; time</h2>
+              <p className="mt-1 text-xs text-slate-500">Defaults to now. Change it if the sale happened at a different time.</p>
+            </div>
+            <input type="datetime-local" required value={cashSaleDate} onChange={(event) => setCashSaleDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white sm:max-w-sm" />
           </section>
 
           {isCashSale && (
@@ -2180,6 +2351,23 @@ if (invalidDate) {
 
               </div>
 
+              {/* PURCHASE PRICE SNAPSHOT */}
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Purchase Price ({settings?.currency || 'PKR'})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={purchasePriceAtSale}
+                  onChange={(event) => setPurchasePriceAtSale(Math.max(0, Number(event.target.value || 0)))}
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                />
+                <p className="mt-1 text-[9px] text-slate-400">Saved for this sale and Book-wise Audit only.</p>
+              </div>
+
               {/* QUANTITY */}
 
               <div>
@@ -2209,7 +2397,7 @@ if (invalidDate) {
                   <input
                     type="number"
                     min="1"
-                    max={Math.max(1, Number(selectedProduct?.quantity ?? 1))}
+                    max={Math.max(1, Number(selectedProduct?.quantity ?? 1) + Number(stockAdjustment || 0))}
                     value={quantity}
                     onChange={(e) =>
                       handleQuantityChange(
@@ -2227,7 +2415,7 @@ if (invalidDate) {
                           1
                       )
                     }
-                    disabled={Number(quantity) >= Number(selectedProduct?.quantity ?? 1)}
+                    disabled={Number(quantity) >= Number(selectedProduct?.quantity ?? 1) + Number(stockAdjustment || 0)}
                     className="w-10 h-full flex items-center justify-center hover:bg-slate-200/70 transition-colors text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Plus className="w-3.5 h-3.5" />

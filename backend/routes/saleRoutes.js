@@ -5,6 +5,7 @@ const router = express.Router();
 const {
   getSales,
   getSaleById,
+  updateSaleBook,
   createSale,
   updateSale,
   deleteSale
@@ -15,6 +16,8 @@ const { protect } = require('../middleware/authMiddleware');
 router.route('/')
   .get(protect, getSales)
   .post(protect, createSale);
+
+router.put('/:id/book', protect, updateSaleBook);
 
 router.route('/:id')
   .get(protect, getSaleById)

@@ -276,6 +276,9 @@ const Installments = () => {
         matchesDate
       );
     }
+  ).sort((a, b) =>
+    String(a.sale?.saleId || '').localeCompare(String(b.sale?.saleId || ''), undefined, { numeric: true, sensitivity: 'base' })
+    || new Date(a.sale?.saleDate || a.createdAt || 0) - new Date(b.sale?.saleDate || b.createdAt || 0)
   );
 
   const pageCount = Math.max(1, Math.ceil(filteredPlans.length / PAGE_SIZE));

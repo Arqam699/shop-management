@@ -875,9 +875,9 @@ const navItems = [
   },
 
   {
-    name: 'Yearly Audits',
-    path: '/audits',
-    icon: CalendarRange,
+    name: 'Book-wise Audit',
+    path: '/book-audit',
+    icon: BookOpen,
   },
   {
 name: 'Backup',
@@ -955,7 +955,7 @@ const PAGE_TITLES = {
   '/payments': 'Payments',
   '/invoices': 'Invoices',
   '/expenses': 'Expenses',
-  '/audits': 'Yearly Audits',
+  '/book-audit': 'Book-wise Audit',
   '/backup': 'Backup',
   '/reports': 'Reports',
   '/settings': 'Settings',

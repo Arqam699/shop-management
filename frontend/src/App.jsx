@@ -108,13 +108,7 @@ const InvoiceDetails = lazy(
   () => import('./pages/InvoiceDetails')
 );
 
-const YearlyAudits = lazy(
-  () => import('./pages/YearlyAudits')
-);
-
-const YearlyAuditDetail = lazy(
-  () => import('./pages/YearlyAuditDetail')
-);
+const BookWiseAudit = lazy(() => import('./pages/BookWiseAudit'));
 
 const Expenses = lazy(
   () => import('./pages/Expenses')
@@ -603,31 +597,19 @@ function App() {
               />
 
 
-              {/* =====================================================
-                  YEARLY AUDITS
-                  ===================================================== */}
-
               <Route
-                path="/audits"
+                path="/book-audit"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <YearlyAudits />
+                      <BookWiseAudit />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
 
-              <Route
-                path="/audits/:id"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <YearlyAuditDetail />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/audits" element={<Navigate to="/book-audit" replace />} />
+              <Route path="/audits/:id" element={<Navigate to="/book-audit" replace />} />
 
 
               {/* =====================================================
