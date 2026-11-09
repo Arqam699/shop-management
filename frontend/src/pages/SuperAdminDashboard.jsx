@@ -669,7 +669,7 @@ const SuperAdminDashboard = () => {
 
   // =====================================================
   // ACTIVATE (WhatsApp notice removed — shops are no longer
-  // suspended; access is only blocked beyond 3 devices)
+  // suspended; access is only blocked beyond 5 devices)
   // =====================================================
 
   const handleActivate = (shopId) => {

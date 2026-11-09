@@ -217,18 +217,18 @@ const loginAdmin = async (req, res) => {
       );
 
     // ====================================================
-    // MAXIMUM 3 DEVICES
+    // MAXIMUM 5 DEVICES
     // ====================================================
 
     if (
       deviceIndex === -1 &&
-      shop.authorizedDevices.length >= 3
+      shop.authorizedDevices.length >= 5
     ) {
       return res.status(403).json({
         success: false,
         code: 'DEVICE_LIMIT_REACHED',
         message:
-          'This shop already has three authorized devices. Ask the Super Admin to clear the device list before signing in here.',
+          'This shop already has five authorized devices. Ask the Super Admin to clear the device list before signing in here.',
       });
     }
 
