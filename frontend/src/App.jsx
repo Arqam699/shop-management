@@ -8,7 +8,7 @@ import {
 
 import { Toaster } from 'react-hot-toast';
 
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -127,6 +127,30 @@ const AboutDeveloper = lazy(
   () => import('./pages/AboutDeveloper')
 );
 
+const DownloadsRoute = () => {
+  const { admin, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!admin) return <Downloads />;
+
+  if (admin.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
+  return (
+    <Layout>
+      <Downloads />
+    </Layout>
+  );
+};
+
 
 // =====================================================
 // APP
@@ -199,7 +223,7 @@ function App() {
 
               <Route
                 path="/downloads"
-                element={<Downloads />}
+                element={<DownloadsRoute />}
               />
 
 

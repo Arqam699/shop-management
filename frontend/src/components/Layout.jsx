@@ -47,6 +47,7 @@ import {
   ChevronRight,
   Code2,
   MoreHorizontal,
+  Download,
   Bell,
   Volume2,
   VolumeX,
@@ -884,6 +885,12 @@ icon: DatabaseBackup,
     icon: Code2,
   },
 
+  {
+    name: 'Download Apps',
+    path: '/downloads',
+    icon: Download,
+  },
+
 ];
 
 /* =====================================================
@@ -941,6 +948,7 @@ const PAGE_TITLES = {
   '/reports': 'Reports',
   '/settings': 'Settings',
   '/about-developer': 'About Developer',
+  '/downloads': 'Download Apps',
 };
 
 const getPageTitle = (pathname, search) => {

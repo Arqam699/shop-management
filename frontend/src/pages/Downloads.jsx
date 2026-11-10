@@ -1,5 +1,6 @@
 import { ArrowDownToLine, ArrowLeft, MonitorDown, Smartphone, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const appDownloads = [
   {
@@ -23,11 +24,13 @@ const appDownloads = [
 ];
 
 export default function Downloads() {
+  const { admin } = useAuth();
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 sm:py-14">
       <div className="mx-auto max-w-4xl">
-        <Link to="/login" className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-600 transition hover:bg-white hover:text-indigo-700">
-          <ArrowLeft className="h-4 w-4" /> Back to login
+        <Link to={admin ? '/dashboard' : '/login'} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-600 transition hover:bg-white hover:text-indigo-700">
+          <ArrowLeft className="h-4 w-4" /> {admin ? 'Back to shop' : 'Back to login'}
         </Link>
 
         <section className="mt-5 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-950 p-6 text-white shadow-xl shadow-indigo-950/15 sm:p-10">
