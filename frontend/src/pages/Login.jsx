@@ -791,6 +791,13 @@ const Login = () => {
                     After the 7-day demo, access will end. Contact the administrator to activate your account. Monthly charge: <strong>Rs. 2,500/month</strong>. For a concession, please contact the administrator.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/downloads')}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-700 transition hover:bg-indigo-100"
+                >
+                  <ArrowRight className="h-4 w-4" /> Download Android or PC app
+                </button>
                 <button type="button" onClick={handleContinueDemo} disabled={openingDemo} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:opacity-60">
                   {openingDemo ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening your demo…</> : <>Continue to choose your password <ArrowRight className="h-4 w-4" /></>}
                 </button>

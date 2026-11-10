@@ -18,6 +18,7 @@ import { Layout } from './components/Layout';
 // =====================================================
 
 const Login = lazy(() => import('./pages/Login'));
+const Downloads = lazy(() => import('./pages/Downloads'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
 const SuperAdminLogin = lazy(
@@ -194,6 +195,11 @@ function App() {
               <Route
                 path="/login"
                 element={<Login />}
+              />
+
+              <Route
+                path="/downloads"
+                element={<Downloads />}
               />
 
 
