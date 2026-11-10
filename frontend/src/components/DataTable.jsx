@@ -80,10 +80,13 @@ const DataTable = ({
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50">
       <div
-        className={`overflow-x-auto ${maxTableHeight ? 'datatable-vertical-scroll overflow-y-auto overscroll-contain' : ''}`}
+        role="region"
+        aria-label="Table results; swipe horizontally to see more columns"
+        tabIndex={0}
+        className={`datatable-horizontal-scroll overflow-x-auto overscroll-x-contain ${maxTableHeight ? 'datatable-vertical-scroll overflow-y-auto overscroll-contain' : ''}`}
         style={maxTableHeight ? { maxHeight: maxTableHeight } : undefined}
       >
-        <table className="w-full text-left text-xs text-slate-600 font-medium">
+        <table className="w-full min-w-[640px] text-left text-xs text-slate-600 font-medium sm:min-w-full">
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[9px] font-black uppercase tracking-wider text-slate-400 backdrop-blur">
             <tr>
               {columns.map((column) => (

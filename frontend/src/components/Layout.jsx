@@ -45,6 +45,7 @@ import {
   Bot,
   ChevronRight,
   Code2,
+  MoreHorizontal,
   Bell,
   Volume2,
   VolumeX,
@@ -996,6 +997,13 @@ export const Layout = ({ children }) => {
     location.search
   );
 
+  const mobileNavItems = [
+    { name: 'Home', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Stock', path: '/inventory', icon: Boxes },
+    { name: 'Sales', path: '/sales', icon: ShoppingCart },
+    { name: 'Customers', path: '/customers', icon: Users },
+  ];
+
   const [mobileOpen, setMobileOpen] =
     useState(false);
 
@@ -1674,6 +1682,7 @@ export const Layout = ({ children }) => {
             h-full
             w-[300px]
             max-w-[88vw]
+            pb-[env(safe-area-inset-bottom)]
             flex-col
             shadow-2xl
             shadow-black/60
@@ -1696,7 +1705,7 @@ export const Layout = ({ children }) => {
             className="
               absolute
               right-4
-              top-4
+              top-[calc(env(safe-area-inset-top)+0.75rem)]
               z-50
               flex
               h-9
@@ -1801,10 +1810,12 @@ export const Layout = ({ children }) => {
             border-b
             border-slate-200/70
             bg-white/95
-            px-4
-            py-3.5
+            px-3
+            py-2.5
             backdrop-blur-xl
             sm:px-6
+            sm:py-3.5
+            pt-[calc(env(safe-area-inset-top)+0.625rem)]
           "
         >
 
@@ -1962,7 +1973,7 @@ export const Layout = ({ children }) => {
               RIGHT SIDE
           ================================================= */}
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
 
             {/* ACTIVITY NOTIFICATIONS */}
             <div className="relative">
@@ -1971,7 +1982,7 @@ export const Layout = ({ children }) => {
                 onClick={() => setNotificationsOpen((open) => !open)}
                 aria-label={`Notifications${unreadActivityCount ? `, ${unreadActivityCount} unread` : ''}`}
                 aria-expanded={notificationsOpen}
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 sm:h-10 sm:w-10"
               >
                 <Bell className="h-5 w-5" />
                 {unreadActivityCount > 0 && (
@@ -2220,7 +2231,9 @@ export const Layout = ({ children }) => {
             flex-col
             overflow-y-auto
             overscroll-contain
-            p-4
+            px-3
+            pt-3
+            pb-[calc(5.5rem+env(safe-area-inset-bottom))]
             sm:p-5
             lg:p-7
           "
@@ -2228,6 +2241,29 @@ export const Layout = ({ children }) => {
           <ShopNoticeBanner />
           {children}
         </main>
+
+        <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200/90 bg-white/95 px-1 pt-1.5 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden">
+          {mobileNavItems.map(({ name, path, icon: Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              end
+              onClick={() => handleNavigation(false)}
+              className={({ isActive }) => `flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition active:scale-95 ${isActive ? 'text-indigo-700' : 'text-slate-500 hover:text-indigo-600'}`}
+            >
+              {({ isActive }) => <>
+                <span className={`flex h-7 w-10 items-center justify-center rounded-xl ${isActive ? 'bg-indigo-50' : ''}`}>
+                  <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                </span>
+                <span className="max-w-full truncate">{name}</span>
+              </>}
+            </NavLink>
+          ))}
+          <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open full navigation" className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold text-slate-500 transition hover:text-indigo-600 active:scale-95">
+            <span className="flex h-7 w-10 items-center justify-center rounded-xl"><MoreHorizontal className="h-5 w-5" /></span>
+            <span>More</span>
+          </button>
+        </nav>
 
       </div>
 

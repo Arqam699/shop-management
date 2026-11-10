@@ -6,9 +6,25 @@
    ===================================================== */
 
 @layer base {
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply antialiased text-slate-900 selection:bg-blue-100 selection:text-blue-700;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    min-width: 320px;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  button, a, input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -145,4 +161,39 @@ nav::-webkit-scrollbar-thumb:hover {
 .datatable-vertical-scroll::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.45);
   border-radius: 999px;
+}
+
+.datatable-horizontal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.38) transparent;
+}
+
+.datatable-horizontal-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.datatable-horizontal-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.38);
+}
+
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  button, a {
+    touch-action: manipulation;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
