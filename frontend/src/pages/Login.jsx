@@ -35,10 +35,7 @@ const Login = () => {
   const [demoLoading, setDemoLoading] = useState(false);
   const [openingDemo, setOpeningDemo] = useState(false);
   const [demoError, setDemoError] = useState('');
-  const [demoNotice, setDemoNotice] = useState('');
   const [demoResult, setDemoResult] = useState(null);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
   const [copiedField, setCopiedField] = useState('');
   const [demoForm, setDemoForm] = useState({ shopName: '', ownerName: '', email: '', phone: '', website: '' });
 
@@ -59,36 +56,14 @@ const Login = () => {
   const handleDemoSubmit = async (event) => {
     event.preventDefault();
     setDemoError('');
-    setDemoNotice('');
     setDemoLoading(true);
     try {
-      if (!verificationSent) {
-        const response = await api.post('/api/auth/demo/request-code', { email: demoForm.email });
-        setVerificationSent(true);
-        setDemoNotice(response.data.message || 'Verification code sent. Check your inbox.');
-        return;
-      }
-
-      const response = await api.post('/api/auth/demo', { ...demoForm, verificationCode });
+      const response = await api.post('/api/auth/demo', demoForm);
       setDemoResult(response.data.data);
       setEmail(response.data.data.email);
       setPassword(response.data.data.temporaryPassword);
     } catch (error) {
       setDemoError(error.response?.data?.message || 'Demo setup failed. Please try again.');
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
-  const handleResendVerificationCode = async () => {
-    setDemoError('');
-    setDemoNotice('');
-    setDemoLoading(true);
-    try {
-      const response = await api.post('/api/auth/demo/request-code', { email: demoForm.email });
-      setDemoNotice(response.data.message || 'A new code has been sent.');
-    } catch (error) {
-      setDemoError(error.response?.data?.message || 'Could not send a new code yet.');
     } finally {
       setDemoLoading(false);
     }
@@ -671,7 +646,7 @@ const Login = () => {
             {!isSuspended && (
               <button
                 type="button"
-                onClick={() => { setDemoOpen(true); setDemoError(''); setDemoNotice(''); }}
+                onClick={() => { setDemoOpen(true); setDemoError(''); }}
                 className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 text-xs font-black text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100 active:scale-[0.99]"
               >
                 <Bot className="h-4 w-4" />
@@ -767,12 +742,10 @@ const Login = () => {
 
             <div className="mb-5 flex items-start gap-2.5 rounded-2xl rounded-tl-md bg-slate-100 p-3.5 text-sm leading-relaxed text-slate-700">
               <Bot className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
-              <p>{demoResult ? `Your ${demoResult.shopName} demo is ready. Save these temporary login details, then continue to choose your own password.` : verificationSent ? 'I sent a 6-digit verification code to your email. Enter it below and I will create your demo shop.' : 'Welcome! I can create a private 7-day demo shop for you. Tell me a little about your shop to get started.'}</p>
+              <p>{demoResult ? `Your ${demoResult.shopName} demo is ready. Save these temporary login details, then continue to choose your own password.` : 'Welcome! I can create a private 7-day demo shop for you. Tell me a little about your shop to get started.'}</p>
             </div>
 
             {demoError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-700">{demoError}</p>}
-            {demoNotice && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800">{demoNotice}</p>}
-
             {!demoResult ? (
               <form onSubmit={handleDemoSubmit} className="space-y-3.5">
                 <div>
@@ -785,27 +758,20 @@ const Login = () => {
                 </div>
                 <div>
                   <label htmlFor="demo-email" className="mb-1.5 block text-xs font-bold text-slate-600">Which email will you use to sign in?</label>
-                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setVerificationSent(false); setVerificationCode(''); setDemoError(''); setDemoNotice(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
+                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setDemoError(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
                 </div>
-                {verificationSent && (
-                  <div>
-                    <label htmlFor="demo-verification-code" className="mb-1.5 block text-xs font-bold text-slate-600">6-digit email code</label>
-                    <div className="flex gap-2">
-                      <input id="demo-verification-code" type="text" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-center text-lg font-black tracking-[0.3em] text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
-                      <button type="button" onClick={handleResendVerificationCode} disabled={demoLoading} className="rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Resend code</button>
-                    </div>
-                    <p className="mt-1.5 text-[11px] text-slate-400">Code expires in 10 minutes. Check spam if it is missing.</p>
-                  </div>
-                )}
                 <div>
                   <label htmlFor="demo-phone" className="mb-1.5 block text-xs font-bold text-slate-600">Phone number <span className="font-medium text-slate-400">(optional)</span></label>
                   <input id="demo-phone" type="tel" maxLength={30} autoComplete="tel" value={demoForm.phone} onChange={(event) => setDemoForm({ ...demoForm, phone: event.target.value })} placeholder="+92 300 1234567" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
                 </div>
                 <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden"><label htmlFor="demo-website">Website</label><input id="demo-website" tabIndex={-1} autoComplete="off" value={demoForm.website} onChange={(event) => setDemoForm({ ...demoForm, website: event.target.value })} /></div>
                 <button type="submit" disabled={demoLoading} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60">
-                  {demoLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> {verificationSent ? 'Verifying and creating…' : 'Sending verification code…'}</> : <>{verificationSent ? 'Verify email & create demo' : 'Email me a verification code'} <ArrowRight className="h-4 w-4" /></>}
+                  {demoLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating your demo…</> : <>Create my free demo <ArrowRight className="h-4 w-4" /></>}
                 </button>
-                <p className="text-center text-[11px] leading-relaxed text-slate-400">7 days free · No payment details needed · Email verification required</p>
+                <p className="text-center text-[11px] leading-relaxed text-slate-400">7 days free · No payment details needed</p>
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-[11px] font-semibold leading-relaxed text-amber-900">
+                  Demo access ends after 7 days. Contact the administrator to activate your account. Monthly charge: <strong>Rs. 2,500/month</strong>. For a concession, please contact the administrator.
+                </p>
               </form>
             ) : (
               <div className="space-y-4">
@@ -821,6 +787,9 @@ const Login = () => {
                     </div>
                   ))}
                   <p className="mt-3 text-[11px] leading-relaxed text-emerald-900">Save the password now. It is shown only in this assistant and is not emailed. Your demo expires {new Date(demoResult.expiresAt).toLocaleDateString()}.</p>
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-amber-900">
+                    After the 7-day demo, access will end. Contact the administrator to activate your account. Monthly charge: <strong>Rs. 2,500/month</strong>. For a concession, please contact the administrator.
+                  </p>
                 </div>
                 <button type="button" onClick={handleContinueDemo} disabled={openingDemo} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:opacity-60">
                   {openingDemo ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening your demo…</> : <>Continue to choose your password <ArrowRight className="h-4 w-4" /></>}

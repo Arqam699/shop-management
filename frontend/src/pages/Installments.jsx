@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
@@ -6,11 +6,12 @@ import { useSettings } from '../context/SettingsContext';
 
 import {
   Layers,
+  Plus,
+  Sparkles,
   Search,
   Eye,
   AlertTriangle,
   Calendar,
-  Lock
 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -310,15 +311,42 @@ const Installments = () => {
           HEADER
       ================================================== */}
 
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 font-sans">
-          Installment Sales
-        </h2>
-        <p className="text-sm text-gray-600 font-medium">
-          Search installment sales by Invoice Number,
-          customer name, and manage active installments.
-        </p>
-      </div>
+      <section className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#080d1b] via-[#0b1020] to-[#060913] text-white shadow-2xl shadow-blue-950/20">
+        <div className="pointer-events-none absolute -left-20 -top-32 h-80 w-80 rounded-full bg-blue-600/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 right-10 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" />
+
+        <div className="relative z-10 p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-blue-300">
+                  <Sparkles className="h-3 w-3 text-blue-400" />
+                  Installment Sales
+                </span>
+                <span className="text-slate-600">•</span>
+                <span className="text-[10px] font-bold text-slate-400">
+                  {plans.length} Total Installment Sales
+                </span>
+              </div>
+
+              <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl lg:text-4xl">
+                Installment Sales
+              </h1>
+              <p className="mt-1.5 max-w-2xl text-xs font-medium leading-relaxed text-slate-400 sm:text-sm">
+                Search installment sales by invoice number and customer, and manage active payment plans.
+              </p>
+            </div>
+
+            <Link
+              to="/sales/new?type=installment"
+              className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-blue-950/40 transition hover:opacity-95 active:scale-95 sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Installment Sale</span>
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {/* =================================================
           STATS OVERVIEW BANNER
