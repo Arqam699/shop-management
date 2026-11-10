@@ -198,6 +198,16 @@ export const AuthProvider = ({
             };
           }
 
+          // No cookie during the initial /auth/me check simply means the
+          // visitor is logged out. Keep the login screen clear of auth errors.
+          if (code === 'AUTH_REQUIRED') {
+            clearAuthState();
+
+            return {
+              success: false,
+            };
+          }
+
           // ==============================================
           // SESSION REVOKED
           // ==============================================

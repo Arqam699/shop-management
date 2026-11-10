@@ -40,7 +40,7 @@ const protect = async (req, res, next) => {
       success: false,
       code: 'AUTH_REQUIRED',
       message:
-        'Not authorized, no token provided',
+        'Please log in to continue.',
     });
   }
 

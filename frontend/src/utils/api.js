@@ -244,9 +244,18 @@ api.interceptors.response.use(
         '/api/super-admin'
       );
 
+    const isCurrentAdminRequest =
+      requestUrl.split('?')[0].endsWith('/auth/me');
+
+    // A missing cookie on the initial /auth/me request is the normal
+    // anonymous state on the login page, not a revoked session.
+    const isAnonymousAuthCheck =
+      isCurrentAdminRequest && code === 'AUTH_REQUIRED';
+
     if (
       !isLoginRequest &&
       !isSuperAdminRequest &&
+      !isAnonymousAuthCheck &&
       (
         shouldLogout ||
         status === 401 ||
