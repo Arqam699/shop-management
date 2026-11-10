@@ -142,10 +142,10 @@ const NewSale = () => {
   ========================================================= */
 
   const [quantity, setQuantity] = useState(1);
-  const [unitPrice, setUnitPrice] = useState(0);
-  const [purchasePriceAtSale, setPurchasePriceAtSale] = useState(0);
-  const [stockAdjustment, setStockAdjustment] = useState(0);
-  const [discount, setDiscount] = useState(0);
+  const [unitPrice, setUnitPrice] = useState('');
+  const [purchasePriceAtSale, setPurchasePriceAtSale] = useState('');
+  const [stockAdjustment, setStockAdjustment] = useState('');
+  const [discount, setDiscount] = useState('');
   const [cashPaymentStatus, setCashPaymentStatus] = useState('Paid');
   const [cashSaleDate, setCashSaleDate] = useState(() => formatDateTimeLocal(new Date()));
 
@@ -153,9 +153,9 @@ const NewSale = () => {
      INSTALLMENT VALUES
   ========================================================= */
 
-  const [downPayment, setDownPayment] = useState(0);
+  const [downPayment, setDownPayment] = useState('');
   const [installmentDuration, setInstallmentDuration] = useState(12);
-  const [markupPercentage, setMarkupPercentage] = useState(0);
+  const [markupPercentage, setMarkupPercentage] = useState('');
 
   const [
     treatDownPaymentAsFirstInstallment,
@@ -391,12 +391,12 @@ const NewSale = () => {
         if (existing) return current.map((item) => String(item.product._id || item.product.id) === id
           ? { ...item, quantity: Math.min(Number(item.quantity) + 1, Math.max(1, Number(product?.quantity || 0) + Number(item.stockAdjustment || 0))) }
           : item);
-        return [...current, { product, quantity: 1, unitPrice: price, purchasePriceAtSale: Number(product?.purchasePrice || 0), stockAdjustment: 0 }];
+        return [...current, { product, quantity: 1, unitPrice: price || '', purchasePriceAtSale: product?.purchasePrice ? Number(product.purchasePrice) : '', stockAdjustment: '' }];
       });
       setSelectedProduct(null);
       setProductSearch('');
       setShowProductDropdown(false);
-      setUnitPrice(0);
+      setUnitPrice('');
       setQuantity(1);
       setErrorMsg('');
       requestAnimationFrame(() => {
@@ -419,9 +419,9 @@ const NewSale = () => {
       product?.price ??
       0;
 
-    setUnitPrice(Number(price) || 0);
-    setPurchasePriceAtSale(Number(product?.purchasePrice || 0));
-    setStockAdjustment(0);
+    setUnitPrice(Number(price) || '');
+    setPurchasePriceAtSale(product?.purchasePrice ? Number(product.purchasePrice) : '');
+    setStockAdjustment('');
     setQuantity(1);
 
     setProductSearch(
@@ -489,9 +489,9 @@ const NewSale = () => {
   const clearProduct = () => {
     setSelectedProduct(null);
     setProductSearch('');
-    setUnitPrice(0);
-    setPurchasePriceAtSale(0);
-    setStockAdjustment(0);
+    setUnitPrice('');
+    setPurchasePriceAtSale('');
+    setStockAdjustment('');
     setQuantity(1);
     setManualFinancedBalance(null);
     setInstallmentSchedule([]);
@@ -1035,6 +1035,12 @@ const NewSale = () => {
   const handleUnitPriceChange = (
     value
   ) => {
+    if (value === '') {
+      setUnitPrice('');
+      setManualFinancedBalance(null);
+      setScheduleMode('auto');
+      return;
+    }
     setUnitPrice(
       Math.max(
         0,
@@ -1049,6 +1055,12 @@ const NewSale = () => {
   const handleQuantityChange = (
     value
   ) => {
+    if (value === '') {
+      setQuantity('');
+      setManualFinancedBalance(null);
+      setScheduleMode('auto');
+      return;
+    }
     const stockLimit = Math.max(1, Number(selectedProduct?.quantity ?? 1) + Number(stockAdjustment || 0));
     setQuantity(
       Math.max(
@@ -1064,6 +1076,12 @@ const NewSale = () => {
   const handleDiscountChange = (
     value
   ) => {
+    if (value === '') {
+      setDiscount('');
+      setManualFinancedBalance(null);
+      setScheduleMode('auto');
+      return;
+    }
     setDiscount(
       Math.max(
         0,
@@ -1078,6 +1096,12 @@ const NewSale = () => {
   const handleDownPaymentChange = (
     value
   ) => {
+    if (value === '') {
+      setDownPayment('');
+      setManualFinancedBalance(null);
+      setScheduleMode('auto');
+      return;
+    }
     setDownPayment(
       Math.max(
         0,
@@ -1092,6 +1116,12 @@ const NewSale = () => {
   const handleMarkupChange = (
     value
   ) => {
+    if (value === '') {
+      setMarkupPercentage('');
+      setManualFinancedBalance(null);
+      setScheduleMode('auto');
+      return;
+    }
     setMarkupPercentage(
       Math.max(
         0,
@@ -1118,6 +1148,11 @@ const NewSale = () => {
   const handleInstallmentDurationChange = (
     value
   ) => {
+    if (value === '') {
+      setInstallmentDuration('');
+      setScheduleMode('auto');
+      return;
+    }
     const numericValue =
       Math.max(
         1,
@@ -2182,6 +2217,10 @@ if (invalidDate) {
                   </p>
                   {isInstallmentSale && <label className="mt-2 block text-[10px] font-bold text-slate-600">Stock change (+ add / - remove)
                     <input type="number" min={-Number(selectedProduct?.quantity || 0)} step="1" value={stockAdjustment} onChange={(event) => {
+                      if (event.target.value === '') {
+                        setStockAdjustment('');
+                        return;
+                      }
                       const nextAdjustment = Math.trunc(Number(event.target.value) || 0);
                       setStockAdjustment(nextAdjustment);
                       const maxQuantity = Math.max(1, Number(selectedProduct?.quantity || 0) + nextAdjustment);
@@ -2234,7 +2273,11 @@ if (invalidDate) {
                         {[item.product.sku, item.product.imei, item.product.serialNumber, item.product.chassisNumber].some(Boolean) && <p className="mt-0.5 break-all text-[10px] text-slate-500">{[item.product.sku && `SKU: ${item.product.sku}`, item.product.imei && `IMEI: ${item.product.imei}`, item.product.serialNumber && `Serial: ${item.product.serialNumber}`, item.product.chassisNumber && `Chassis: ${item.product.chassisNumber}`].filter(Boolean).join(' · ')}</p>}
                         <p className="mt-1 text-[10px] font-bold text-slate-600">Current inventory stock: {Number(item.product.quantity ?? 0)}</p>
                         <label className="mt-2 block text-[10px] font-bold text-slate-600">Stock change (+ add / - remove)
-                          <input type="number" min={-Number(item.product.quantity || 0)} step="1" value={item.stockAdjustment || 0} onChange={(event) => {
+                          <input type="number" min={-Number(item.product.quantity || 0)} step="1" value={item.stockAdjustment ?? ''} onChange={(event) => {
+                            if (event.target.value === '') {
+                              setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id) ? { ...entry, stockAdjustment: '' } : entry));
+                              return;
+                            }
                             const stockAdjustment = Math.trunc(Number(event.target.value) || 0);
                             const maxSaleQuantity = Math.max(1, Number(item.product.quantity || 0) + stockAdjustment);
                             setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
@@ -2243,8 +2286,8 @@ if (invalidDate) {
                           }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
                         </label>
                         <label className="mt-2 block text-[10px] font-bold text-slate-600">Purchase price ({settings?.currency || 'PKR'})
-                          <input type="number" min="0" step="0.01" value={item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0} onChange={(event) => {
-                            const purchasePriceAtSale = Math.max(0, Number(event.target.value || 0));
+                          <input type="number" min="0" step="0.01" value={item.purchasePriceAtSale ?? ''} onChange={(event) => {
+                            const purchasePriceAtSale = event.target.value === '' ? '' : Math.max(0, Number(event.target.value));
                             setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
                               ? { ...entry, purchasePriceAtSale }
                               : entry));
@@ -2252,7 +2295,7 @@ if (invalidDate) {
                         </label>
                         <label className="mt-2 block text-[10px] font-bold text-slate-600">Unit price ({settings?.currency || 'PKR'})
                           <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => {
-                            const unitPrice = Math.max(0, Number(event.target.value || 0));
+                            const unitPrice = event.target.value === '' ? '' : Math.max(0, Number(event.target.value));
                             setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
                               ? { ...entry, unitPrice, discount: Math.min(Number(entry.discount || 0), Number(entry.quantity || 0) * unitPrice) }
                               : entry));
@@ -2282,8 +2325,8 @@ if (invalidDate) {
                     const maxQuantity = Math.max(1, Number(item.product.quantity || 0) + Number(item.stockAdjustment || 0));
                     const maxDiscount = Number(item.quantity || 0) * Number(item.unitPrice || 0);
                     return <div key={id} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:p-4">
-                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { const quantity = Math.max(1, Math.min(maxQuantity, Math.floor(Number(event.target.value) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: Math.min(Number(entry.discount || 0), quantity * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
-                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount || 0} onChange={(event) => { const value = Math.max(0, Math.min(maxDiscount, Number(event.target.value || 0))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
+                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { const rawValue = event.target.value; const quantity = rawValue === '' ? '' : Math.max(1, Math.min(maxQuantity, Math.floor(Number(rawValue) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: rawValue === '' ? entry.discount : Math.min(Number(entry.discount || 0), Number(quantity) * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount ?? ''} onChange={(event) => { const rawValue = event.target.value; const value = rawValue === '' ? '' : Math.max(0, Math.min(maxDiscount, Number(rawValue))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
                       <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id))} className="inline-flex h-10 items-center justify-center gap-1 rounded-xl px-3 text-xs font-bold text-rose-600 hover:bg-rose-50" aria-label="Remove product"><X className="h-4 w-4" /><span className="sm:hidden">Remove</span></button>
                     </div>;
                   })}
@@ -2373,7 +2416,7 @@ if (invalidDate) {
                   min="0"
                   step="0.01"
                   value={purchasePriceAtSale}
-                  onChange={(event) => setPurchasePriceAtSale(Math.max(0, Number(event.target.value || 0)))}
+                  onChange={(event) => setPurchasePriceAtSale(event.target.value === '' ? '' : Math.max(0, Number(event.target.value)))}
                   className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 />
                 <p className="mt-1 text-[9px] text-slate-400">Saved for this sale and Book-wise Audit only.</p>

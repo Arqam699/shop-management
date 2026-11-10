@@ -43,7 +43,7 @@ const YearlyAuditDetail = () => {
     salePrice: '',
     receivedAmount: '',
     planDuration: 3,
-    downPayment: 0,
+    downPayment: '',
   });
 
   // Settings-based Universal Deletion Mode
@@ -357,12 +357,7 @@ const YearlyAuditDetail = () => {
             <input
               type="number"
               value={purchaseForm.quantity}
-              onChange={(e) =>
-                setPurchaseForm({
-                  ...purchaseForm,
-                  quantity: Number(e.target.value),
-                })
-              }
+              onChange={(e) => setPurchaseForm({ ...purchaseForm, quantity: e.target.value })}
               min="1"
               className="w-full h-11 border border-slate-200 rounded-xl px-3.5 text-xs font-black bg-white focus:outline-none focus:border-blue-500"
               required
@@ -563,7 +558,7 @@ const YearlyAuditDetail = () => {
                 <input
                   type="number"
                   value={saleForm.downPayment}
-                  onChange={(e) => setSaleForm({ ...saleForm, downPayment: Number(e.target.value) })}
+                  onChange={(e) => setSaleForm({ ...saleForm, downPayment: e.target.value })}
                   className="w-full h-11 border border-purple-200 bg-purple-50/70 rounded-xl px-3.5 text-xs font-bold focus:outline-none text-purple-900"
                   required
                 />
