@@ -3,6 +3,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  Link,
   NavLink,
   useLocation,
   useNavigate,
@@ -430,20 +431,7 @@ const SidebarMenuItem = ({
       ================================================= */}
 
       {!sidebarCollapsed && (
-        <div
-          className={`
-            grid
-            transition-all
-            duration-500
-            ease-[cubic-bezier(0.16,1,0.3,1)]
-
-            ${
-              isOpen
-                ? 'grid-rows-[1fr] opacity-100'
-                : 'grid-rows-[0fr] opacity-0'
-            }
-          `}
-        >
+        <div className={isOpen ? 'grid grid-rows-[1fr]' : 'hidden'}>
           <div className="overflow-hidden">
 
             <div
@@ -460,7 +448,7 @@ const SidebarMenuItem = ({
             >
 
               {item.children.map(
-                (subItem, index) => {
+                (subItem) => {
                   const SubIcon = subItem.icon;
 
                   const isSubItemActive =
@@ -476,42 +464,34 @@ const SidebarMenuItem = ({
                       onClick={() =>
                         onNavigate(true)
                       }
-                      style={{
-                        transitionDelay: isOpen
-                          ? `${index * 45}ms`
-                          : '0ms',
-                      }}
                       className={`
                         group
                         relative
                         flex
+                        min-h-12
                         items-center
                         gap-3
                         rounded-xl
+                        border
                         px-2.5
-                        py-2.5
+                        py-2
                         text-xs
                         font-semibold
-                        transition-all
-                        duration-300
-
-                        ${
-                          isOpen
-                            ? 'translate-x-0 opacity-100'
-                            : '-translate-x-2 opacity-0'
-                        }
+                        transition-colors
+                        duration-150
 
                         ${
                           isSubItemActive
                             ? `
+                              border-blue-400/15
                               bg-blue-500/10
-                              text-blue-300
+                              text-blue-200
                             `
                             : `
+                              border-transparent
                               text-slate-500
                               hover:bg-white/[0.045]
                               hover:text-white
-                              hover:translate-x-1
                             `
                         }
                       `}
@@ -1005,6 +985,9 @@ export const Layout = ({ children }) => {
   ];
 
   const [mobileOpen, setMobileOpen] =
+    useState(false);
+
+  const [mobileSalesOpen, setMobileSalesOpen] =
     useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] =
@@ -2243,22 +2226,67 @@ export const Layout = ({ children }) => {
         </main>
 
         <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200/90 bg-white/95 px-1 pt-1.5 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden">
-          {mobileNavItems.map(({ name, path, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end
-              onClick={() => handleNavigation(false)}
-              className={({ isActive }) => `flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition active:scale-95 ${isActive ? 'text-indigo-700' : 'text-slate-500 hover:text-indigo-600'}`}
-            >
-              {({ isActive }) => <>
+          {mobileNavItems.map(({ name, path, icon: Icon }) => {
+            const isActive = name === 'Sales'
+              ? location.pathname.startsWith('/sales') || location.pathname.startsWith('/installments')
+              : location.pathname === path;
+
+            if (name === 'Sales') {
+              return (
+                <div key={path} className="relative flex min-w-0 justify-center">
+                  {mobileSalesOpen && (
+                    <div role="menu" aria-label="Sale type" className="absolute bottom-[calc(100%+0.5rem)] left-1/2 z-50 w-52 -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/20">
+                      <Link
+                        role="menuitem"
+                        to="/sales/new?type=cash"
+                        onClick={() => setMobileSalesOpen(false)}
+                        className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Banknote className="h-4 w-4" /></span>
+                        Cash Sale
+                      </Link>
+                      <Link
+                        role="menuitem"
+                        to="/sales/new?type=installment"
+                        onClick={() => setMobileSalesOpen(false)}
+                        className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><CalendarClock className="h-4 w-4" /></span>
+                        Installment Sale
+                      </Link>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    aria-expanded={mobileSalesOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setMobileSalesOpen((open) => !open)}
+                    className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition active:scale-95 ${isActive ? 'text-indigo-700' : 'text-slate-500 hover:text-indigo-600'}`}
+                  >
+                    <span className={`flex h-7 w-10 items-center justify-center rounded-xl ${isActive ? 'bg-indigo-50' : ''}`}>
+                      <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                    </span>
+                    <span className="max-w-full truncate">Sales</span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                end
+                onClick={() => { setMobileSalesOpen(false); handleNavigation(false); }}
+                className={() => `flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition active:scale-95 ${isActive ? 'text-indigo-700' : 'text-slate-500 hover:text-indigo-600'}`}
+              >
                 <span className={`flex h-7 w-10 items-center justify-center rounded-xl ${isActive ? 'bg-indigo-50' : ''}`}>
                   <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
                 </span>
                 <span className="max-w-full truncate">{name}</span>
-              </>}
-            </NavLink>
-          ))}
+              </NavLink>
+            );
+          })}
           <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open full navigation" className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold text-slate-500 transition hover:text-indigo-600 active:scale-95">
             <span className="flex h-7 w-10 items-center justify-center rounded-xl"><MoreHorizontal className="h-5 w-5" /></span>
             <span>More</span>

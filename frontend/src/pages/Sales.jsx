@@ -20,8 +20,6 @@ import {
   Lock,
   Search,
   Calendar,
-  ChevronDown,
-  Banknote,
   Sparkles,
   RefreshCw,
   CalendarRange,
@@ -43,11 +41,6 @@ const Sales = () => {
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [page, setPage] = useState(1);
-
-  // =====================================================
-  // CASH SALE MENU
-  // =====================================================
-  const [saleTypeMenuOpen, setSaleTypeMenuOpen] = useState(false);
 
   // =====================================================
   // DELETE MODAL STATE
@@ -477,7 +470,7 @@ const Sales = () => {
                 </p>
               </div>
 
-              {/* ACTION BUTTONS & MENU */}
+              {/* ACTION BUTTONS */}
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   type="button"
@@ -489,45 +482,13 @@ const Sales = () => {
                   <span>Refresh</span>
                 </button>
 
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setSaleTypeMenuOpen((prev) => !prev)}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>New Cash Sale</span>
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 transition-transform duration-300 ${
-                        saleTypeMenuOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {saleTypeMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onMouseDown={() => setSaleTypeMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[pageEnter_0.2s_ease-out] p-1.5">
-                        <Link
-                          to="/sales/new?type=cash"
-                          onClick={() => setSaleTypeMenuOpen(false)}
-                          className="flex items-center gap-3 px-3.5 py-3 rounded-xl hover:bg-emerald-50 transition-colors group"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black">
-                            <Banknote className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-black text-slate-900 group-hover:text-emerald-700">Cash Sale</p>
-                            <p className="text-[10px] text-slate-400 font-semibold">Immediate full checkout</p>
-                          </div>
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </div>
+                <Link
+                  to="/sales/new?type=cash"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-blue-950/40 transition hover:opacity-95 active:scale-95"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>New Cash Sale</span>
+                </Link>
               </div>
 
             </div>

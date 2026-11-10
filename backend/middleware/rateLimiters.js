@@ -14,7 +14,35 @@ const createLoginLimiter = (collectionName) => rateLimit({
   },
 });
 
+const demoSignupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  store: new MongoRateLimitStore('demo_signup_rate_limits'),
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'Too many demo requests. Please try again in an hour.',
+  },
+});
+
+const demoVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  store: new MongoRateLimitStore('demo_email_verification_rate_limits'),
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'Too many verification requests. Please try again in an hour.',
+  },
+});
+
 module.exports = {
   adminLoginLimiter: createLoginLimiter('admin_login_rate_limits'),
   superAdminLoginLimiter: createLoginLimiter('super_admin_login_rate_limits'),
+  demoSignupLimiter,
+  demoVerificationLimiter,
 };
