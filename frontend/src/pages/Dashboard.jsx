@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
+import { useAuth } from '../context/AuthContext';
 
 import {
   Users,
@@ -37,6 +38,8 @@ import {
   DatabaseBackup,
   ArrowRight,
   CheckCircle2,
+  Smartphone,
+  MonitorDown,
 } from 'lucide-react';
 
 const PAKISTAN_DATE_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -76,6 +79,36 @@ const addDaysToDateKey = (dateKey, days) => {
 
 const Dashboard = () => {
   const { settings } = useSettings();
+  const { admin } = useAuth();
+
+  const [showDemoAppPopup, setShowDemoAppPopup] = useState(false);
+
+  useEffect(() => {
+    if (!admin?.isDemoAccount || !admin.email) return;
+
+    const dismissedKey = `demo-app-download-dismissed:${admin.email.toLowerCase()}`;
+    try {
+      if (window.localStorage.getItem(dismissedKey) !== 'true') {
+        setShowDemoAppPopup(true);
+      }
+    } catch {
+      setShowDemoAppPopup(true);
+    }
+  }, [admin?.email, admin?.isDemoAccount]);
+
+  const dismissDemoAppPopup = () => {
+    if (admin?.email) {
+      try {
+        window.localStorage.setItem(
+          `demo-app-download-dismissed:${admin.email.toLowerCase()}`,
+          'true'
+        );
+      } catch {
+        // The popup can still be dismissed if browser storage is unavailable.
+      }
+    }
+    setShowDemoAppPopup(false);
+  };
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1005,6 +1038,70 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
   // =========================================================
   return (
     <>
+      {showDemoAppPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="demo-app-download-title"
+            className="relative my-auto w-full max-w-lg overflow-hidden rounded-[2rem] bg-white shadow-2xl"
+          >
+            <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-950 px-6 pb-7 pt-6 text-white sm:px-8 sm:pt-8">
+              <button
+                type="button"
+                onClick={dismissDemoAppPopup}
+                aria-label="Close app download popup"
+                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/20"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-indigo-200">
+                <Download className="h-6 w-6" />
+              </span>
+              <p className="mt-5 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-200">Your demo is ready</p>
+              <h2 id="demo-app-download-title" className="mt-2 max-w-sm text-2xl font-black leading-tight sm:text-3xl">
+                Get ArZaib POS on your devices
+              </h2>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-300">
+                Download the mobile or PC app now, or close this window and continue using the website.
+              </p>
+            </div>
+
+            <div className="space-y-3 p-5 sm:p-7">
+              <a
+                href="/downloads/ArZaib-POS-1.0.2.apk"
+                download
+                onClick={dismissDemoAppPopup}
+                className="flex min-h-14 items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-100"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><Smartphone className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download Android app</strong><span className="block text-xs text-slate-500">APK · Android phones and tablets</span></span>
+                <Download className="h-4 w-4 shrink-0 text-emerald-700" />
+              </a>
+
+              <a
+                href="/downloads/ArZaib-POS-Setup-1.0.0.exe"
+                download
+                onClick={dismissDemoAppPopup}
+                className="flex min-h-14 items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-100"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorDown className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download PC app</strong><span className="block text-xs text-slate-500">Setup · Windows computers</span></span>
+                <Download className="h-4 w-4 shrink-0 text-indigo-700" />
+              </a>
+
+              <button
+                type="button"
+                onClick={dismissDemoAppPopup}
+                className="min-h-12 w-full rounded-xl px-4 text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              >
+                Maybe later — continue to my dashboard
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <style>{`
         @keyframes pageEnter {
           from {

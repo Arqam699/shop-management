@@ -59,6 +59,7 @@ const createDemoShop = async (req, res) => {
         email: cleanEmail,
         phone: cleanPhone,
         monthlyCharge: 0,
+        isDemoAccount: true,
         subscriptionPlan: 'Free Trial',
         subscriptionStatus: 'Active',
         subscriptionExpiresAt: expiresAt,

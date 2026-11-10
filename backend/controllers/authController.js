@@ -335,6 +335,13 @@ const loginAdmin = async (req, res) => {
 
         mustChangePassword:
           !!shop.mustChangePassword,
+
+        isDemoAccount:
+          !!shop.isDemoAccount || (
+            shop.subscriptionPlan === 'Free Trial' &&
+            Number(shop.monthlyCharge) === 0 &&
+            !!shop.subscriptionExpiresAt
+          ),
       },
     });
 
@@ -712,6 +719,13 @@ const getAdminProfile = async (
 
         mustChangePassword:
           !!req.shop?.mustChangePassword,
+
+        isDemoAccount:
+          !!req.shop?.isDemoAccount || (
+            req.shop?.subscriptionPlan === 'Free Trial' &&
+            Number(req.shop?.monthlyCharge) === 0 &&
+            !!req.shop?.subscriptionExpiresAt
+          ),
       },
     });
   } catch (error) {

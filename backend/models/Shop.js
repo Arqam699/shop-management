@@ -131,6 +131,11 @@ const shopSchema = new mongoose.Schema(
       default: 0,
     },
 
+    isDemoAccount: {
+      type: Boolean,
+      default: false,
+    },
+
 
     // =================================================
     // SUBSCRIPTION
