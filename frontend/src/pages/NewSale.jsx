@@ -55,9 +55,23 @@ const formatDateInput = (date) => {
 };
 
 const formatDateTimeLocal = (date) => {
-  const d = new Date(date);
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Karachi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+};
+
+const pakistanDateTimeToIso = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}:00+05:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 /* =========================================================
@@ -1132,7 +1146,8 @@ const NewSale = () => {
 
     setErrorMsg('');
 
-    if (!cashSaleDate || Number.isNaN(new Date(cashSaleDate).getTime())) {
+    const saleDateIso = pakistanDateTimeToIso(cashSaleDate);
+    if (!saleDateIso) {
       setErrorMsg('Please enter a valid sale date and time.');
       return;
     }
@@ -1140,11 +1155,6 @@ const NewSale = () => {
     /* -------------------------------------------------------
        BASIC VALIDATION
     ------------------------------------------------------- */
-
-    if (!selectedBookId) {
-      setErrorMsg('Please select a book for this sale.');
-      return;
-    }
 
     if (isInstallmentSale && !selectedCustomer) {
       setErrorMsg(
@@ -1422,7 +1432,7 @@ if (invalidDate) {
 
       bookId: selectedBookId,
 
-      saleDate: new Date(cashSaleDate).toISOString(),
+      saleDate: saleDateIso,
       ...(isInstallmentSale ? { purchasePriceAtSale: Number(purchasePriceAtSale), stockAdjustment: Math.trunc(Number(stockAdjustment || 0)) } : {}),
 
       paymentStatus: isCashSale ? cashPaymentStatus : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
@@ -1753,18 +1763,18 @@ if (invalidDate) {
 
           <section className="premium-card p-4 sm:p-5 space-y-3">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Sale book <span className="text-rose-500">*</span></h2>
-              <p className="mt-1 text-[10px] text-slate-400">Choose which book this sale should be recorded in.</p>
+              <h2 className="text-sm font-black text-slate-900">Sale book <span className="font-semibold text-slate-400">(Optional)</span></h2>
+              <p className="mt-1 text-[10px] text-slate-400">Choose a book if you want to include this sale in a book-wise audit.</p>
             </div>
             {books.length > 0 ? (
               <select value={selectedBookId} onChange={(event) => setSelectedBookId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-md">
-                <option value="">Select a book...</option>
+                <option value="">No book</option>
                 {books.map((book) => <option key={book._id} value={book._id}>{book.name}</option>)}
               </select>
             ) : (
-              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-                <span>Create a book first to record this sale book-wise.</span>
-                <button type="button" onClick={() => navigate('/book-audit')} className="font-black underline underline-offset-2">Open Book-wise Audit</button>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                <span>No book selected. You can still save this sale normally.</span>
+                <button type="button" onClick={() => navigate('/book-audit')} className="font-black text-indigo-700 underline underline-offset-2">Create a book</button>
               </div>
             )}
           </section>
@@ -2288,6 +2298,7 @@ if (invalidDate) {
               <p className="mt-1 text-xs text-slate-500">Defaults to now. Change it if the sale happened at a different time.</p>
             </div>
             <input type="datetime-local" required value={cashSaleDate} onChange={(event) => setCashSaleDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white sm:max-w-sm" />
+            <p className="mt-1 text-[10px] text-slate-400">Date and time are entered in Pakistan Standard Time (PKT, UTC+5).</p>
           </section>
 
           {isCashSale && (

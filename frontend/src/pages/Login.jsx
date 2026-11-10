@@ -22,6 +22,7 @@ import {
   Check,
   X,
   UserRound,
+  Download,
 } from 'lucide-react';
 import api from '../utils/api';
 
@@ -653,6 +654,14 @@ const Login = () => {
                 {demoResult ? 'View your demo login' : 'Chat with us · Start a free demo'}
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => navigate('/downloads')}
+              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 active:scale-[0.99]"
+            >
+              <Download className="h-4 w-4" /> Download Android or PC app
+            </button>
 
             {/* =================================================
                 WHATSAPP SUPPORT
