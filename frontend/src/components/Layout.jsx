@@ -11,7 +11,6 @@ import {
 
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import appPackage from '../../package.json';
 import ConfirmModal from './ConfirmModal';
 import ShopNoticeBanner from './ShopNoticeBanner';
 
@@ -119,6 +118,51 @@ const MenuIcon = ({
         "
       />
     </div>
+  );
+};
+
+const AppReleaseMenu = ({ collapsed }) => {
+  const [versions, setVersions] = useState(null);
+
+  useEffect(() => {
+    const endpoint = import.meta.env.VITE_APP_UPDATES_URL;
+    if (!endpoint) return undefined;
+
+    const callback = `__arzaibSidebarVersions${Date.now()}`;
+    const script = document.createElement('script');
+    const cleanup = () => {
+      delete window[callback];
+      script.remove();
+    };
+    const timeout = window.setTimeout(cleanup, 10000);
+    window[callback] = (data) => {
+      window.clearTimeout(timeout);
+      setVersions({ android: data?.android?.version, windows: data?.windows?.version });
+      cleanup();
+    };
+    script.onerror = () => { window.clearTimeout(timeout); cleanup(); };
+    script.src = `${endpoint}${endpoint.includes('?') ? '&' : '?'}callback=${callback}&_=${Date.now()}`;
+    document.head.appendChild(script);
+    return () => { window.clearTimeout(timeout); cleanup(); };
+  }, []);
+
+  if (!versions || (!versions.android && !versions.windows)) return null;
+
+  return (
+    <Link
+      to="/downloads"
+      title={collapsed ? `Available versions: Android ${versions.android || '—'}, PC ${versions.windows || '—'}` : undefined}
+      className={`mt-3 block rounded-xl border border-white/[0.08] bg-white/[0.035] text-slate-300 transition hover:border-blue-400/20 hover:bg-blue-500/10 ${collapsed ? 'mx-auto h-10 w-10' : 'px-3 py-2.5'}`}
+    >
+      {collapsed ? (
+        <Download className="mx-auto mt-2 h-4 w-4 text-blue-300" />
+      ) : (
+        <>
+          <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Available app versions</span>
+          <span className="mt-1 block text-[10px] font-bold">Android {versions.android || '—'} · PC {versions.windows || '—'}</span>
+        </>
+      )}
+    </Link>
   );
 };
 
@@ -1424,6 +1468,8 @@ export const Layout = ({ children }) => {
 
           ))}
 
+          <AppReleaseMenu collapsed={sidebarCollapsed} />
+
         </div>
 
       </nav>
@@ -1967,13 +2013,6 @@ export const Layout = ({ children }) => {
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
 
-            <span
-              title="Version of the app currently running"
-              className="whitespace-nowrap rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-black text-emerald-700 sm:px-3 sm:text-xs"
-            >
-              v{appPackage.version}
-            </span>
-
             {/* ACTIVITY NOTIFICATIONS */}
             <div className="relative">
               <button
@@ -1992,7 +2031,7 @@ export const Layout = ({ children }) => {
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 top-12 z-[80] w-[min(92vw,24rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+                <div className="fixed right-2 top-[calc(env(safe-area-inset-top)+5.5rem)] z-[80] w-[calc(100vw-1rem)] max-w-[24rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 sm:absolute sm:right-0 sm:top-12 sm:w-[min(92vw,24rem)]">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                     <div>
                       <h2 className="text-sm font-black text-slate-900">Activity notifications</h2>
