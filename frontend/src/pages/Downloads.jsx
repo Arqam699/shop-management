@@ -2,38 +2,15 @@ import { useEffect, useState } from 'react';
 import { ArrowDownToLine, ArrowLeft, MonitorDown, Smartphone, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const fallback = {
-  android: { version: '1.0.2', fileName: 'ArZaib-POS-1.0.2.apk', url: '/downloads/ArZaib-POS-1.0.2.apk' },
-  windows: { version: '1.0.0', fileName: 'ArZaib-POS-Setup-1.0.0.exe', url: '/downloads/ArZaib-POS-Setup-1.0.0.exe' },
-};
+import { fallbackAppReleases, loadAppReleases } from '../utils/appReleases';
 
 export default function Downloads() {
   const { admin } = useAuth();
-  const [releases, setReleases] = useState(fallback);
+  const [releases, setReleases] = useState(import.meta.env.VITE_APP_UPDATES_URL ? null : fallbackAppReleases);
   const [live, setLive] = useState(false);
 
   useEffect(() => {
-    const endpoint = import.meta.env.VITE_APP_UPDATES_URL;
-    if (!endpoint) return;
-    const callback = `__arzaibReleaseUpdate${Date.now()}`;
-    const script = document.createElement('script');
-    const cleanup = () => { delete window[callback]; script.remove(); };
-    const timeout = window.setTimeout(cleanup, 10000);
-    window[callback] = (data) => {
-      window.clearTimeout(timeout);
-        const next = {};
-        for (const platform of ['android', 'windows']) {
-          const release = data[platform];
-          if (release?.version && release?.url) next[platform] = release;
-        }
-        if (Object.keys(next).length) { setReleases((current) => ({ ...current, ...next })); setLive(true); }
-        cleanup();
-    };
-    script.onerror = () => { window.clearTimeout(timeout); cleanup(); };
-    script.src = `${endpoint}${endpoint.includes('?') ? '&' : '?'}callback=${callback}&_=${Date.now()}`;
-    document.head.appendChild(script);
-    return () => { window.clearTimeout(timeout); cleanup(); };
+    return loadAppReleases((next, isLive) => { setReleases(next); setLive(isLive); });
   }, []);
 
   const appDownloads = [
@@ -53,7 +30,8 @@ export default function Downloads() {
           {live && <p className="mt-3 text-xs font-bold text-emerald-300">Latest releases checked just now</p>}
         </section>
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {appDownloads.map(({ key, title, description, platform, Icon, color }) => {
+          {!releases && <div className="sm:col-span-2 rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">Checking the latest app versions…</div>}
+          {releases && appDownloads.map(({ key, title, description, platform, Icon, color }) => {
             const release = releases[key];
             return <article key={platform} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${color} text-white shadow-lg`}><Icon className="h-6 w-6" /></div>

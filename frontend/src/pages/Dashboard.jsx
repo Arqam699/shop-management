@@ -5,6 +5,7 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
+import { fallbackAppReleases, loadAppReleases } from '../utils/appReleases';
 
 import {
   Users,
@@ -82,8 +83,16 @@ const Dashboard = () => {
   const { admin } = useAuth();
 
   const [showDemoAppPopup, setShowDemoAppPopup] = useState(false);
+  const [appReleases, setAppReleases] = useState(import.meta.env.VITE_APP_UPDATES_URL ? null : fallbackAppReleases);
+  const [appReleasesReady, setAppReleasesReady] = useState(!import.meta.env.VITE_APP_UPDATES_URL);
+
+  useEffect(() => loadAppReleases((next) => {
+    setAppReleases(next);
+    setAppReleasesReady(true);
+  }), []);
 
   useEffect(() => {
+    if (!appReleasesReady) return;
     if (!admin?.isDemoAccount || !admin.email) return;
 
     const dismissedKey = `demo-app-download-dismissed:${admin.email.toLowerCase()}`;
@@ -94,7 +103,7 @@ const Dashboard = () => {
     } catch {
       setShowDemoAppPopup(true);
     }
-  }, [admin?.email, admin?.isDemoAccount]);
+  }, [admin?.email, admin?.isDemoAccount, appReleasesReady]);
 
   const dismissDemoAppPopup = () => {
     if (admin?.email) {
@@ -1038,7 +1047,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
   // =========================================================
   return (
     <>
-      {showDemoAppPopup && (
+      {showDemoAppPopup && appReleases && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation">
           <section
             role="dialog"
@@ -1069,24 +1078,24 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
             <div className="space-y-3 p-5 sm:p-7">
               <a
-                href="/downloads/ArZaib-POS-1.0.2.apk"
-                download
+                href={appReleases.android.url}
+                {...(appReleases.android.url.startsWith('/') ? { download: true } : { target: '_blank', rel: 'noreferrer' })}
                 onClick={dismissDemoAppPopup}
                 className="flex min-h-14 items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-100"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><Smartphone className="h-5 w-5" /></span>
-                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download Android app</strong><span className="block text-xs text-slate-500">APK · Android phones and tablets</span></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download Android app</strong><span className="block text-xs text-slate-500">Version {appReleases.android.version} · {appReleases.android.fileName}</span></span>
                 <Download className="h-4 w-4 shrink-0 text-emerald-700" />
               </a>
 
               <a
-                href="/downloads/ArZaib-POS-Setup-1.0.0.exe"
-                download
+                href={appReleases.windows.url}
+                {...(appReleases.windows.url.startsWith('/') ? { download: true } : { target: '_blank', rel: 'noreferrer' })}
                 onClick={dismissDemoAppPopup}
                 className="flex min-h-14 items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-100"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorDown className="h-5 w-5" /></span>
-                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download PC app</strong><span className="block text-xs text-slate-500">Setup · Windows computers</span></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-slate-900">Download PC app</strong><span className="block text-xs text-slate-500">Version {appReleases.windows.version} · {appReleases.windows.fileName}</span></span>
                 <Download className="h-4 w-4 shrink-0 text-indigo-700" />
               </a>
 
