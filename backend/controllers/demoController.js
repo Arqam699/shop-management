@@ -5,7 +5,7 @@ const Shop = require('../models/Shop');
 const Settings = require('../models/Settings');
 
 const createDemoShop = async (req, res) => {
-  const { shopName, ownerName, email, phone = '', website = '' } = req.body || {};
+  const { shopName, ownerName, email, phone, website = '' } = req.body || {};
 
   // Honeypot for simple signup bots. Return a generic success without creating data.
   if (typeof website === 'string' && website.trim()) {
@@ -25,14 +25,16 @@ const createDemoShop = async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phoneDigits = cleanPhone.replace(/\D/g, '');
+  const validPhone = /^[+0-9][0-9\s().-]*$/.test(cleanPhone) && phoneDigits.length >= 7 && phoneDigits.length <= 15;
 
   if (
     cleanShopName.length < 2 || cleanShopName.length > 100 ||
     cleanOwnerName.length < 2 || cleanOwnerName.length > 100 ||
     cleanEmail.length > 254 || !validEmail.test(cleanEmail) ||
-    cleanPhone.length > 30
+    cleanPhone.length > 30 || !validPhone
   ) {
-    return res.status(400).json({ success: false, message: 'Please check the shop name, your name, email, and phone number.' });
+    return res.status(400).json({ success: false, message: 'Please check the shop name, your name, email, and enter a valid phone number with 7 to 15 digits.' });
   }
 
   const temporaryPassword = crypto.randomBytes(18).toString('base64url');
