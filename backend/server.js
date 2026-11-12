@@ -82,7 +82,7 @@ const developmentOrigins = [
 // -----------------------------------------------------
 
 const productionOrigins = [
-  'https://arzaibpos.vercel.app',
+  'https://app.arzaib.com',
 ];
 
 // -----------------------------------------------------
