@@ -18,7 +18,10 @@ export function loadAppReleases(onLoad) {
     if (finished) return;
     finished = true;
     window.clearTimeout(timeout);
-    delete window[callback];
+    // The script may already be in flight when it times out or its caller
+    // unmounts. Leave a temporary no-op so a late JSONP response stays harmless.
+    window[callback] = () => {};
+    window.setTimeout(() => { delete window[callback]; }, 60000);
     script.remove();
     if (!loaded && useFallback) onLoad(fallbackAppReleases, false);
   };

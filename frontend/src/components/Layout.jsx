@@ -128,10 +128,13 @@ const AppReleaseMenu = ({ collapsed }) => {
     const endpoint = import.meta.env.VITE_APP_UPDATES_URL;
     if (!endpoint) return undefined;
 
-    const callback = `__arzaibSidebarVersions${Date.now()}`;
+    const callback = `__arzaibSidebarVersions${Date.now()}${Math.random().toString(36).slice(2)}`;
     const script = document.createElement('script');
     const cleanup = () => {
-      delete window[callback];
+      // A JSONP response can still execute after its request times out or the
+      // component unmounts. Keep a short-lived no-op to avoid a late ReferenceError.
+      window[callback] = () => {};
+      window.setTimeout(() => { delete window[callback]; }, 60000);
       script.remove();
     };
     const timeout = window.setTimeout(cleanup, 10000);
