@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import { getDeviceId } from './deviceIdentity';
 import { addActivityNotification } from './activityNotifications';
 
@@ -284,6 +285,31 @@ api.interceptors.response.use(
           data?.suspensionReason ||
           '',
       });
+    }
+
+    // ========================================================
+    // TEMP DIAGNOSTIC (12 Nov 2026) — logout / load-fail
+    // ki asal wajah screen par dikhao.
+    //
+    // 401/403 pehle hi logout kar dete hain (upar), is liye
+    // yahan sirf baaqi errors (500, network, ...) ka status
+    // + URL toast me dikhaya jata hai. Wajah milte hi ye
+    // block hata dena.
+    // ========================================================
+
+    if (
+      !isLoginRequest &&
+      !isSuperAdminRequest &&
+      status !== 401 &&
+      status !== 403
+    ) {
+      try {
+        toast.error(
+          `API error ${status || 'Network'}: ${(error.config?.method || 'get').toUpperCase()} ${requestUrl} (${code || error.message || 'no response'})`
+        );
+      } catch (_) {
+        // toast fail ho to bhi request ka error waisa hi rahe
+      }
     }
 
     // ========================================================
