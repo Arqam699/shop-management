@@ -37,6 +37,9 @@ const Login = () => {
   const [openingDemo, setOpeningDemo] = useState(false);
   const [demoError, setDemoError] = useState('');
   const [demoResult, setDemoResult] = useState(null);
+  const [demoOtp, setDemoOtp] = useState('');
+  const [demoOtpSent, setDemoOtpSent] = useState(false);
+  const [demoVerificationToken, setDemoVerificationToken] = useState('');
   const [copiedField, setCopiedField] = useState('');
   const [demoForm, setDemoForm] = useState({ shopName: '', ownerName: '', email: '', phone: '', website: '' });
 
@@ -59,7 +62,19 @@ const Login = () => {
     setDemoError('');
     setDemoLoading(true);
     try {
-      const response = await api.post('/api/auth/demo', demoForm);
+      if (!demoOtpSent) {
+        await api.post('/api/auth/demo/send-otp', { email: demoForm.email, website: demoForm.website });
+        setDemoOtpSent(true);
+        setDemoError('Verification code sent. Check your inbox and enter the code below.');
+        return;
+      }
+      if (!demoVerificationToken) {
+        const verified = await api.post('/api/auth/demo/verify-otp', { email: demoForm.email, otp: demoOtp });
+        setDemoVerificationToken(verified.data.verificationToken);
+        setDemoError('Email verified. Submit once more to create your demo account.');
+        return;
+      }
+      const response = await api.post('/api/auth/demo', { ...demoForm, verificationToken: demoVerificationToken });
       setDemoResult(response.data.data);
       setEmail(response.data.data.email);
       setPassword(response.data.data.temporaryPassword);
@@ -767,8 +782,12 @@ const Login = () => {
                 </div>
                 <div>
                   <label htmlFor="demo-email" className="mb-1.5 block text-xs font-bold text-slate-600">Which email will you use to sign in?</label>
-                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setDemoError(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
+                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setDemoError(''); setDemoOtpSent(false); setDemoVerificationToken(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
                 </div>
+                {demoOtpSent && <div>
+                  <label htmlFor="demo-email-otp" className="mb-1.5 block text-xs font-bold text-slate-600">Email verification code</label>
+                  <input id="demo-email-otp" inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={demoOtp} onChange={(event) => setDemoOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-center text-lg font-bold tracking-[0.4em] text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
+                </div>}
                 <div>
                   <label htmlFor="demo-phone" className="mb-1.5 block text-xs font-bold text-slate-600">Phone number <span className="font-medium text-rose-600">(required)</span></label>
                   <input id="demo-phone" type="tel" required minLength={7} maxLength={30} autoComplete="tel" value={demoForm.phone} onChange={(event) => setDemoForm({ ...demoForm, phone: event.target.value })} placeholder="+92 300 1234567" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
@@ -776,7 +795,7 @@ const Login = () => {
                 </div>
                 <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden"><label htmlFor="demo-website">Website</label><input id="demo-website" tabIndex={-1} autoComplete="off" value={demoForm.website} onChange={(event) => setDemoForm({ ...demoForm, website: event.target.value })} /></div>
                 <button type="submit" disabled={demoLoading} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60">
-                  {demoLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating your demo…</> : <>Create my free demo <ArrowRight className="h-4 w-4" /></>}
+                  {demoLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Please wait…</> : <>{!demoOtpSent ? 'Send email verification code' : !demoVerificationToken ? 'Verify email code' : 'Create my free demo'} <ArrowRight className="h-4 w-4" /></>}
                 </button>
                 <p className="text-center text-[11px] leading-relaxed text-slate-400">7 days free · No payment details needed</p>
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-[11px] font-semibold leading-relaxed text-amber-900">

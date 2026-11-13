@@ -9,7 +9,7 @@ const {
   logoutAdmin,
   getAdminProfile,
 } = require('../controllers/authController');
-const { createDemoShop } = require('../controllers/demoController');
+const { createDemoShop, sendDemoEmailOtp, verifyDemoEmailOtp } = require('../controllers/demoController');
 
 const {
   protect,
@@ -26,6 +26,8 @@ router.post(
 );
 
 // Public, rate-limited signup for seven-day demo shops.
+router.post('/demo/send-otp', demoSignupLimiter, sendDemoEmailOtp);
+router.post('/demo/verify-otp', demoSignupLimiter, verifyDemoEmailOtp);
 router.post(
   '/demo',
   demoSignupLimiter,

@@ -3,9 +3,52 @@ const mongoose = require('mongoose');
 const Admin = require('../models/Admin');
 const Shop = require('../models/Shop');
 const Settings = require('../models/Settings');
+const jwt = require('jsonwebtoken');
+
+const validateEmail = (email) => typeof email === 'string' && email.trim().length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+const sendDemoEmailOtp = async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!validateEmail(email)) return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return res.status(503).json({ success: false, message: 'Email verification is not configured yet.' });
+  try {
+    if (await Admin.exists({ email })) return res.status(409).json({ success: false, code: 'EMAIL_ALREADY_REGISTERED', message: 'An account already uses this email. Please sign in or contact support.' });
+    const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const codeHash = crypto.createHash('sha256').update(`${email}:${otp}:${process.env.JWT_SECRET}`).digest('hex');
+    const otpCollection = mongoose.connection.collection('demo_email_otps');
+    await otpCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await otpCollection.updateOne({ email }, { $set: { email, codeHash, attempts: 0, expiresAt: new Date(Date.now() + 10 * 60 * 1000) } }, { upsert: true });
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: 'Your demo verification code', text: `Your verification code is ${otp}. It expires in 10 minutes.` }),
+    });
+    if (!response.ok) { console.error('Resend email error:', response.status); return res.status(502).json({ success: false, message: 'Could not send the verification email. Please try again.' }); }
+    return res.json({ success: true, message: 'Verification code sent.' });
+  } catch (error) {
+    console.error('Demo OTP send error:', error.message);
+    return res.status(500).json({ success: false, message: 'Could not send the verification email.' });
+  }
+};
+
+const verifyDemoEmailOtp = async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+  if (!validateEmail(email) || !/^\d{6}$/.test(otp)) return res.status(400).json({ success: false, message: 'Enter the six-digit code sent to your email.' });
+  const otpHash = crypto.createHash('sha256').update(`${email}:${otp}:${process.env.JWT_SECRET}`).digest('hex');
+  const otpCollection = mongoose.connection.collection('demo_email_otps');
+  const record = await otpCollection.findOne({ email });
+  if (!record || record.expiresAt < new Date() || record.attempts >= 5 || record.codeHash !== otpHash) {
+    if (record) await otpCollection.updateOne({ email }, { $inc: { attempts: 1 } });
+    return res.status(400).json({ success: false, message: 'That code is invalid or expired. Request a new code and try again.' });
+  }
+  await otpCollection.deleteOne({ email });
+  const verificationToken = jwt.sign({ purpose: 'demo-email', email }, process.env.JWT_SECRET, { expiresIn: '15m' });
+  return res.json({ success: true, verificationToken });
+};
+
 
 const createDemoShop = async (req, res) => {
-  const { shopName, ownerName, email, phone, website = '' } = req.body || {};
+  const { shopName, ownerName, email, phone, website = '', verificationToken } = req.body || {};
 
   // Honeypot for simple signup bots. Return a generic success without creating data.
   if (typeof website === 'string' && website.trim()) {
@@ -23,6 +66,12 @@ const createDemoShop = async (req, res) => {
   const cleanShopName = shopName.trim();
   const cleanOwnerName = ownerName.trim();
   const cleanEmail = email.trim().toLowerCase();
+  try {
+    const verified = jwt.verify(String(verificationToken || ''), process.env.JWT_SECRET);
+    if (verified.purpose !== 'demo-email' || verified.email !== cleanEmail) throw new Error('Email mismatch');
+  } catch {
+    return res.status(403).json({ success: false, code: 'EMAIL_NOT_VERIFIED', message: 'Verify your email before creating a demo account.' });
+  }
   const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneDigits = cleanPhone.replace(/\D/g, '');
@@ -114,4 +163,4 @@ const createDemoShop = async (req, res) => {
   }
 };
 
-module.exports = { createDemoShop };
+module.exports = { createDemoShop, sendDemoEmailOtp, verifyDemoEmailOtp };
