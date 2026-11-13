@@ -1,7 +1,7 @@
 const express = require('express');
 
 const router = express.Router();
-const { adminLoginLimiter, demoSignupLimiter } = require('../middleware/rateLimiters');
+const { adminLoginLimiter, demoSignupLimiter, demoOtpSendLimiter, demoOtpVerifyLimiter } = require('../middleware/rateLimiters');
 
 const {
   loginAdmin,
@@ -26,8 +26,8 @@ router.post(
 );
 
 // Public, rate-limited signup for seven-day demo shops.
-router.post('/demo/send-otp', demoSignupLimiter, sendDemoEmailOtp);
-router.post('/demo/verify-otp', demoSignupLimiter, verifyDemoEmailOtp);
+router.post('/demo/send-otp', demoOtpSendLimiter, sendDemoEmailOtp);
+router.post('/demo/verify-otp', demoOtpVerifyLimiter, verifyDemoEmailOtp);
 router.post(
   '/demo',
   demoSignupLimiter,

@@ -22,7 +22,11 @@ const sendDemoEmailOtp = async (req, res) => {
       method: 'POST', headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: 'Your demo verification code', text: `Your verification code is ${otp}. It expires in 10 minutes.` }),
     });
-    if (!response.ok) { console.error('Resend email error:', response.status); return res.status(502).json({ success: false, message: 'Could not send the verification email. Please try again.' }); }
+    if (!response.ok) {
+      const providerError = await response.json().catch(() => ({}));
+      console.error('Resend email rejected the request:', response.status, providerError.name || '', providerError.message || '');
+      return res.status(502).json({ success: false, message: 'Resend rejected the email. Check the backend deployment logs for the provider error.' });
+    }
     return res.json({ success: true, message: 'Verification code sent.' });
   } catch (error) {
     console.error('Demo OTP send error:', error.message);

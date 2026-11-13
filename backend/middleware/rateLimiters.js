@@ -14,21 +14,32 @@ const createLoginLimiter = (collectionName) => rateLimit({
   },
 });
 
-const demoSignupLimiter = rateLimit({
+const createDemoLimiter = (collectionName, limit, message) => rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 3,
+  limit,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  store: new MongoRateLimitStore('demo_signup_rate_limits'),
-  message: {
-    success: false,
-    code: 'RATE_LIMITED',
-    message: 'Too many demo requests. Please try again in an hour.',
-  },
+  store: new MongoRateLimitStore(collectionName),
+  message: { success: false, code: 'RATE_LIMITED', message },
 });
+
+const demoSignupLimiter = createDemoLimiter(
+  'demo_signup_rate_limits', 3,
+  'Too many demo accounts requested. Please try again in an hour.'
+);
+const demoOtpSendLimiter = createDemoLimiter(
+  'demo_otp_send_rate_limits', 3,
+  'Too many verification codes requested. Please try again in an hour.'
+);
+const demoOtpVerifyLimiter = createDemoLimiter(
+  'demo_otp_verify_rate_limits', 10,
+  'Too many verification attempts. Please try again in an hour.'
+);
 
 module.exports = {
   adminLoginLimiter: createLoginLimiter('admin_login_rate_limits'),
   superAdminLoginLimiter: createLoginLimiter('super_admin_login_rate_limits'),
   demoSignupLimiter,
+  demoOtpSendLimiter,
+  demoOtpVerifyLimiter,
 };
