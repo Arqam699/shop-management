@@ -1,9 +1,10 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
   Route,
-  Navigate
+  Navigate,
+  useLocation
 } from 'react-router-dom';
 
 import { Toaster } from 'react-hot-toast';
@@ -156,6 +157,22 @@ const DownloadsRoute = () => {
 // APP
 // =====================================================
 
+function AnalyticsPageTracker() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'page_view', {
+        page_path: pathname,
+        page_location: `${window.location.origin}${pathname}`,
+        page_title: document.title,
+      });
+    }
+  }, [pathname]);
+
+  return null;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -201,6 +218,7 @@ function App() {
         />
 
         <Router>
+          <AnalyticsPageTracker />
 
           <Suspense
             fallback={
