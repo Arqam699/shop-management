@@ -70,8 +70,13 @@ const Login = () => {
       }
       if (!demoVerificationToken) {
         const verified = await api.post('/api/auth/demo/verify-otp', { email: demoForm.email, otp: demoOtp });
-        setDemoVerificationToken(verified.data.verificationToken);
-        setDemoError('Email verified. Submit once more to create your demo account.');
+        const token = verified.data.verificationToken;
+        setDemoVerificationToken(token);
+        const response = await api.post('/api/auth/demo', { ...demoForm, verificationToken: token });
+        setDemoResult(response.data.data);
+        setEmail(response.data.data.email);
+        setPassword(response.data.data.temporaryPassword);
+        setDemoError('');
         return;
       }
       const response = await api.post('/api/auth/demo', { ...demoForm, verificationToken: demoVerificationToken });
