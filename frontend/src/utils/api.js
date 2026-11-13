@@ -211,6 +211,10 @@ api.interceptors.response.use(
 
     const requestUrl =
       error.config?.url || '';
+    const normalizedRequestPath =
+      requestUrl.split('?')[0].replace(/\/+$/, '');
+    const isDemoOtpVerification =
+      normalizedRequestPath.endsWith('/auth/demo/verify-otp');
 
     const isLoginRequest =
       requestUrl.includes(
@@ -300,6 +304,7 @@ api.interceptors.response.use(
     if (
       !isLoginRequest &&
       !isSuperAdminRequest &&
+      !isDemoOtpVerification &&
       status !== 401 &&
       status !== 403
     ) {
