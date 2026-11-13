@@ -39,6 +39,7 @@ const Login = () => {
   const [demoResult, setDemoResult] = useState(null);
   const [demoOtp, setDemoOtp] = useState('');
   const [demoOtpSent, setDemoOtpSent] = useState(false);
+  const [demoOtpResendSeconds, setDemoOtpResendSeconds] = useState(0);
   const [demoVerificationToken, setDemoVerificationToken] = useState('');
   const [copiedField, setCopiedField] = useState('');
   const [demoForm, setDemoForm] = useState({ shopName: '', ownerName: '', email: '', phone: '', website: '' });
@@ -57,6 +58,30 @@ const Login = () => {
   } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (demoOtpResendSeconds <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setDemoOtpResendSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [demoOtpResendSeconds]);
+
+  const handleResendDemoOtp = async () => {
+    setDemoError('');
+    setDemoLoading(true);
+    try {
+      await api.post('/api/auth/demo/send-otp', { email: demoForm.email, website: demoForm.website });
+      setDemoOtp('');
+      setDemoVerificationToken('');
+      setDemoOtpResendSeconds(60);
+      setDemoError('A new verification code was sent. Check your inbox.');
+    } catch (error) {
+      setDemoError(error.response?.data?.message || 'Could not send a new code. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   const handleDemoSubmit = async (event) => {
     event.preventDefault();
     setDemoError('');
@@ -65,6 +90,7 @@ const Login = () => {
       if (!demoOtpSent) {
         await api.post('/api/auth/demo/send-otp', { email: demoForm.email, website: demoForm.website });
         setDemoOtpSent(true);
+        setDemoOtpResendSeconds(60);
         setDemoError('Verification code sent. Check your inbox and enter the code below.');
         return;
       }
@@ -787,11 +813,14 @@ const Login = () => {
                 </div>
                 <div>
                   <label htmlFor="demo-email" className="mb-1.5 block text-xs font-bold text-slate-600">Which email will you use to sign in?</label>
-                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setDemoError(''); setDemoOtpSent(false); setDemoVerificationToken(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
+                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input id="demo-email" type="email" required maxLength={254} autoComplete="email" value={demoForm.email} onChange={(event) => { setDemoForm({ ...demoForm, email: event.target.value }); setDemoError(''); setDemoOtpSent(false); setDemoOtpResendSeconds(0); setDemoOtp(''); setDemoVerificationToken(''); }} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" /></div>
                 </div>
                 {demoOtpSent && <div>
                   <label htmlFor="demo-email-otp" className="mb-1.5 block text-xs font-bold text-slate-600">Email verification code</label>
                   <input id="demo-email-otp" inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={demoOtp} onChange={(event) => setDemoOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-center text-lg font-bold tracking-[0.4em] text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
+                  <button type="button" onClick={handleResendDemoOtp} disabled={demoLoading || demoOtpResendSeconds > 0} className="mt-2 text-xs font-bold text-indigo-700 transition hover:text-indigo-900 disabled:cursor-not-allowed disabled:text-slate-400">
+                    {demoOtpResendSeconds > 0 ? `Request new code in ${demoOtpResendSeconds}s` : 'Request new code'}
+                  </button>
                 </div>}
                 <div>
                   <label htmlFor="demo-phone" className="mb-1.5 block text-xs font-bold text-slate-600">Phone number <span className="font-medium text-rose-600">(required)</span></label>
