@@ -24,15 +24,15 @@ const createDemoLimiter = (collectionName, limit, message) => rateLimit({
 });
 
 const demoSignupLimiter = createDemoLimiter(
-  'demo_signup_rate_limits', 3,
+  'demo_signup_rate_limits_v2', 10,
   'Too many demo accounts requested. Please try again in an hour.'
 );
 const demoOtpSendLimiter = createDemoLimiter(
-  'demo_otp_send_rate_limits', 3,
+  'demo_otp_send_rate_limits_v2', 5,
   'Too many verification codes requested. Please try again in an hour.'
 );
 const demoOtpVerifyLimiter = createDemoLimiter(
-  'demo_otp_verify_rate_limits', 10,
+  'demo_otp_verify_rate_limits_v2', 10,
   'Too many verification attempts. Please try again in an hour.'
 );
 
