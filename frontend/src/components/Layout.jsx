@@ -1038,6 +1038,7 @@ export const Layout = ({ children }) => {
     { name: 'Customers', path: '/customers', icon: Users },
   ];
   const desktopNavItems = navItems.slice(0, navItems.findIndex((item) => item.name === 'Expenses') + 1);
+  const desktopMoreItems = navItems.slice(desktopNavItems.length);
 
   const [mobileOpen, setMobileOpen] =
     useState(false);
@@ -1067,6 +1068,9 @@ export const Layout = ({ children }) => {
 
   const [desktopOpenMenu, setDesktopOpenMenu] =
     useState(null);
+
+  const [desktopMoreOpen, setDesktopMoreOpen] =
+    useState(false);
 
   const [desktopDropdownLeft, setDesktopDropdownLeft] =
     useState(16);
@@ -1144,6 +1148,7 @@ export const Layout = ({ children }) => {
         setMobileOpen(false);
         setOpenMenu(null);
         setDesktopOpenMenu(null);
+        setDesktopMoreOpen(false);
       }
 
     };
@@ -2167,7 +2172,10 @@ export const Layout = ({ children }) => {
        
 <div
   data-desktop-nav-shell
-  onMouseLeave={() => setDesktopOpenMenu(null)}
+  onMouseLeave={() => {
+    setDesktopOpenMenu(null);
+    setDesktopMoreOpen(false);
+  }}
   className="relative hidden shrink-0 border-b border-slate-200/80 bg-white/90 shadow-lg lg:block"
 >
   <nav aria-label="Main navigation" className="h-[50px] min-w-0 overflow-x-auto">
@@ -2207,6 +2215,7 @@ export const Layout = ({ children }) => {
                 }
 
                 setMobileSalesOpen(false);
+                setDesktopMoreOpen(false);
                 setDesktopOpenMenu(item.name);
               }}
               onClick={(event) => {
@@ -2228,6 +2237,7 @@ export const Layout = ({ children }) => {
                 }
 
                 setMobileSalesOpen(false);
+                setDesktopMoreOpen(false);
 
                 setDesktopOpenMenu((current) =>
                   current === item.name ? null : item.name
@@ -2262,6 +2272,7 @@ export const Layout = ({ children }) => {
             end
             onClick={() => {
               setDesktopOpenMenu(null);
+              setDesktopMoreOpen(false);
               setOpenMenu(null);
               setMobileSalesOpen(false);
               handleNavigation(false);
@@ -2284,21 +2295,73 @@ export const Layout = ({ children }) => {
         );
       })}
 
-      <button
-        type="button"
-        onClick={() => {
-          setDesktopOpenMenu(null);
-          setOpenMenu(null);
-          setMobileOpen(true);
-        }}
-        aria-label="Open full navigation"
-        className="flex min-h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-2 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-      >
-        <MoreHorizontal className="h-4 w-4" />
-        More
-      </button>
+      <div className="relative z-[60] shrink-0">
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={desktopMoreOpen}
+          onMouseEnter={() => {
+            setDesktopOpenMenu(null);
+            setDesktopMoreOpen(true);
+          }}
+          onClick={() => {
+            setDesktopOpenMenu(null);
+            setDesktopMoreOpen(true);
+          }}
+          className={`flex min-h-10 items-center gap-1 whitespace-nowrap rounded-xl px-2 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+            desktopMoreOpen
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'
+          }`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+          More
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${desktopMoreOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+      </div>
     </div>
   </nav>
+
+  {desktopMoreOpen && desktopMoreItems.length > 0 && (
+    <div
+      role="menu"
+      aria-label="More navigation"
+      className="absolute right-4 top-[calc(100%-0.25rem)] z-[70] w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/20"
+    >
+      {desktopMoreItems.map((item) => {
+        const ItemIcon = item.icon;
+        const isActive = item.children
+          ? findActiveMenuName(location.pathname, location.search) === item.name
+          : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+
+        return (
+          <NavLink
+            key={item.name}
+            to={item.path}
+            end
+            role="menuitem"
+            onClick={() => {
+              setDesktopMoreOpen(false);
+              setDesktopOpenMenu(null);
+              setOpenMenu(null);
+              setMobileSalesOpen(false);
+              handleNavigation(false);
+            }}
+            className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-bold transition ${
+              isActive
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'
+            }`}
+          >
+            <ItemIcon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{item.name}</span>
+            {isActive && <ChevronRight className="ml-auto h-4 w-4 shrink-0" />}
+          </NavLink>
+        );
+      })}
+    </div>
+  )}
 
   {desktopOpenMenu &&
     desktopNavItems.find((item) => item.name === desktopOpenMenu)?.children && (
