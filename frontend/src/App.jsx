@@ -161,6 +161,60 @@ function AnalyticsPageTracker() {
   const { pathname } = useLocation();
 
   useEffect(() => {
+    const isPublicDownloadsPage = pathname === '/downloads';
+    const metadata = isPublicDownloadsPage
+      ? {
+          title: 'Download ArZaib POS for Android and Windows',
+          description: 'Download the ArZaib POS shop management app for Android or Windows. Manage electronics inventory, sales, customer ledgers and installments in Pakistan.',
+          robots: 'index, follow',
+        }
+      : {
+          title: pathname.startsWith('/super-admin') ? 'ArZaib POS | Administration' : 'ArZaib POS | Shop Management',
+          description: 'Secure ArZaib POS shop management application.',
+          robots: 'noindex, nofollow',
+        };
+
+    document.title = metadata.title;
+    let description = document.querySelector('meta[name="description"]');
+    if (!description) {
+      description = document.createElement('meta');
+      description.name = 'description';
+      document.head.appendChild(description);
+    }
+    description.content = metadata.description;
+
+    let robots = document.querySelector('meta[name="robots"]');
+    if (!robots) {
+      robots = document.createElement('meta');
+      robots.name = 'robots';
+      document.head.appendChild(robots);
+    }
+    robots.content = metadata.robots;
+
+    const socialMetadata = {
+      'og:title': metadata.title,
+      'og:description': metadata.description,
+      'og:type': 'website',
+      'twitter:card': 'summary',
+      'twitter:title': metadata.title,
+      'twitter:description': metadata.description,
+    };
+    Object.entries(socialMetadata).forEach(([property, content]) => {
+      const selector = property.startsWith('og:')
+        ? `meta[property="${property}"]`
+        : `meta[name="${property}"]`;
+      let tag = document.querySelector(selector);
+      if (!tag) {
+        tag = document.createElement('meta');
+        if (property.startsWith('og:')) tag.setAttribute('property', property);
+        else tag.name = property;
+        document.head.appendChild(tag);
+      }
+      tag.content = content;
+    });
+  }, [pathname]);
+
+  useEffect(() => {
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'page_view', {
         page_path: pathname,
