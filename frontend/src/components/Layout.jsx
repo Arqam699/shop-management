@@ -32,8 +32,6 @@ import {
   RefreshCw,
   Wallet,
   CalendarRange,
-  PanelLeftClose,
-  PanelLeftOpen,
   UserPlus,
   UserRound,
   List,
@@ -1039,6 +1037,7 @@ export const Layout = ({ children }) => {
     { name: 'Sales', path: '/sales', icon: ShoppingCart },
     { name: 'Customers', path: '/customers', icon: Users },
   ];
+  const desktopNavItems = navItems.slice(0, navItems.findIndex((item) => item.name === 'Expenses') + 1);
 
   const [mobileOpen, setMobileOpen] =
     useState(false);
@@ -1046,8 +1045,7 @@ export const Layout = ({ children }) => {
   const [mobileSalesOpen, setMobileSalesOpen] =
     useState(false);
 
-  const [sidebarCollapsed, setSidebarCollapsed] =
-    useState(false);
+  const sidebarCollapsed = false;
 
   const [logoutModalOpen, setLogoutModalOpen] =
     useState(false);
@@ -1066,6 +1064,12 @@ export const Layout = ({ children }) => {
 
   const [openMenu, setOpenMenu] =
     useState(null);
+
+  const [desktopOpenMenu, setDesktopOpenMenu] =
+    useState(null);
+
+  const [desktopDropdownLeft, setDesktopDropdownLeft] =
+    useState(16);
 
   useEffect(() => {
     const handleActivityNotifications = (event) => {
@@ -1139,6 +1143,7 @@ export const Layout = ({ children }) => {
       if (event.key === 'Escape') {
         setMobileOpen(false);
         setOpenMenu(null);
+        setDesktopOpenMenu(null);
       }
 
     };
@@ -1664,7 +1669,6 @@ export const Layout = ({ children }) => {
           h-full
           shrink-0
           flex-col
-          lg:flex
           z-30
           border-r
           border-slate-200/10
@@ -1682,8 +1686,8 @@ export const Layout = ({ children }) => {
         {sidebarContent}
       </aside>
 
-      {/* =================================================
-          MOBILE DRAWER
+          {/* =================================================
+          FULL NAVIGATION DRAWER
       ================================================= */}
 
       <div
@@ -1692,7 +1696,6 @@ export const Layout = ({ children }) => {
           inset-0
           z-50
           flex
-          lg:hidden
           transition-all
           duration-300
 
@@ -1851,11 +1854,12 @@ export const Layout = ({ children }) => {
             border-b
             border-slate-200/70
             bg-white/95
-            px-3
+            px-1.5
             py-2.5
             backdrop-blur-xl
             sm:px-6
-            sm:py-3.5
+            sm:py-1
+            lg:px-8
             pt-[calc(env(safe-area-inset-top)+0.625rem)]
           "
         >
@@ -1896,19 +1900,10 @@ export const Layout = ({ children }) => {
               <Menu className="h-5 w-5" />
             </button>
 
-            {/* DESKTOP COLLAPSE */}
+            {/* DESKTOP FULL MENU */}
 
             <button
-              onClick={() => {
-
-                setSidebarCollapsed(
-                  (previous) =>
-                    !previous
-                );
-
-                setOpenMenu(null);
-
-              }}
+              onClick={() => { setDesktopOpenMenu(null); setOpenMenu(null); setMobileOpen(true); }}
               className="
                 hidden
                 h-10
@@ -1931,23 +1926,9 @@ export const Layout = ({ children }) => {
                 active:scale-95
                 lg:flex
               "
-              title={
-                sidebarCollapsed
-                  ? 'Expand Sidebar'
-                  : 'Collapse Sidebar'
-              }
+              title="Open full navigation"
             >
-
-              {sidebarCollapsed ? (
-                <PanelLeftOpen
-                  className="h-5 w-5"
-                />
-              ) : (
-                <PanelLeftClose
-                  className="h-5 w-5"
-                />
-              )}
-
+              <Menu className="h-5 w-5" />
             </button>
 
             {/* TITLE */}
@@ -1956,7 +1937,7 @@ export const Layout = ({ children }) => {
 
               <p
                 className="
-                  text-[9px]
+                  text-[8px]
                   font-black
                   uppercase
                   tracking-[0.16em]
@@ -1975,7 +1956,7 @@ export const Layout = ({ children }) => {
                   font-black
                   tracking-tight
                   text-slate-800
-                  sm:text-xl
+                  sm:text-lg
                 "
               >
                 {settings?.shopName ||
@@ -2014,7 +1995,7 @@ export const Layout = ({ children }) => {
               RIGHT SIDE
           ================================================= */}
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-5">
 
             {/* ACTIVITY NOTIFICATIONS */}
             <div className="relative">
@@ -2027,7 +2008,7 @@ export const Layout = ({ children }) => {
               >
                 <Bell className="h-5 w-5" />
                 {unreadActivityCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[9px] font-black text-white">
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[8px] font-black text-white">
                     {unreadActivityCount > 99 ? '99+' : unreadActivityCount}
                   </span>
                 )}
@@ -2092,7 +2073,7 @@ export const Layout = ({ children }) => {
                             <span className="min-w-0 flex-1">
                               <span className="block text-xs font-black text-slate-800">{notification.title}</span>
                               <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-600">{notification.message}</span>
-                              <span className="mt-1 block text-[9px] font-semibold text-slate-400">{formatNotificationTime(notification.createdAt)} PKT</span>
+                              <span className="mt-1 block text-[8px] font-semibold text-slate-400">{formatNotificationTime(notification.createdAt)} PKT</span>
                             </span>
                           </span>
                         </button>
@@ -2140,8 +2121,8 @@ export const Layout = ({ children }) => {
               >
                 <Wallet
                   className="
-                    h-3.5
-                    w-3.5
+                    h-3
+                    w-3
                     text-blue-600
                   "
                 />
@@ -2182,6 +2163,192 @@ export const Layout = ({ children }) => {
           </div>
 
         </header>
+
+       
+<div
+  data-desktop-nav-shell
+  onMouseLeave={() => setDesktopOpenMenu(null)}
+  className="relative hidden shrink-0 border-b border-slate-200/80 bg-white/90 shadow-lg lg:block"
+>
+  <nav aria-label="Main navigation" className="h-[50px] min-w-0 overflow-x-auto">
+    <div className="flex w-max min-w-full items-center justify-start gap-6 px-4 py-1 2xl:justify-center">
+      {desktopNavItems.map((item) => {
+        const Icon = item.icon;
+        const isOpen = desktopOpenMenu === item.name;
+
+        const isActive = item.children
+          ? findActiveMenuName(location.pathname, location.search) === item.name
+          : location.pathname === item.path ||
+            location.pathname.startsWith(`${item.path}/`);
+
+        if (item.children) {
+          return (
+            <button
+              key={item.name}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              onMouseEnter={(event) => {
+                const shell = event.currentTarget.closest(
+                  '[data-desktop-nav-shell]'
+                );
+                const shellRect = shell?.getBoundingClientRect();
+                const buttonRect = event.currentTarget.getBoundingClientRect();
+
+                if (shellRect) {
+                  const maxLeft = Math.max(16, shellRect.width - 304);
+
+                  setDesktopDropdownLeft(
+                    Math.min(
+                      maxLeft,
+                      Math.max(16, buttonRect.left - shellRect.left)
+                    )
+                  );
+                }
+
+                setMobileSalesOpen(false);
+                setDesktopOpenMenu(item.name);
+              }}
+              onClick={(event) => {
+                const shell = event.currentTarget.closest(
+                  '[data-desktop-nav-shell]'
+                );
+                const shellRect = shell?.getBoundingClientRect();
+                const buttonRect = event.currentTarget.getBoundingClientRect();
+
+                if (shellRect) {
+                  const maxLeft = Math.max(16, shellRect.width - 304);
+
+                  setDesktopDropdownLeft(
+                    Math.min(
+                      maxLeft,
+                      Math.max(16, buttonRect.left - shellRect.left)
+                    )
+                  );
+                }
+
+                setMobileSalesOpen(false);
+
+                setDesktopOpenMenu((current) =>
+                  current === item.name ? null : item.name
+                );
+              }}
+              className={`flex min-h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-2 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+                isActive
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'
+              }`}
+            >
+              <Icon
+                className="h-4 w-4"
+                strokeWidth={isActive ? 2.5 : 2}
+              />
+
+              {item.name.trim()}
+
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${
+                  isOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+          );
+        }
+
+        return (
+          <NavLink
+            key={item.name}
+            to={item.path}
+            end
+            onClick={() => {
+              setDesktopOpenMenu(null);
+              setOpenMenu(null);
+              setMobileSalesOpen(false);
+              handleNavigation(false);
+            }}
+            className={() =>
+              `flex min-h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-2 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+                isActive
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'
+              }`
+            }
+          >
+            <Icon
+              className="h-4 w-4"
+              strokeWidth={isActive ? 2.5 : 2}
+            />
+
+            {item.name.trim()}
+          </NavLink>
+        );
+      })}
+
+      <button
+        type="button"
+        onClick={() => {
+          setDesktopOpenMenu(null);
+          setOpenMenu(null);
+          setMobileOpen(true);
+        }}
+        aria-label="Open full navigation"
+        className="flex min-h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-2 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+        More
+      </button>
+    </div>
+  </nav>
+
+  {desktopOpenMenu &&
+    desktopNavItems.find((item) => item.name === desktopOpenMenu)?.children && (
+      <div
+        role="menu"
+        aria-label={desktopOpenMenu.trim()}
+        style={{ left: desktopDropdownLeft }}
+        className="absolute top-[calc(100%-0.25rem)] z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/20"
+      >
+        {desktopNavItems
+          .find((item) => item.name === desktopOpenMenu)
+          .children.map((child) => {
+            const ChildIcon = child.icon;
+            const [childPath, childQuery] = child.path.split('?');
+
+            const isChildActive =
+              location.pathname === childPath &&
+              (!childQuery || location.search === `?${childQuery}`);
+
+            return (
+              <NavLink
+                key={child.path}
+                role="menuitem"
+                to={child.path}
+                end
+                onClick={() => {
+                  setDesktopOpenMenu(null);
+                  setOpenMenu(null);
+                  setMobileSalesOpen(false);
+                  handleNavigation(false);
+                }}
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-bold transition ${
+                  isChildActive
+                    ? 'bg-indigo-50 text-indigo-700'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-700'
+                }`}
+              >
+                <ChildIcon className="h-4 w-4 shrink-0" />
+
+                <span className="truncate">{child.name}</span>
+
+                {isChildActive && (
+                  <ChevronRight className="ml-auto h-4 w-4 shrink-0" />
+                )}
+              </NavLink>
+            );
+          })}
+      </div>
+    )}
+</div>
 
         {selectedActivityNotification && (
           <div
