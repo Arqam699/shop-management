@@ -83,6 +83,8 @@ const developmentOrigins = [
 
 const productionOrigins = [
   'https://app.arzaib.com',
+  'https://shop-management-bpc.pages.dev',
+
 ];
 
 // -----------------------------------------------------
