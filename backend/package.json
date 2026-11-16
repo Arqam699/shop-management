@@ -1,3 +1,4 @@
+
 {
   "name": "shop-management-backend",
   "version": "1.0.0",
@@ -20,12 +21,5 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.24.7",
     "node-cron": "^4.6.0"
-  },
-  "overrides": {
-    "archiver": {
-      "readdir-glob": {
-        "minimatch": "11.0.8"
-      }
-    }
   }
 }
