@@ -11,8 +11,11 @@
 //   TXT files are generated in memory and returned as ZIP.
 // ============================================================
 
-const mongoose = require('mongoose');
-const archiver = require('archiver');
+const mongoose = require('mongoose'); 
+const loadArchiver = async () => {
+  const imported = await import('archiver');
+  return imported.default || imported;
+};
 const fs = require('fs');
 const fsp = fs.promises;
 const os = require('os');
@@ -2861,6 +2864,7 @@ const createZipBufferFromTextFiles = async (
   files,
   zipRootName
 ) => {
+const archiver = await loadArchiver();
   return new Promise(
     async (
       resolve,
@@ -3757,7 +3761,7 @@ const createZipBufferFromDirectory = async (
       'Directory-based ZIP is disabled on Vercel. Use in-memory TXT ZIP generation.'
     );
   }
-
+const archiver = await loadArchiver();
   return new Promise(
     async (
       resolve,
