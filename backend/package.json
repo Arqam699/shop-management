@@ -9,7 +9,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "archiver": "^7.0.1",
+    "archiver": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -18,7 +18,14 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.2.1",
+    "mongoose": "^8.24.7",
     "node-cron": "^4.6.0"
+  },
+  "overrides": {
+    "archiver": {
+      "readdir-glob": {
+        "minimatch": "11.0.8"
+      }
+    }
   }
 }
