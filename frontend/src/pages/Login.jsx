@@ -479,33 +479,37 @@ const Login = () => {
 
             {/* Heading */}
 
-            <div className="mb-5">
+        {/* Heading */}
 
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
-                Admin Console
-              </span>
+<div className="mb-5">
 
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">
-                Welcome back
-              </h2>
+  <div className="flex items-center justify-between gap-2 mb-2">
 
-              <p className="text-xs text-slate-400 font-semibold mt-1">
-                Enter your authorized credentials to access
-                management dashboard.
-              </p>
+    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
+      Admin Console
+    </span>
 
-            </div>
+    <a
+      href="https://pos.arzaib.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 hover:border-blue-300"
+    >
+      <Globe className="w-3.5 h-3.5" />
+      Official Website
+    </a>
 
-            <div className="mb-3">
-  <a
-    href="https://pos.arzaib.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex h-9 items-center justify-center gap-2 px-4 text-[10px] font-bold text-blue-700 transition-all duration-200 hover:border-blue-300 hover:bg-blue-100 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-  >
-    <Globe className="h-3.5 w-3.5" />
-    Official Website
-  </a>
+  </div>
+
+  <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">
+    Welcome back
+  </h2>
+
+  <p className="text-xs text-slate-400 font-semibold mt-1">
+    Enter your authorized credentials to access
+    management dashboard.
+  </p>
+
 </div>
 
             {/* =================================================
