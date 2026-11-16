@@ -199,6 +199,20 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// HEALTH CHECK — independent of database initialization
+app.get('/health', (req, res) => {
+  return res.status(200).json({
+    status: 'ok',
+    service: 'Shop Management API',
+    environment: process.env.VERCEL === '1'
+      ? 'vercel'
+      : process.env.NODE_ENV || 'development',
+    backupScheduler: 'disabled',
+    backupMode: 'manual',
+    timezone: 'Asia/Karachi',
+  });
+});
+
 // Vercel invokes the exported Express app as a serverless handler. Do not
 // open a separate HTTP listener there; initialize shared database state only
 // for actual API requests. CORS handles OPTIONS above this middleware, so a
