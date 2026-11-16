@@ -23,6 +23,7 @@ import {
   X,
   UserRound,
   Download,
+   Globe,
 } from 'lucide-react';
 import api from '../utils/api';
 
@@ -495,17 +496,17 @@ const Login = () => {
 
             </div>
 
-            <div className="mb-4">
-              <a
-                href="https://pos.arzaib.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-[11px] font-bold text-blue-700 transition-all duration-200 hover:border-blue-300 hover:bg-blue-100 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                <Globe className="h-3.5 w-3.5" />
-                Official Website
-              </a>
-            </div>
+            <div className="mb-3">
+  <a
+    href="https://pos.arzaib.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-[11px] font-bold text-blue-700 transition-all duration-200 hover:border-blue-300 hover:bg-blue-100 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+  >
+    <Globe className="h-3.5 w-3.5" />
+    Official Website
+  </a>
+</div>
 
             {/* =================================================
                 ERROR / SUSPENSION MESSAGE
