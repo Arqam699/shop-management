@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -24,7 +23,6 @@ import {
   X,
   UserRound,
   Download,
-  ExternalLink,
 } from 'lucide-react';
 import api from '../utils/api';
 
@@ -712,20 +710,6 @@ const Login = () => {
             </button>
 
             {/* =================================================
-                OFFICIAL WEBSITE LINK
-            ================================================== */}
-
-            <a
-              href="https://pos.arzaib.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-xs font-black text-blue-700 transition-all duration-300 hover:border-blue-300 hover:bg-blue-100 hover:shadow-sm active:scale-[0.99]"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Visit Official Website
-            </a>
-
-            {/* =================================================
                 WHATSAPP SUPPORT
             ================================================== */}
 
@@ -776,18 +760,18 @@ const Login = () => {
                 Secure Session Guard
               </span>
 
-            <span className="flex items-center gap-2">
-  © {new Date().getFullYear()} POS Hub
-  <span className="text-slate-300">|</span>
-  <a
-    href="https://pos.arzaib.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="text-blue-600 hover:text-blue-800 transition-colors"
-  >
-    Official Website
-  </a>
-</span>
+              <span className="flex items-center gap-2">
+                © {new Date().getFullYear()} POS Hub
+                <span className="text-slate-300">|</span>
+                <a
+                  href="https://pos.arzaib.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  Official Website
+                </a>
+              </span>
 
             </div>
 
