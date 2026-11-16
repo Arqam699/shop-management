@@ -776,9 +776,18 @@ const Login = () => {
                 Secure Session Guard
               </span>
 
-              <span>
-                © {new Date().getFullYear()} POS Hub
-              </span>
+            <span className="flex items-center gap-2">
+  © {new Date().getFullYear()} POS Hub
+  <span className="text-slate-300">|</span>
+  <a
+    href="https://pos.arzaib.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="text-blue-600 hover:text-blue-800 transition-colors"
+  >
+    Official Website
+  </a>
+</span>
 
             </div>
 
