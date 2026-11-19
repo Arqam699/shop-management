@@ -699,8 +699,13 @@ const calculatePaymentScore = async ({
     // Payment.amount is used as fallback where needed.
     // ===================================================
 
+    const totalPlanBalanceReductions = customerPlans.reduce(
+      (sum, plan) => sum + Number(plan.balanceReduction || 0),
+      0
+    );
+
     let totalPaid =
-      totalPaidFromInstallments;
+      totalPaidFromInstallments + totalPlanBalanceReductions;
 
     if (
       totalPaid <= 0 &&
@@ -717,8 +722,10 @@ const calculatePaymentScore = async ({
     // If no installments exist, use plan balance.
     // ===================================================
 
-    let outstanding =
-      totalOutstanding;
+    let outstanding = Math.max(
+      0,
+      totalOutstanding - totalPlanBalanceReductions
+    );
 
     if (
       normalizedInstallments.length ===

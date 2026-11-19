@@ -48,8 +48,6 @@ import {
 
 const PAGE_SIZE = 20;
 
-const FINGERPRINT_AGENT_URL = 'http://127.0.0.1:9000';
-
 const Customers = () => {
   const navigate = useNavigate();
 
@@ -66,13 +64,6 @@ const Customers = () => {
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerSelectorSearch, setCustomerSelectorSearch] = useState('');
-
-  // =====================================================
-  // FINGERPRINT SEARCH
-  // =====================================================
-  const [fingerprintSearching, setFingerprintSearching] = useState(false);
-  const [fingerprintMessage, setFingerprintMessage] = useState('');
-  const [fingerprintResult, setFingerprintResult] = useState(null);
 
   // =====================================================
   // COMPLETE PROFILE / LEDGER MODAL
@@ -436,203 +427,6 @@ const Customers = () => {
   };
 
   // =====================================================
-  // FINGERPRINT SCANNER & SEARCH
-  // =====================================================
-  const checkFingerprintAgent = async () => {
-    try {
-      const response = await fetch(`${FINGERPRINT_AGENT_URL}/health`);
-      if (!response.ok) {
-        throw new Error('Fingerprint agent is unavailable.');
-      }
-      const data = await response.json();
-      if (!data.success || !data.readerConnected) {
-        throw new Error('DigitalPersona fingerprint reader is not connected.');
-      }
-      return true;
-    } catch (error) {
-      console.error('Fingerprint agent health error:', error);
-      throw new Error(
-        'Fingerprint scanner agent is not running or DigitalPersona reader is not connected.'
-      );
-    }
-  };
-
-  const handleFingerprintSearch = async () => {
-    if (fingerprintSearching) return;
-
-    try {
-      setFingerprintSearching(true);
-      setFingerprintResult(null);
-      setFingerprintMessage('Checking fingerprint scanner...');
-
-      await checkFingerprintAgent();
-
-      setFingerprintMessage('Scanner ready. Place finger on DigitalPersona reader...');
-
-      const captureResponse = await fetch(
-        `${FINGERPRINT_AGENT_URL}/fingerprint/capture`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            purpose: 'customer-search',
-          }),
-        }
-      );
-
-      let captureData;
-      try {
-        captureData = await captureResponse.json();
-      } catch {
-        throw new Error('Fingerprint agent returned an invalid response.');
-      }
-
-      if (!captureResponse.ok || !captureData.success) {
-        throw new Error(captureData.message || 'Fingerprint capture failed.');
-      }
-
-      if (!captureData.fmd) {
-        throw new Error('Fingerprint template was not returned by scanner.');
-      }
-
-      const scannedFmd = captureData.fmd;
-      setFingerprintMessage('Fingerprint captured. Loading registered fingerprints...');
-
-      const templatesResponse = await api.post('/customers/fingerprint/templates');
-      const templatesData = templatesResponse.data;
-
-      if (!templatesData?.success) {
-        throw new Error(
-          templatesData?.message || 'Failed to load fingerprint templates.'
-        );
-      }
-
-      const templates = Array.isArray(templatesData.templates)
-        ? templatesData.templates
-        : [];
-
-      if (templates.length === 0) {
-        throw new Error('No registered fingerprints were found for this shop.');
-      }
-
-      setFingerprintMessage(
-        `Matching fingerprint against ${templates.length} registered fingerprint(s)...`
-      );
-
-      const identifyResponse = await fetch(
-        `${FINGERPRINT_AGENT_URL}/fingerprint/identify`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fmd: scannedFmd,
-            templates,
-          }),
-        }
-      );
-
-      let identifyData;
-      try {
-        identifyData = await identifyResponse.json();
-      } catch {
-        throw new Error(
-          'Fingerprint identification agent returned an invalid response.'
-        );
-      }
-
-      if (!identifyResponse.ok) {
-        throw new Error(
-          identifyData.message || 'Fingerprint identification failed.'
-        );
-      }
-
-      if (!identifyData.matched) {
-        setFingerprintResult({ matched: false });
-        setFingerprintMessage('No customer or guarantor matched this fingerprint.');
-        return;
-      }
-
-      const matchedCustomerId = identifyData.id;
-      const matchedPersonType = identifyData.type;
-
-      if (!matchedCustomerId) {
-        throw new Error('Fingerprint matched but customer ID was not returned.');
-      }
-
-      setFingerprintMessage('Fingerprint matched. Loading customer details...');
-
-      const customerResponse = await api.get(`/customers/${matchedCustomerId}`);
-      if (!customerResponse.data?.success) {
-        throw new Error(
-          customerResponse.data?.message || 'Matched customer profile was not found.'
-        );
-      }
-
-      const fullCustomerData = customerResponse.data.data;
-      if (!fullCustomerData) {
-        throw new Error('Matched customer profile was not returned by server.');
-      }
-
-      const matchedCustomer = {
-        _id: fullCustomerData._id,
-        customerId: fullCustomerData.customerId,
-        fullName: fullCustomerData.fullName,
-        fatherName: fullCustomerData.fatherName,
-        mobileNumber: fullCustomerData.mobileNumber,
-        alternateMobileNumber: fullCustomerData.alternateMobileNumber,
-        cnic: fullCustomerData.cnic,
-        address: fullCustomerData.address,
-        city: fullCustomerData.city,
-        email: fullCustomerData.email,
-        notes: fullCustomerData.notes,
-        paymentScore: fullCustomerData.paymentScore,
-        guarantor1: fullCustomerData.guarantor1
-          ? {
-              name: fullCustomerData.guarantor1.name,
-              mobileNumber: fullCustomerData.guarantor1.mobileNumber,
-            }
-          : null,
-        guarantor2: fullCustomerData.guarantor2
-          ? {
-              name: fullCustomerData.guarantor2.name,
-              mobileNumber: fullCustomerData.guarantor2.mobileNumber,
-            }
-          : null,
-      };
-
-      setFingerprintResult({
-        matched: true,
-        customer: matchedCustomer,
-        personType: matchedPersonType,
-      });
-
-      setSearchTerm(matchedCustomer.customerId || matchedCustomer.fullName || '');
-      setSelectedCustomerId(matchedCustomer._id);
-      setActiveSection('list');
-      setFingerprintMessage('Fingerprint matched successfully. Customer details found.');
-    } catch (error) {
-      console.error('Fingerprint search error:', error);
-      setFingerprintResult({
-        matched: false,
-        error: error.message || 'Fingerprint search failed.',
-      });
-      setFingerprintMessage(error.message || 'Fingerprint search failed.');
-    } finally {
-      setFingerprintSearching(false);
-    }
-  };
-
-  const clearFingerprintResult = () => {
-    setFingerprintResult(null);
-    setFingerprintMessage('');
-    setSearchTerm('');
-  };
-
-  // =====================================================
   // DELETE
   // =====================================================
   const triggerDeleteConfirmation = (id, name) => {
@@ -659,9 +453,6 @@ const Customers = () => {
           prev.filter((customer) => customer._id !== customerId)
         );
 
-        if (fingerprintResult?.customer?._id === customerId) {
-          clearFingerprintResult();
-        }
 
         if (String(selectedCustomerId) === String(customerId)) {
           setSelectedCustomerId('');
@@ -793,13 +584,6 @@ const Customers = () => {
         minute: '2-digit',
       }).format(parsed)} PKT`,
     };
-  };
-
-  const getPersonTypeLabel = (type) => {
-    if (type === 'customer') return 'Main Customer';
-    if (type === 'guarantor1') return 'Zamanti 1';
-    if (type === 'guarantor2') return 'Zamanti 2';
-    return type || '-';
   };
 
   // =====================================================
@@ -1162,13 +946,10 @@ const Customers = () => {
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-black text-xs text-indigo-600">
-                                  Plan: {plan.planId || '-'}
+                                  Invoice: {plan.sale?.saleId || 'Invoice unavailable'}
                                 </span>
                                 <StatusBadge status={plan.status} />
                               </div>
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                Linked Invoice: {plan.sale?.saleId || '-'}
-                              </p>
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -1436,24 +1217,7 @@ const Customers = () => {
       headerClassName: 'px-6 py-4',
       className:
         'px-6 py-4 font-black text-indigo-600 tracking-wider whitespace-nowrap',
-      render: (customer) => {
-        const isFingerprintMatch =
-          fingerprintResult?.matched &&
-          String(fingerprintResult?.customer?._id) ===
-            String(customer._id);
-
-        return (
-          <>
-            {customer.customerId}
-            {isFingerprintMatch && (
-              <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black">
-                <Fingerprint className="w-2.5 h-2.5" />
-                MATCH
-              </span>
-            )}
-          </>
-        );
-      },
+      render: (customer) => customer.customerId,
     },
     {
       key: 'fullName',
@@ -1567,21 +1331,7 @@ const Customers = () => {
     },
   ];
 
-  const getCustomerRowClassName = (
-    customer
-  ) => {
-    const isFingerprintMatch =
-      fingerprintResult?.matched &&
-      String(
-        fingerprintResult?.customer?._id
-      ) === String(customer._id);
-
-    return `transition-colors ${
-      isFingerprintMatch
-        ? 'bg-emerald-50/70 ring-1 ring-inset ring-emerald-300'
-        : 'hover:bg-slate-50/80'
-    }`;
-  };
+  const getCustomerRowClassName = () => 'transition-colors hover:bg-slate-50/80';
 
   // =====================================================
   // CUSTOMER LIST RENDER
@@ -1705,31 +1455,12 @@ const Customers = () => {
               </h1>
 
               <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
-                Biometric fingerprint verification, registration, payment scoring, profile details, and complete financial ledgers.
+                Customer registration, payment scoring, profile details, and complete financial ledgers.
               </p>
             </div>
 
             {/* ACTION BUTTONS */}
             <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={handleFingerprintSearch}
-                disabled={fingerprintSearching}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-              >
-                {fingerprintSearching ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                    <span>Scanning Scanner...</span>
-                  </>
-                ) : (
-                  <>
-                    <Fingerprint className="w-4 h-4 text-blue-400" />
-                    <span>Fingerprint Search</span>
-                  </>
-                )}
-              </button>
-
               <Link
                 to="/customers/add"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
@@ -1742,104 +1473,6 @@ const Customers = () => {
           </div>
         </div>
       </section>
-
-      {/* FINGERPRINT SCANNER STATUS BANNER */}
-      {(fingerprintSearching || fingerprintMessage || fingerprintResult) && (
-        <div
-          className={`rounded-2xl border p-4 sm:p-5 shadow-sm animate-[pageEnter_0.3s_ease-out] ${
-            fingerprintResult?.matched
-              ? 'bg-emerald-50 border-emerald-200'
-              : fingerprintResult?.error
-              ? 'bg-rose-50 border-rose-200'
-              : fingerprintResult?.matched === false
-              ? 'bg-amber-50 border-amber-200'
-              : 'bg-blue-50 border-blue-200'
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                  fingerprintResult?.matched
-                    ? 'bg-emerald-500 text-white'
-                    : fingerprintResult?.error
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-blue-600 text-white'
-                }`}
-              >
-                {fingerprintSearching ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : fingerprintResult?.matched ? (
-                  <CheckCircle2 className="w-5 h-5" />
-                ) : fingerprintResult?.error ? (
-                  <XCircle className="w-5 h-5" />
-                ) : (
-                  <Fingerprint className="w-5 h-5" />
-                )}
-              </div>
-
-              <div>
-                <h4 className="text-sm font-black text-slate-900">
-                  {fingerprintSearching
-                    ? 'Biometric Fingerprint Matching'
-                    : fingerprintResult?.matched
-                    ? 'Customer Identified via Fingerprint'
-                    : fingerprintResult?.error
-                    ? 'Fingerprint Scanning Error'
-                    : 'Fingerprint Recognition'}
-                </h4>
-
-                <p className="text-xs text-slate-600 font-semibold mt-0.5">
-                  {fingerprintMessage}
-                </p>
-
-                {fingerprintResult?.matched && fingerprintResult.customer && (
-                  <div className="mt-3.5 space-y-1.5">
-                    <p className="text-sm font-black text-emerald-900">
-                      Customer: {fingerprintResult.customer.fullName}
-                    </p>
-
-                    <div className="flex flex-wrap gap-2 text-xs font-bold text-emerald-700">
-                      <span>ID: {fingerprintResult.customer.customerId}</span>
-                      <span>•</span>
-                      <span>Verified: {getPersonTypeLabel(fingerprintResult.personType)}</span>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <div className="bg-white/80 border border-emerald-200 rounded-xl px-3 py-2">
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">Mobile</p>
-                        <p className="text-xs font-black text-slate-800 mt-0.5">{fingerprintResult.customer.mobileNumber}</p>
-                      </div>
-
-                      <div className="bg-white/80 border border-emerald-200 rounded-xl px-3 py-2">
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">CNIC</p>
-                        <p className="text-xs font-black text-slate-800 mt-0.5">{fingerprintResult.customer.cnic || '—'}</p>
-                      </div>
-
-                      <div className="bg-white/80 border border-emerald-200 rounded-xl px-3 py-2">
-                        <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">Address</p>
-                        <p className="text-xs font-black text-slate-800 mt-0.5 truncate">{fingerprintResult.customer.address || '—'}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-start">
-              {!fingerprintSearching && (
-                <button
-                  type="button"
-                  onClick={clearFingerprintResult}
-                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-black transition-all"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* SECTION NAVIGATION SWITCHER TABS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 p-1.5 bg-slate-100/50 rounded-2xl border border-slate-200/60 backdrop-blur-sm">

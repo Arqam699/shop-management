@@ -14,9 +14,6 @@ import {
   CreditCard,
   Search,
   Printer,
-  RectangleVertical,
-  RectangleHorizontal,
-  Scissors,
   X,
   ShieldCheck,
   Trash2,
@@ -34,17 +31,22 @@ import {
   Banknote,
   Receipt,
   ArrowDownCircle,
-  User,
   Package,
-  Fingerprint,
   Camera,
 } from 'lucide-react';
+
+const getPaymentInvoiceNumber = (payment) => String(
+  payment.sale?.saleId || payment.installmentPlan?.sale?.saleId || ''
+);
 
 const Payments = () => {
   const { settings } = useSettings();
   const [searchParams] = useSearchParams();
   const requestedReceiptId = searchParams.get('receipt');
+  const requestedPrint = searchParams.get('print') === '1';
+  const closeAfterPrint = searchParams.get('close') === '1';
   const handledReceiptId = useRef('');
+  const printedReceiptId = useRef('');
 
   // =====================================================
   // STATE
@@ -216,18 +218,6 @@ const Payments = () => {
     });
   };
 
-  const formatDateOnly = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    if (Number.isNaN(date.getTime())) return 'N/A';
-
-    return date.toLocaleDateString('en-PK', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
   const formatTimeOnly = (dateStr) => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
@@ -350,30 +340,53 @@ const Payments = () => {
   // =====================================================
   // SEARCH + DATE FILTER
   // =====================================================
+  const normalizedInvoiceSearch = searchTerm.trim().toLowerCase();
+  const searchDigits = normalizedInvoiceSearch.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const isInvoiceLookupTerm =
+    /^\d{1,10}$/.test(searchDigits) || /^[a-z]+[-/]?\d+[a-z0-9-]*$/i.test(normalizedInvoiceSearch);
+  const hasInvoiceNumberMatch = !isInvoiceLookupTerm || payments.some((payment) => {
+    const invoiceNumber = getPaymentInvoiceNumber(payment).toLowerCase();
+    return invoiceNumber.includes(normalizedInvoiceSearch) ||
+      invoiceNumber.replace(/[^a-z0-9]/g, '').includes(normalizedInvoiceSearch.replace(/[^a-z0-9]/g, ''));
+  });
+
   const filteredPayments = useMemo(() => {
+    const term = normalizedInvoiceSearch;
+    const hasExactInvoiceSearch = Boolean(searchDigits) && payments.some((payment) => {
+      const invoiceDigits = getPaymentInvoiceNumber(payment).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+      return invoiceDigits === searchDigits;
+    });
+
     return payments.filter((payment) => {
       const name = payment.customer?.fullName?.toLowerCase() || '';
       const mobile = payment.customer?.mobileNumber || '';
       const cnic = payment.customer?.cnic || payment.customer?.CNIC || '';
-      const invoiceNumber = (
-        payment.sale?.saleId ||
-        payment.installmentPlan?.sale?.saleId ||
-        ''
-      ).toLowerCase();
-      const term = searchTerm.toLowerCase().trim();
+      const invoiceNumber = getPaymentInvoiceNumber(payment).toLowerCase();
+      const invoiceDigits = invoiceNumber.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+      const matchesExactInvoiceNumber = Boolean(searchDigits) && invoiceDigits === searchDigits;
+      const matchesInvoiceNumber =
+        invoiceNumber.includes(term) ||
+        invoiceNumber.replace(/[^a-z0-9]/g, '').includes(term.replace(/[^a-z0-9]/g, ''));
 
-      const matchesSearch =
-        name.includes(term) ||
-        mobile.includes(term) ||
-        matchesMobileSearch(mobile, term) ||
-        matchesCnicSearch(cnic, term) ||
-        invoiceNumber.includes(term);
+      const matchesSearch = hasExactInvoiceSearch
+        ? matchesExactInvoiceNumber
+        : name.includes(term) ||
+          mobile.includes(term) ||
+          matchesMobileSearch(mobile, term) ||
+          matchesCnicSearch(cnic, term) ||
+          matchesInvoiceNumber;
 
       const matchesDate = isDateInFilter(payment.paymentDate || payment.createdAt);
 
       return matchesSearch && matchesDate;
-    });
-  }, [payments, searchTerm, filterPreset, customStartDate, customEndDate]);
+    }).sort((a, b) =>
+      getPaymentInvoiceNumber(b).localeCompare(
+        getPaymentInvoiceNumber(a),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      ) || new Date(b.paymentDate || b.createdAt || 0) - new Date(a.paymentDate || a.createdAt || 0)
+    );
+  }, [payments, normalizedInvoiceSearch, searchDigits, filterPreset, customStartDate, customEndDate]);
 
   // =====================================================
   // INVOICE-WISE GROUPING
@@ -406,29 +419,16 @@ const Payments = () => {
       invoiceGroupsMap[invoiceNo].receipts.push(payment);
     });
 
-    return Object.values(invoiceGroupsMap);
+    return Object.values(invoiceGroupsMap).sort((a, b) =>
+      String(b.invoiceNumber).localeCompare(
+        String(a.invoiceNumber),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      )
+    );
   }, [filteredPayments]);
 
   // =========================================================
-  // PRINT MODE: portrait / landscape A4, half = A4 top-half only
-  // =========================================================
-  const [printOrientation, setPrintOrientation] = useState(() => {
-    try {
-      return localStorage.getItem('pos_payment_orientation') || 'portrait';
-    } catch {
-      return 'portrait';
-    }
-  });
-
-  const handleOrientationChange = (mode) => {
-    setPrintOrientation(mode);
-    try {
-      localStorage.setItem('pos_payment_orientation', mode);
-    } catch {
-      /* storage unavailable */
-    }
-  };
-
   const handlePrint = async () => {
   const receipt = document.getElementById('printable-receipt-content');
 
@@ -445,11 +445,9 @@ const Payments = () => {
     );
 
     const MM_TO_PX = 3.779527559;
+    const PRINT_TEXT_SCALE = 1.45;
 
-    // A4 printable height: 287mm portrait / 200mm landscape
-    // (5mm top + 5mm bottom margin)
-    const PRINTABLE_HEIGHT_MM =
-      printOrientation === 'half' ? 140 : printOrientation === 'landscape' ? 200 : 287;
+    const PRINTABLE_HEIGHT_MM = 132;
     const A4_PRINTABLE_HEIGHT_PX = PRINTABLE_HEIGHT_MM * MM_TO_PX;
 
     const contentHeight = receipt.scrollHeight;
@@ -457,7 +455,7 @@ const Payments = () => {
     // Receipt ko automatically single page mein fit karega
     const scale = Math.min(
       1,
-      A4_PRINTABLE_HEIGHT_PX / contentHeight
+      A4_PRINTABLE_HEIGHT_PX / (contentHeight * PRINT_TEXT_SCALE)
     );
 
     receipt.style.setProperty(
@@ -467,8 +465,10 @@ const Payments = () => {
 
     receipt.style.setProperty(
       '--print-height',
-      `${contentHeight * scale}px`
+      `${contentHeight}px`
     );
+    receipt.style.setProperty('--print-text-scale', String(PRINT_TEXT_SCALE));
+    receipt.style.setProperty('--print-width', `${198 / PRINT_TEXT_SCALE}mm`);
   }
 
   window.print();
@@ -478,6 +478,8 @@ const Payments = () => {
     if (receipt) {
       receipt.style.removeProperty('--print-scale');
       receipt.style.removeProperty('--print-height');
+      receipt.style.removeProperty('--print-text-scale');
+      receipt.style.removeProperty('--print-width');
     }
   }, 500);
 };
@@ -488,19 +490,27 @@ const Payments = () => {
     return () => {
       if (window.__shopPrintCurrentView === handlePrint) delete window.__shopPrintCurrentView;
     };
-  }, [activeReceipt, printOrientation]);
+  }, [activeReceipt]);
+
+  useEffect(() => {
+    if (!requestedPrint || !activeReceipt?._id || printedReceiptId.current === activeReceipt._id) return undefined;
+    printedReceiptId.current = activeReceipt._id;
+    const closeReceiptWindow = () => {
+      if (closeAfterPrint) window.close();
+    };
+    if (closeAfterPrint) window.addEventListener('afterprint', closeReceiptWindow);
+    const timeoutId = window.setTimeout(() => handlePrint(), 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (closeAfterPrint) window.removeEventListener('afterprint', closeReceiptWindow);
+    };
+  }, [activeReceipt, requestedPrint, closeAfterPrint]);
 
 
   // =====================================================
   // CURRENT RECEIPT / PLAN COMPUTATIONS
   // =====================================================
   const planDoc = activeReceipt?.installmentPlan;
-  const totalPlanAmount = Number(planDoc?.totalAmount || 0);
-  const downPayment = Number(planDoc?.downPayment || 0);
-  const activeReceiptDate = activeReceipt
-    ? new Date(activeReceipt.paymentDate || activeReceipt.createdAt)
-    : null;
-
   const currentInstallmentNumber = Number(
     activeReceipt?.currentInstallmentNumber ||
       activeReceipt?.installment?.installmentNumber ||
@@ -524,135 +534,6 @@ const Payments = () => {
       ? `Month #${currentInstallmentNumber}`
       : 'Installment N/A';
 
-  const getRecordId = (record) => {
-    if (!record) return '';
-
-    if (typeof record === 'object') {
-      return String(record._id || record.id || '');
-    }
-
-    return String(record);
-  };
-
-  const getPaymentBreakdown = (payment) => {
-    const allocations = Array.isArray(payment?.allocations)
-      ? [...payment.allocations].sort(
-          (a, b) =>
-            Number(a?.installmentNumber || 0) -
-            Number(b?.installmentNumber || 0)
-        )
-      : [];
-
-    const currentAllocation = allocations[0] || null;
-    const installmentNumber = Number(
-      currentAllocation?.installmentNumber ||
-        payment?.installment?.installmentNumber ||
-        0
-    );
-    const savedOriginalInstallmentAmount = Number(
-      payment?.originalInstallmentAmount || 0
-    );
-    const payableAtPayment = Number(
-      currentAllocation?.previousRemaining ??
-        (savedOriginalInstallmentAmount > 0
-          ? savedOriginalInstallmentAmount
-          : null) ??
-        payment?.installment?.originalAmount ??
-        payment?.installment?.amount ??
-        0
-    );
-    const actualPaid = Number(payment?.amount || 0);
-    const paidToCurrentInstallment = Number(
-      currentAllocation?.amount ?? Math.min(actualPaid, payableAtPayment)
-    );
-    const remainingAfterPayment = Number(
-      currentAllocation?.remainingAfterPayment ??
-        Math.max(0, payableAtPayment - paidToCurrentInstallment)
-    );
-    const extraPaid = Math.max(
-      Number(payment?.carryForwardAmount || 0),
-      Math.max(0, actualPaid - paidToCurrentInstallment)
-    );
-
-    return {
-      ...payment,
-      installmentNumber,
-      payableAtPayment,
-      actualPaid,
-      paidToCurrentInstallment,
-      remainingAfterPayment,
-      extraPaid,
-    };
-  };
-
-  const paymentsUpToReceipt = useMemo(() => {
-    if (!activeReceipt || !activeReceiptDate) {
-      return [];
-    }
-
-    return payments.filter((payment) => {
-      const samePlan =
-        getRecordId(payment.installmentPlan) ===
-        getRecordId(planDoc);
-
-      const sameSale =
-        getRecordId(payment.sale) ===
-        getRecordId(activeReceipt.sale);
-
-      const sameInvoice = samePlan || sameSale;
-      const paymentDate = new Date(payment.paymentDate || payment.createdAt);
-
-      if (Number.isNaN(paymentDate.getTime())) {
-        return false;
-      }
-
-      return sameInvoice && paymentDate <= activeReceiptDate;
-    });
-  }, [activeReceipt, activeReceiptDate, payments, planDoc]);
-
-  const previousPaymentReceipts = useMemo(() => {
-    const activeReceiptId = getRecordId(activeReceipt);
-
-    return paymentsUpToReceipt
-      .filter((payment) => getRecordId(payment) !== activeReceiptId)
-      .map(getPaymentBreakdown)
-      .sort(
-        (a, b) =>
-          new Date(a.paymentDate || a.createdAt) -
-          new Date(b.paymentDate || b.createdAt)
-      );
-  }, [activeReceipt, paymentsUpToReceipt]);
-
-  const previousPaymentsReceived = previousPaymentReceipts.reduce(
-    (sum, payment) => sum + payment.actualPaid,
-    0
-  );
-
-  const paymentAmountUpToReceipt = paymentsUpToReceipt.reduce(
-    (sum, payment) => sum + Number(payment.amount || 0),
-    0
-  );
-
-  const hasSeparateDownPaymentPayment =
-    isDownPaymentFirstInstallment &&
-    paymentsUpToReceipt.some((payment) => {
-      const number = Number(
-        payment.installment?.installmentNumber ||
-          payment.currentInstallmentNumber ||
-          payment.allocations?.[0]?.installmentNumber ||
-          0
-      );
-
-      return number === 1 && Number(payment.amount || 0) === downPayment;
-    });
-
-  const totalPaidSoFar =
-    downPayment > 0 && !hasSeparateDownPaymentPayment
-      ? downPayment + paymentAmountUpToReceipt
-      : paymentAmountUpToReceipt;
-
-  const remainingDuesAtReceipt = Math.max(0, totalPlanAmount - totalPaidSoFar);
-
   const invoiceBillNumber =
     activeReceipt?.sale?.saleId ||
     planDoc?.sale?.saleId ||
@@ -660,57 +541,37 @@ const Payments = () => {
     'N/A';
 
   const currentReceiptAmount = Number(activeReceipt?.amount || 0);
-  const currentInstallmentAllocation = Array.isArray(
-    activeReceipt?.allocations
-  )
-    ? activeReceipt.allocations.find(
-        (allocation) =>
-          allocation.allocationType === 'Current Installment'
-      ) || activeReceipt.allocations[0]
-    : null;
   const originalInstallmentAmount = Number(
     activeReceipt?.originalInstallmentAmount ||
       currentInstallment?.originalAmount ||
       currentInstallment?.amount ||
       0
   );
-  const payableAtCurrentPayment = Number(
-    currentInstallmentAllocation?.previousRemaining ??
-      originalInstallmentAmount
+  const receiptInstallmentAllocation = Array.isArray(activeReceipt?.allocations)
+    ? activeReceipt.allocations.find(
+        (allocation) => Number(allocation.installmentNumber) === currentInstallmentNumber
+      ) || activeReceipt.allocations[0]
+    : null;
+  const totalPlanRemainingBalance = Math.max(
+    0,
+    Number(
+      activeReceipt?.planRemainingBalanceAfterPayment ??
+        planDoc?.remainingBalance ??
+        activeReceipt?.remainingBalance ??
+        0
+    )
   );
-
-  // Use the saved allocation snapshot for a receipt. This keeps an old
-  // receipt accurate even if the customer later pays the same installment.
-  const paidForCurrentInstallment = Number(
-    currentInstallmentAllocation?.amount ??
-      Math.min(currentReceiptAmount, originalInstallmentAmount)
+  const remainingOnScheduledMonth = Math.max(
+    0,
+    totalPlanRemainingBalance <= 0
+      ? 0
+      : Number(
+          receiptInstallmentAllocation?.remainingAfterPayment ??
+            currentInstallment?.remainingAmount ??
+            (Number(receiptInstallmentAllocation?.previousRemaining ?? originalInstallmentAmount) -
+              Number(receiptInstallmentAllocation?.amount ?? currentReceiptAmount))
+        )
   );
-
-  const remainingOnCurrentInstallment = Number(
-    currentInstallmentAllocation?.remainingAfterPayment ??
-      currentInstallment?.remainingAmount ??
-      Math.max(
-        0,
-        originalInstallmentAmount - paidForCurrentInstallment
-      )
-  );
-
-  const isPartialCurrentInstallmentPayment =
-    paidForCurrentInstallment > 0 &&
-    remainingOnCurrentInstallment > 0;
-
-  const currentPaidTotal = currentInstallment
-    ? Number(currentInstallment.paidAmount ?? currentReceiptAmount)
-    : currentReceiptAmount;
-
-  const currentRemaining = currentInstallment
-    ? Number(
-        currentInstallment.remainingAmount ??
-          Math.max(0, originalInstallmentAmount - currentPaidTotal)
-      )
-    : 0;
-
-  const carryForwardAmount = Number(activeReceipt?.carryForwardAmount || 0);
 
   const formatMoney = (val) =>
     `${settings?.currency || 'PKR'} ${Number(val || 0).toLocaleString('en-PK')}`;
@@ -872,6 +733,23 @@ const Payments = () => {
         {/* =====================================================
             TAB 0 — INVOICE CLASSIFICATION LIST
         ====================================================== */}
+        {!loading && searchTerm.trim() && filteredPayments.length === 0 && (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center text-sm font-black text-amber-900"
+          >
+            No invoice found for &quot;{searchTerm.trim()}&quot;.
+          </div>
+        )}
+        {!loading && isInvoiceLookupTerm && !hasInvoiceNumberMatch && filteredPayments.length > 0 && (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-black text-amber-900"
+          >
+            No invoice number matched &quot;{searchTerm.trim()}&quot;. Other search matches are shown below.
+          </div>
+        )}
+
         {viewModeTab === 0 && (
           <div className="premium-card overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
@@ -899,7 +777,9 @@ const Payments = () => {
               </div>
             ) : invoiceGroupsList.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-xs font-semibold">
-                No invoice payment collections found for this selection.
+                {searchTerm.trim()
+                  ? `Koi invoice nahi mila: “${searchTerm.trim()}”.`
+                  : 'No invoice payment collections found for this selection.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -984,7 +864,9 @@ const Payments = () => {
           <div className="premium-card overflow-hidden">
             {filteredPayments.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-xs font-semibold">
-                No receipts logged for this selection.
+                {searchTerm.trim()
+                  ? `Koi invoice nahi mila: “${searchTerm.trim()}”.`
+                  : 'No receipts logged for this selection.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1219,44 +1101,7 @@ const Payments = () => {
               </span>
 
               <div className="flex w-full min-w-0 flex-col gap-2">
-                <div className="flex w-full min-w-0 items-center rounded-xl border border-slate-200 bg-white p-1 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleOrientationChange('portrait')}
-                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
-                      printOrientation === 'portrait'
-                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    <RectangleVertical className="w-3.5 h-3.5" />
-                    <span>Portrait</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOrientationChange('landscape')}
-                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
-                      printOrientation === 'landscape'
-                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    <RectangleHorizontal className="w-3.5 h-3.5" />
-                    <span>Landscape</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOrientationChange('half')}
-                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition-all ${
-                      printOrientation === 'half'
-                        ? 'bg-slate-100 text-blue-700 shadow-sm border border-slate-200'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    <Scissors className="w-3.5 h-3.5" />
-                    <span>Half Page</span>
-                  </button>
-                </div>
+                <span className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-600">A4 · Half Page</span>
 
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -1287,8 +1132,20 @@ const Payments = () => {
             >
               <div className="relative z-10 space-y-3">
               {/* SHOP HEADER */}
-              <div className="text-center pb-2 border-b-2 border-dashed border-slate-400 space-y-0.5">
+              <div className="grid grid-cols-[20mm_minmax(0,1fr)_20mm] items-center gap-2 pb-2 border-b-2 border-dashed border-slate-400">
+                <div className="self-start text-left">
+                  {activeCustomerPhoto && (
+                    <>
+                      <span className="receipt-image-label mb-0.5 block text-[7px] font-black uppercase text-slate-600">Photo</span>
+                      <img loading="eager" decoding="sync" src={activeCustomerPhoto} alt="Customer" className="h-[25mm] w-[20mm] rounded border border-slate-400 object-cover" />
+                    </>
+                  )}
+                </div>
+                <div className="text-center space-y-0.5">
                 {/* BRAND NAME — auto-styled, prominent */}
+                <div className="receipt-header-invoice-number text-lg font-black text-slate-900">
+                  Invoice #: {invoiceBillNumber}
+                </div>
                 <h3 className="whitespace-nowrap text-xl font-black uppercase tracking-[0.12em] text-slate-900 leading-tight">
                   {settings?.shopName || 'Electronics Shop'}
                 </h3>
@@ -1308,25 +1165,39 @@ const Payments = () => {
                     ? 'DOWN PAYMENT RECEIPT'
                     : 'INSTALLMENT RECOVERY RECEIPT'}
                 </span>
-              </div>
-
-              {/* INVOICE & DATE */}
-              <div className="flex justify-between items-center text-[10px] border-b border-dashed border-slate-300 pb-1.5 font-black">
-                <span>Invoice / Bill #: <strong className="text-slate-900">{invoiceBillNumber}</strong></span>
-                <span className="text-slate-700">{formatDateTime(activeReceipt.paymentDate || activeReceipt.createdAt)}</span>
+                {isDownPaymentFirstInstallment && currentInstallmentNumber === 1 && (
+                  <p className="text-[10px] font-black text-indigo-700">
+                    Down Payment as First Installment
+                  </p>
+                )}
+                <p className="receipt-printed-date text-[9px] font-bold text-slate-700">
+                  Printed: {new Date().toLocaleString('en-PK')}
+                </p>
+                </div>
+                <div className="self-start text-right">
+                  {activeCustomerFingerprint && (
+                    <>
+                      <span className="receipt-image-label mb-0.5 block text-[7px] font-black uppercase text-slate-600">Fingerprint</span>
+                      <img loading="eager" decoding="sync" src={activeCustomerFingerprint} alt="Fingerprint" className="ml-auto h-[25mm] w-[20mm] rounded border border-slate-400 bg-white object-contain p-0.5" />
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* CUSTOMER & PRODUCT DETAILS */}
-              <div className="relative isolate grid grid-cols-2 gap-2 py-1.5 border-b border-dashed border-slate-300 text-[10px]">
+              <div className="receipt-customer-product-details relative isolate grid grid-cols-2 gap-2 py-1.5 border-b border-dashed border-slate-300 text-[10px]">
                 <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
                   <span className="rotate-[-28deg] whitespace-nowrap rounded-lg border-double border-4 border-emerald-700 px-3 py-1 text-3xl font-black tracking-[0.16em] text-emerald-700 opacity-25 [print-color-adjust:exact]">PAID</span>
                 </div>
                 <div className="relative z-10 space-y-0.5 border-r border-dashed border-slate-300 pr-1">
-                  <span className="text-[8px] uppercase font-black text-slate-500 block">Customer:</span>
-                  <p className="font-black text-slate-900 truncate">{activeReceipt.customer?.fullName || 'Walk-in'}</p>
-                  <p className="text-slate-700 font-bold">{activeReceipt.customer?.mobileNumber || ''}</p>
+                  <span className="text-[8px] uppercase font-black text-slate-500 block">Customer Details</span>
+                  <p className="font-black text-slate-900 break-words"><strong>Customer Name:</strong> {activeReceipt.customer?.fullName || 'Walk-in'}</p>
+                  {activeReceipt.customer?.fatherName && (
+                    <p className="text-slate-700 font-bold break-words"><strong>Father Name:</strong> {activeReceipt.customer.fatherName}</p>
+                  )}
+                  <p className="text-slate-700 font-bold break-words"><strong>Mobile No:</strong> {activeReceipt.customer?.mobileNumber || 'N/A'}</p>
                   {activeReceipt.customer?.cnic && (
-                    <p className="text-slate-600 text-[9px]">CNIC: {activeReceipt.customer.cnic}</p>
+                    <p className="text-slate-600 text-[9px] break-words"><strong>CNIC:</strong> {activeReceipt.customer.cnic}</p>
                   )}
                 </div>
 
@@ -1340,53 +1211,6 @@ const Payments = () => {
                 </div>
               </div>
 
-              {/* CUSTOMER IDENTITY MEDIA (PHOTO & FINGERPRINT ON SLIP) */}
-              {(activeCustomerPhoto || activeCustomerFingerprint) && (
-                <div className="p-2 bg-slate-50 border border-slate-300 rounded-xl space-y-1">
-                  <span className="text-[8px] uppercase font-black text-slate-500 block text-center">
-                    Customer Identity & Biometric Verification
-                  </span>
-                  
-                  <div className="flex items-center justify-around gap-2 pt-1">
-                    {/* Customer Photo */}
-                    <div className="text-center">
-                      {activeCustomerPhoto ? (
-                        <img
-                          loading="eager"
-                          decoding="sync"
-                          src={activeCustomerPhoto}
-                          alt="Customer"
-                          className="w-12 h-12 object-cover rounded-lg border border-slate-400 mx-auto"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg border border-slate-300 bg-white flex items-center justify-center mx-auto text-slate-400">
-                          <User className="w-5 h-5" />
-                        </div>
-                      )}
-                      <span className="text-[7.5px] font-bold text-slate-600 block mt-0.5">Photo</span>
-                    </div>
-
-                    {/* Customer Fingerprint */}
-                    <div className="text-center">
-                      {activeCustomerFingerprint ? (
-                        <img
-                          loading="eager"
-                          decoding="sync"
-                          src={activeCustomerFingerprint}
-                          alt="Fingerprint"
-                          className="w-12 h-12 object-contain rounded-lg border border-slate-400 bg-white mx-auto p-0.5"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg border border-slate-300 bg-white flex items-center justify-center mx-auto text-slate-400">
-                          <Fingerprint className="w-5 h-5" />
-                        </div>
-                      )}
-                      <span className="text-[7.5px] font-bold text-slate-600 block mt-0.5">Fingerprint</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* PROMINENT CURRENT PAYMENT BOX */}
               <div className="p-2.5 rounded-xl border-2 border-slate-900 bg-slate-50/80 text-center space-y-0.5">
                 <span className="text-[9px] uppercase font-black tracking-widest text-slate-600 block">
@@ -1395,149 +1219,51 @@ const Payments = () => {
                 <p className="text-lg font-black text-slate-900">
                   {formatMoney(currentReceiptAmount)}
                 </p>
-                <p className="text-[9px] font-bold text-slate-700">
-                  {isPartialCurrentInstallmentPayment
-                    ? 'Partial payment for:'
-                    : 'Settled:'}{' '}
-                  <strong>{currentInstallmentLabel}</strong>
+                <p className="pt-1 text-[10px] font-bold text-slate-700">
+                  Payment Method: <span className="font-black text-slate-900">{activeReceipt.paymentMethod || 'Cash'}</span>
                 </p>
+                {Number(activeReceipt.balanceReductionAmount || 0) > 0 && (
+                  <p className="text-[10px] font-bold text-indigo-700">
+                    Extra applied to remaining balance: <span className="font-black">{formatMoney(activeReceipt.balanceReductionAmount)}</span>
+                  </p>
+                )}
+                {Number(activeReceipt.advanceAmount || 0) > 0 && (
+                  <p className="text-[10px] font-bold text-emerald-700">
+                    Customer advance: <span className="font-black">{formatMoney(activeReceipt.advanceAmount)}</span>
+                  </p>
+                )}
               </div>
 
               {/* CURRENT INSTALLMENT PAYMENT BREAKDOWN */}
               {originalInstallmentAmount > 0 && (
-                <div className="border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">
+                <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">
                   <div className="flex justify-between text-slate-700">
-                    <span>Scheduled {currentInstallmentLabel}:</span>
-                    <span>{formatMoney(originalInstallmentAmount)}</span>
+                    <span>Scheduled month:</span>
+                    <span>{currentInstallmentLabel}</span>
                   </div>
-
-                  <div className="flex justify-between text-slate-700">
-                    <span>Payable at payment time:</span>
-                    <span>{formatMoney(payableAtCurrentPayment)}</span>
+                  <div className="flex justify-between pt-1 font-black text-slate-900">
+                    <span>Remaining this month:</span>
+                    <span>{formatMoney(remainingOnScheduledMonth)}</span>
                   </div>
-
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Actually received:</span>
-                    <span>+{formatMoney(currentReceiptAmount)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Paid for this installment:</span>
-                    <span>+{formatMoney(paidForCurrentInstallment)}</span>
-                  </div>
-
-                  {isPartialCurrentInstallmentPayment && (
-                    <div className="flex justify-between text-rose-700 font-black pt-1 border-t border-dotted border-slate-300">
-                      <span>Remaining on same installment:</span>
-                      <span>{formatMoney(remainingOnCurrentInstallment)}</span>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* PREVIOUS PAYMENT HISTORY */}
-              {previousPaymentReceipts.length > 0 && (
-                <div className="border-b border-dashed border-slate-300 pb-2 space-y-1">
-                  <div className="flex justify-between text-[9px] font-black text-slate-800">
-                    <span>Previous Payments Received:</span>
-                    <span>+{formatMoney(previousPaymentsReceived)}</span>
-                  </div>
+              <div className="flex justify-between border-b border-dashed border-slate-300 pb-2 text-[9px] font-black text-slate-900">
+                <span>Total remaining balance:</span>
+                <span>{formatMoney(totalPlanRemainingBalance)}</span>
+              </div>
 
-                  <table className="w-full text-[8.5px] border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 border border-slate-300 text-slate-600 font-black">
-                        <th className="p-1 text-center">#</th>
-                        <th className="p-1 text-right">Payable</th>
-                        <th className="p-1 text-right">Paid</th>
-                        <th className="p-1 text-right">Result</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previousPaymentReceipts.map((payment, idx) => {
-                        const isExtraPayment = payment.extraPaid > 0;
-                        const isShortPayment =
-                          payment.actualPaid > 0 &&
-                          payment.remainingAfterPayment > 0;
-
-                        return (
-                        <tr key={idx} className="border-b border-slate-200">
-                          <td className="p-1 text-center font-bold">
-                            {payment.installmentNumber > 0
-                              ? `M#${payment.installmentNumber}`
-                              : 'N/A'}
-                            <span className="block text-[7px] font-medium text-slate-500">
-                              {formatDateOnly(payment.paymentDate || payment.createdAt)}
-                            </span>
-                          </td>
-                          <td className="p-1 text-right font-bold text-slate-700">
-                            {formatMoney(payment.payableAtPayment)}
-                          </td>
-                          <td className="p-1 text-right font-black text-emerald-700">
-                            {formatMoney(payment.actualPaid)}
-                          </td>
-                          <td
-                            className={`p-1 text-right font-black ${
-                              isExtraPayment
-                                ? 'text-indigo-700'
-                                : isShortPayment
-                                ? 'text-amber-700'
-                                : 'text-emerald-700'
-                            }`}
-                          >
-                            {isExtraPayment
-                              ? `+${formatMoney(payment.extraPaid)}`
-                              : isShortPayment
-                              ? `Due ${formatMoney(payment.remainingAfterPayment)}`
-                              : 'Settled'}
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  <p className="no-print text-[7.5px] leading-tight font-semibold text-slate-500">
-                    Result shows extra payment adjusted to future installments or the amount still due on the same installment.
-                  </p>
+              <div className="receipt-signatures mt-4 grid grid-cols-2 gap-10 pt-1 text-center text-[9px] font-black">
+                <div>
+                  <div className="h-[12mm] border-b border-slate-700" />
+                  <p className="pt-1">Customer Signature</p>
                 </div>
-              )}
-
-              {/* PRICING BREAKDOWN */}
-              <div className="space-y-1 py-1 text-[10px] font-bold border-b border-dashed border-slate-300">
-                <div className="flex justify-between">
-                  <span>Total Plan Price:</span>
-                  <span>{formatMoney(totalPlanAmount)}</span>
-                </div>
-
-                {downPayment > 0 && (
-                  <div className="flex justify-between text-slate-700">
-                    <span>Down Payment Paid:</span>
-                    <span>+{formatMoney(downPayment)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-slate-900 font-black">
-                  <span>Total Paid So Far:</span>
-                  <span>+{formatMoney(totalPaidSoFar)}</span>
-                </div>
-
-                <div className="flex justify-between text-rose-600 font-black pt-1 border-t border-dotted border-slate-300">
-                  <span>Net Remaining Dues:</span>
-                  <span>{formatMoney(remainingDuesAtReceipt)}</span>
+                <div>
+                  <div className="h-[12mm] border-b border-slate-700" />
+                  <p className="pt-1">Shop Signature &amp; Stamp</p>
                 </div>
               </div>
 
-              {/* EXTRA OVERPAYMENT / CARRY FORWARD NOTICE */}
-              {carryForwardAmount > 0 && (
-                <div className="p-1.5 rounded border border-dashed border-slate-400 text-[8.5px] text-slate-800 space-y-0.5">
-                  <p className="font-black">Extra Payment Adjustment:</p>
-                  <p>+{formatMoney(carryForwardAmount)} extra payment adjusted into future monthly installments.</p>
-                </div>
-              )}
-
-              <p className="text-[8px] text-center text-slate-500 uppercase tracking-widest font-black pt-1">
-                *** Thank You for Your Timely Payment ***
-              </p>
               </div>
             </div>
           </div>
@@ -1568,8 +1294,8 @@ const Payments = () => {
       <style>{`
       @media print {
   @page {
-    size: ${printOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
-    margin: 5mm;
+    size: A4 portrait;
+    margin: 0 6mm;
   }
 
   html,
@@ -1580,7 +1306,7 @@ const Payments = () => {
     min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     background: #fff !important;
   }
 
@@ -1606,9 +1332,58 @@ const Payments = () => {
     display: none !important;
   }
 
+  #printable-receipt-content,
+  #printable-receipt-content * {
+    font-weight: 900 !important;
+  }
+
+  #printable-receipt-content .receipt-image-label {
+    display: none !important;
+  }
+
+  #printable-receipt-content .receipt-customer-product-details,
+  #printable-receipt-content .receipt-customer-product-details * {
+    font-size: 14px !important;
+    line-height: 1.3 !important;
+  }
+
+  #printable-receipt-content .receipt-header-invoice-number {
+    font-size: 18px !important;
+    font-weight: 900 !important;
+  }
+
+  #printable-receipt-content .receipt-printed-date {
+    font-size: 10px !important;
+  }
+
+  #printable-receipt-content .receipt-schedule-summary,
+  #printable-receipt-content .receipt-schedule-summary * {
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    line-height: 1.25 !important;
+  }
+
+  #printable-receipt-content .receipt-signatures {
+    margin-top: 2mm !important;
+    padding-top: 0 !important;
+  }
+
+  #printable-receipt-content .receipt-customer-product-details .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
   #printable-receipt-wrapper {
-    position: absolute !important;
-    inset: 0 !important;
+    position: fixed !important;
+    inset: 0 0 auto 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    display: block !important;
     width: 100% !important;
     height: auto !important;
     margin: 0 !important;
@@ -1620,7 +1395,7 @@ const Payments = () => {
   #printable-receipt-modal-container {
   position: absolute !important;
 
-  top: 0 !important;
+  top: 8mm !important;
   left: 0 !important;
 
   width: 100vw !important;
@@ -1654,11 +1429,16 @@ const Payments = () => {
   left: auto !important;
   right: auto !important;
   top: auto !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 
   /* Receipt width */
-  width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
-  min-width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
-  max-width: ${printOrientation === 'landscape' ? '120mm' : '80mm'} !important;
+  width: var(--print-width, 198mm) !important;
+  min-width: var(--print-width, 198mm) !important;
+  max-width: var(--print-width, 198mm) !important;
+  height: var(--print-height, 140mm) !important;
+  max-height: none !important;
+  overflow: visible !important;
 
   /* IMPORTANT: margin auto */
   margin-left: auto !important;
@@ -1666,13 +1446,14 @@ const Payments = () => {
 
   margin-top: 0 !important;
 
-  padding: 3mm !important;
+  padding: 0 !important;
 
   box-sizing: border-box !important;
+  zoom: var(--print-text-scale, 1) !important;
 
   /* IMPORTANT: transform center se scale hoga */
   transform-origin: top center !important;
-  transform: scale(var(--print-scale, 1)) !important;
+  transform: scaleX(1) scaleY(var(--print-scale, 1)) !important;
 
   background: #fff !important;
 
@@ -1692,18 +1473,21 @@ const Payments = () => {
 
   #printable-receipt-content {
     position: relative !important;
+    top: 0 !important;
 
-    width: 80mm !important;
-    max-width: 80mm !important;
-    min-width: 80mm !important;
+    width: var(--print-width, 198mm) !important;
+    max-width: var(--print-width, 198mm) !important;
+    min-width: var(--print-width, 198mm) !important;
 
-    height: var(--print-height, auto) !important;
-    max-height: 287mm !important;
+    height: var(--print-height, 140mm) !important;
+    max-height: none !important;
 
     margin: 0 auto !important;
-    padding: 3mm !important;
+    padding: 0 !important;
+    padding-top: 0 !important;
 
     box-sizing: border-box !important;
+    zoom: var(--print-text-scale, 1) !important;
 
     overflow: visible !important;
 
@@ -1712,7 +1496,7 @@ const Payments = () => {
       choti hokar single page mein fit hogi.
     */
     transform-origin: top center !important;
-    transform: scale(var(--print-scale, 1)) !important;
+    transform: scaleX(1) scaleY(var(--print-scale, 1)) !important;
 
     font-size: 8.5px !important;
     line-height: 1.25 !important;
@@ -1729,6 +1513,11 @@ const Payments = () => {
     break-before: avoid !important;
     break-after: avoid !important;
     break-inside: avoid !important;
+  }
+
+  #printable-receipt-content > .relative.z-10 {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
   }
 
   /* Receipt ke andar bhi page break prevent */

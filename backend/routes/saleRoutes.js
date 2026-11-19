@@ -6,6 +6,7 @@ const {
   getSales,
   getSaleById,
   updateSaleBook,
+  bulkUpdateSalesBook,
   createSale,
   updateSale,
   deleteSale
@@ -17,6 +18,7 @@ router.route('/')
   .get(protect, getSales)
   .post(protect, createSale);
 
+router.put('/bulk-book', protect, bulkUpdateSalesBook);
 router.put('/:id/book', protect, updateSaleBook);
 
 router.route('/:id')

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
 import { useSettings } from '../context/SettingsContext';
+import ConfirmModal from '../components/ConfirmModal';
+import toast from 'react-hot-toast';
 
 import {
   Layers,
@@ -10,6 +12,9 @@ import {
   Sparkles,
   Search,
   Eye,
+  Edit2,
+  Trash2,
+  Lock,
   AlertTriangle,
   Calendar,
 } from 'lucide-react';
@@ -23,6 +28,12 @@ const Installments = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    saleId: null,
+    invoiceNum: '',
+  });
+  const isDeletionUnlocked = settings?.allowGlobalDeletion === true;
 
   // Universal Date Filter states
   const [filterPreset, setFilterPreset] = useState('all');
@@ -83,6 +94,27 @@ const Installments = () => {
 
     fetchPlans();
   }, []);
+
+  const triggerDeleteConfirmation = (saleId, invoiceNum) => {
+    if (!isDeletionUnlocked) {
+      toast.error('Deletion Mode is disabled. Enable it from Settings first.');
+      return;
+    }
+    setDeleteModal({ isOpen: true, saleId, invoiceNum });
+  };
+
+  const confirmDelete = async () => {
+    const { saleId, invoiceNum } = deleteModal;
+    try {
+      await api.delete(`/api/sales/${saleId}`);
+      setPlans((currentPlans) => currentPlans.filter((plan) => String(plan.sale?._id) !== String(saleId)));
+      toast.success(`Installment sale "${invoiceNum}" deleted and stock restored.`);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete installment sale.');
+    } finally {
+      setDeleteModal({ isOpen: false, saleId: null, invoiceNum: '' });
+    }
+  };
 
   // =====================================================
   // DATE FILTER
@@ -223,6 +255,20 @@ const Installments = () => {
   // INSTALLMENT PLANS ONLY
   // =====================================================
 
+  const searchDigits = searchTerm.trim().replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const normalizedInvoiceSearch = searchTerm.trim().toLowerCase();
+  const isInvoiceLookupTerm =
+    /^\d{1,10}$/.test(searchDigits) || /^[a-z]+[-/]?\d+[a-z0-9-]*$/i.test(normalizedInvoiceSearch);
+  const hasInvoiceNumberMatch = !isInvoiceLookupTerm || plans.some((plan) => {
+    const invoiceNumber = String(plan.sale?.saleId || '').toLowerCase();
+    return invoiceNumber.includes(normalizedInvoiceSearch) ||
+      invoiceNumber.replace(/[^a-z0-9]/g, '').includes(normalizedInvoiceSearch.replace(/[^a-z0-9]/g, ''));
+  });
+  const hasExactInvoiceSearch = Boolean(searchDigits) && plans.some((plan) => {
+    const invoiceDigits = String(plan.sale?.saleId || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    return invoiceDigits === searchDigits;
+  });
+
   const filteredPlans = plans.filter(
     (p) => {
       const custName =
@@ -235,30 +281,43 @@ const Installments = () => {
 
       const custCnic = p.customer?.cnic || p.customer?.CNIC || '';
 
-      const planIdStr =
-        p.planId?.toLowerCase() ||
-        '';
-
-      const invoiceNumber =
-        (
-          p.sale?.saleId || ''
-        ).toLowerCase();
+      const invoiceNumbers = [
+        p.sale?.saleId,
+        p.sale?.invoiceNumber,
+        p.sale?.invoiceNo,
+        p.sale?.billNumber,
+      ]
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => String(value).toLowerCase());
 
       const prodName =
         p.product?.name?.toLowerCase() ||
         '';
 
       const sTerm =
-        searchTerm.toLowerCase();
+        searchTerm.trim().toLowerCase();
+      const normalizedSearchTerm = sTerm.replace(/[^a-z0-9]/g, '');
+      const matchesInvoiceNumber = invoiceNumbers.some((invoiceNumber) =>
+        invoiceNumber.includes(sTerm) ||
+        invoiceNumber.replace(/[^a-z0-9]/g, '').includes(normalizedSearchTerm)
+      );
+      const searchDigits = sTerm.replace(/\D/g, '');
+      const matchesExactInvoiceNumber = Boolean(searchDigits) && invoiceNumbers.some((invoiceNumber) => {
+        const invoiceDigits = invoiceNumber.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+        const normalizedSearchDigits = searchDigits.replace(/^0+(?=\d)/, '');
+        return invoiceDigits === normalizedSearchDigits;
+      });
 
-      const matchesSearch =
+      const matchesSearch = hasExactInvoiceSearch
+        ? matchesExactInvoiceNumber
+        : (
         custName.includes(sTerm) ||
         custPhone.includes(sTerm) ||
         matchesMobileSearch(custPhone, sTerm) ||
         matchesCnicSearch(custCnic, sTerm) ||
-        planIdStr.includes(sTerm) ||
-        invoiceNumber.includes(sTerm) ||
-        prodName.includes(sTerm);
+        matchesInvoiceNumber ||
+        prodName.includes(sTerm)
+      );
 
       const matchesDate =
         isDateInFilter(
@@ -278,8 +337,11 @@ const Installments = () => {
       );
     }
   ).sort((a, b) =>
-    String(a.sale?.saleId || '').localeCompare(String(b.sale?.saleId || ''), undefined, { numeric: true, sensitivity: 'base' })
-    || new Date(a.sale?.saleDate || a.createdAt || 0) - new Date(b.sale?.saleDate || b.createdAt || 0)
+    String(b.sale?.saleId || '').localeCompare(
+      String(a.sale?.saleId || ''),
+      undefined,
+      { numeric: true, sensitivity: 'base' }
+    )
   );
 
   const pageCount = Math.max(1, Math.ceil(filteredPlans.length / PAGE_SIZE));
@@ -292,8 +354,13 @@ const Installments = () => {
   const lastVisiblePlan = Math.min(safePage * PAGE_SIZE, filteredPlans.length);
 
   const totalPurchaseCost = filteredPlans.reduce(
-    (sum, plan) =>
-      sum + Number(plan.sale?.quantity || 0) * Number(plan.sale?.purchasePriceAtSale || 0),
+    (sum, plan) => {
+      const saleItems = plan.sale?.items || [];
+      const planCost = saleItems.length
+        ? saleItems.reduce((itemSum, item) => itemSum + Number(item.quantity || 0) * Number(item.purchasePriceAtSale || 0), 0)
+        : Number(plan.sale?.quantity || 0) * Number(plan.sale?.purchasePriceAtSale || 0);
+      return sum + planCost;
+    },
     0
   );
   const totalSellingPrice = filteredPlans.reduce(
@@ -305,6 +372,7 @@ const Installments = () => {
     `${settings?.currency || 'PKR'} ${Number(amount || 0).toLocaleString('en-PK')}`;
 
   return (
+    <>
     <div className="space-y-6 animate-[pageEnter_0.45s_cubic-bezier(0.16,1,0.3,1)]">
 
       {/* =================================================
@@ -497,6 +565,15 @@ const Installments = () => {
         </div>
       </div>
 
+      {!loading && isInvoiceLookupTerm && !hasInvoiceNumberMatch && filteredPlans.length > 0 && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-black text-amber-900"
+        >
+          No invoice number matched &quot;{searchTerm.trim()}&quot;. Other search matches are shown below.
+        </div>
+      )}
+
       {/* =================================================
           MAIN LIST
       ================================================== */}
@@ -523,12 +600,16 @@ const Installments = () => {
             <Layers className="w-12 h-12 text-gray-300" />
 
             <p className="text-sm font-semibold">
-              No installment sale recorded yet
+              {searchTerm.trim()
+                ? `No matching installment sale found for "${searchTerm.trim()}".`
+                : 'No installment sale recorded yet'}
             </p>
 
-            <p className="text-xs">
-              Installment schedules will generate automatically once you finalize an "Installment Sale" under the Installments checkout.
-            </p>
+            {!searchTerm.trim() && (
+              <p className="text-xs">
+                Installment schedules will generate automatically once you finalize an "Installment Sale" under the Installments checkout.
+              </p>
+            )}
 
           </div>
 
@@ -587,7 +668,7 @@ const Installments = () => {
                   </th>
 
                   <th className="px-6 py-4">
-                    Plan #
+                    Term
                   </th>
 
                   <th className="px-6 py-4">
@@ -608,150 +689,94 @@ const Installments = () => {
 
               <tbody className="divide-y divide-gray-200">
 
-                {pagePlans.map(
-                  (plan) => (
+                {pagePlans.map((plan) => {
+                  const saleItems = plan.sale?.items?.length
+                    ? plan.sale.items
+                    : [{
+                        product: plan.product,
+                        quantity: plan.sale?.quantity || 0,
+                        unitPrice: plan.sale?.unitPrice || 0,
+                        purchasePriceAtSale: plan.sale?.purchasePriceAtSale || 0,
+                        discount: plan.sale?.discount || 0,
+                      }];
+                  const rowSpan = saleItems.length;
 
-                    <tr
-                      key={plan._id}
-                      className="hover:bg-gray-50/75 transition-colors"
-                    >
+                  return (
+                    <Fragment key={plan._id}>
+                      {saleItems.map((item, itemIndex) => {
+                        const itemQuantity = Number(item.quantity || 0);
+                        const itemUnitPrice = Number(item.unitPrice || 0);
+                        const itemPurchasePrice = Number(item.purchasePriceAtSale ?? plan.sale?.purchasePriceAtSale ?? 0);
+                        const product = item.product && typeof item.product === 'object' ? item.product : plan.product;
 
-                      <td className="px-6 py-4 text-indigo-600 font-extrabold tracking-wider">
-                        {plan.sale?.saleId ||
-                          'N/A'}
-                      </td>
+                        return (
+                          <tr key={`${plan._id}-${itemIndex}`} className="hover:bg-gray-50/75 transition-colors">
+                            {itemIndex === 0 && (
+                              <>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-indigo-600 font-extrabold tracking-wider">
+                                  {plan.sale?.saleId || 'N/A'}
+                                </td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle">
+                                  <p className="font-bold text-gray-900">{plan.customer?.fullName || 'N/A'}</p>
+                                  <p className="text-xs text-gray-500">{plan.customer?.mobileNumber || ''}</p>
+                                </td>
+                              </>
+                            )}
 
-                      <td className="px-6 py-4">
+                            <td className="px-6 py-4 text-gray-800">
+                              <p className="font-bold text-slate-800">{product?.name || 'Deleted Product'}</p>
+                              <p className="text-[10px] text-slate-400">{[product?.brand, product?.model].filter(Boolean).join(' · ')}</p>
+                            </td>
+                            <td className="px-6 py-4 text-center font-bold text-slate-700">{itemQuantity}</td>
+                            <td className="px-6 py-4 text-right font-bold text-rose-600">-{formatMoney(item.discount || 0)}</td>
+                            <td className="px-6 py-4 text-slate-600">{formatMoney(itemQuantity * itemPurchasePrice)}</td>
+                            <td className="px-6 py-4 font-bold text-slate-700">{formatMoney(itemQuantity * itemUnitPrice)}</td>
 
-                        <div>
-
-                          <p className="font-bold text-gray-900">
-                            {plan.customer
-                              ?.fullName ||
-                              'N/A'}
-                          </p>
-
-                          <p className="text-xs text-gray-500">
-                            {plan.customer
-                              ?.mobileNumber ||
-                              ''}
-                          </p>
-
-                        </div>
-
-                      </td>
-
-                      <td className="px-6 py-4 text-gray-800">
-                        <div>
-                          <p className="font-bold text-slate-800">{plan.product?.name || 'Deleted Product'}</p>
-                          <p className="text-[10px] text-slate-400">{[plan.product?.brand, plan.product?.model].filter(Boolean).join(' · ')}</p>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-center font-bold text-slate-700">
-                        {plan.sale?.quantity || 0}
-                      </td>
-
-                      <td className="px-6 py-4 text-right font-bold text-rose-600">
-                        -{formatMoney(plan.sale?.discount || 0)}
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-600">
-
-                        {formatMoney(Number(plan.sale?.quantity || 0) * Number(plan.sale?.purchasePriceAtSale || 0))}
-
-                      </td>
-
-                      <td className="px-6 py-4 text-slate-700">
-                        {formatMoney(Number(plan.sale?.quantity || 0) * Number(plan.sale?.unitPrice || 0))}
-                      </td>
-
-                      <td className="px-6 py-4 font-bold text-slate-800">
-
-                        {formatMoney(plan.sale?.finalTotal ?? plan.totalAmount ?? 0)}
-
-                      </td>
-
-                      <td className="px-6 py-4 text-green-600">
-
-                        -{settings.currency}{' '}
-
-                        {(
-                          plan.downPayment ||
-                          0
-                        ).toLocaleString()}
-
-                      </td>
-
-                      <td className="px-6 py-4 font-black text-red-600">
-
-                        {settings.currency}{' '}
-
-                        {(
-                          plan.remainingBalance ||
-                          0
-                        ).toLocaleString()}
-
-                      </td>
-
-                      <td className="px-6 py-4 font-black text-indigo-700">
-                        {formatMoney(
-                            plan.totalAmount ??
-                            plan.sale?.totalWithMarkup ??
-                            plan.sale?.finalTotal ??
-                            0
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-gray-500 font-bold">
-
-                        {plan.planId} (
-                        {plan.duration}M)
-
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <p className="font-semibold text-slate-700">
-                          {formatPlanDate(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}
-                        </p>
-                        <p className="mt-0.5 text-[10px] font-medium text-slate-400">
-                          {formatPlanTime(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}
-                        </p>
-                      </td>
-
-                      <td className="px-6 py-4">
-
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                            plan.status ===
-                            'Completed'
-                              ? 'bg-green-50 border-green-200 text-green-700'
-                              : plan.status ===
-                                'Overdue'
-                              ? 'bg-red-50 border-red-200 text-red-700 font-bold animate-pulse'
-                              : 'bg-blue-50 border-blue-200 text-blue-700'
-                          }`}
-                        >
-                          {plan.status}
-                        </span>
-</td>
-
-                      <td className="px-6 py-4 text-center">
-
-                        <Link
-                          to={`/installments/${plan._id}`}
-                          className="inline-flex p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                          title="View installment details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Link>
-
-                      </td>
-
-                    </tr>
-
-                  )
-                )}
+                            {itemIndex === 0 && (
+                              <>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-bold text-slate-800">{formatMoney(plan.sale?.finalTotal ?? plan.totalAmount ?? 0)}</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-green-600">-{settings.currency} {(plan.downPayment || 0).toLocaleString()}</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-red-600">{settings.currency} {(plan.remainingBalance || 0).toLocaleString()}</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-indigo-700">
+                                  {formatMoney(plan.totalAmount ?? plan.sale?.totalWithMarkup ?? plan.sale?.finalTotal ?? 0)}
+                                </td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-gray-500 font-bold">{plan.duration}M</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle whitespace-nowrap">
+                                  <p className="font-semibold text-slate-700">{formatPlanDate(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>
+                                  <p className="mt-0.5 text-[10px] font-medium text-slate-400">{formatPlanTime(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>
+                                </td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${plan.status === 'Completed' ? 'bg-green-50 border-green-200 text-green-700' : plan.status === 'Overdue' ? 'bg-red-50 border-red-200 text-red-700 font-bold animate-pulse' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                                    {plan.status}
+                                  </span>
+                                </td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-center">
+                                  {plan.sale?._id && (
+                                    <Link to={`/sales/edit/${plan.sale._id}`} className="mr-1 inline-flex p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit installment sale">
+                                      <Edit2 className="w-4 h-4" />
+                                    </Link>
+                                  )}
+                                  <Link to={`/installments/${plan._id}`} className="inline-flex p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="View installment details">
+                                    <Eye className="w-4 h-4" />
+                                  </Link>
+                                  {isDeletionUnlocked ? (
+                                    <button type="button" onClick={() => triggerDeleteConfirmation(plan.sale?._id, plan.sale?.saleId || 'Invoice unavailable')} disabled={!plan.sale?._id} className="inline-flex p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-40" title="Delete installment sale and restore stock">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  ) : (
+                                    <span className="inline-flex p-1.5 text-slate-400" title="Deletion Mode is locked in Settings">
+                                      <Lock className="w-4 h-4" />
+                                    </span>
+                                  )}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
 
               </tbody>
 
@@ -803,6 +828,17 @@ const Installments = () => {
       </div>
 
     </div>
+    <ConfirmModal
+      isOpen={deleteModal.isOpen}
+      onClose={() => setDeleteModal((current) => ({ ...current, isOpen: false }))}
+      onConfirm={confirmDelete}
+      title="Delete Installment Sale"
+      message={`WARNING: Delete installment sale "${deleteModal.invoiceNum}"? Its linked payment receipts, installment plan, installments, and returns will also be deleted, and sold stock will be restored to inventory.`}
+      confirmText="Delete Sale"
+      cancelText="Cancel"
+      danger
+    />
+    </>
   );
 };
 

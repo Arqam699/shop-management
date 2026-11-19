@@ -32,6 +32,7 @@ const Payment = require('../models/Payment');
 const Installment = require('../models/Installment');
 const InstallmentPlan = require('../models/InstallmentPlan');
 const Expense = require('../models/Expense');
+const Note = require('../models/Note');
 const Return = require('../models/Return');
 const StockMovement = require('../models/StockMovement');
 const Shop = require('../models/Shop');
@@ -71,6 +72,7 @@ const BACKUP_MODELS = {
   installments: Installment,
   installmentPlans: InstallmentPlan,
   expenses: Expense,
+  notes: Note,
   returns: Return,
   stockMovements: StockMovement,
 };

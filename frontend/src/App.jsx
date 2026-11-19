@@ -116,6 +116,8 @@ const Expenses = lazy(
   () => import('./pages/Expenses')
 );
 
+const Notepad = lazy(() => import('./pages/Notepad'));
+
 const Reports = lazy(
   () => import('./pages/Reports')
 );
@@ -677,6 +679,17 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Expenses />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/notepad"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Notepad />
                     </Layout>
                   </ProtectedRoute>
                 }

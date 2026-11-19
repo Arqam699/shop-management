@@ -50,6 +50,15 @@ const installmentPlanSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Extra payments can reduce the plan balance without being assigned to
+    // any individual installment. Keep the cumulative reduction separately
+    // so later balance refreshes do not restore it from untouched schedules.
+    balanceReduction: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     /*
       This is the number of actual remaining scheduled
       installments shown to the user.

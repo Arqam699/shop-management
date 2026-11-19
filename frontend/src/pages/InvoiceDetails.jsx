@@ -6,9 +6,6 @@ import { useSettings } from '../context/SettingsContext';
 import {
   ArrowLeft,
   Printer,
-  RectangleVertical,
-  RectangleHorizontal,
-  Scissors,
   AlertCircle,
   Sparkles,
   Receipt,
@@ -58,6 +55,114 @@ const InvoiceDetails = () => {
   // PRINT
   // =========================================================
   const handlePrint = () => {
+    const invoiceElement = document.getElementById('printable-thermal-invoice');
+    if (invoiceElement) {
+      const fitInvoiceToPage = () => {
+        const availableHeight = (281 * 96) / 25.4;
+        const measurementCopy = invoiceElement.cloneNode(true);
+        measurementCopy.removeAttribute('id');
+        Object.assign(measurementCopy.style, {
+          position: 'fixed',
+          left: '-10000px',
+          top: '0',
+          width: '194mm',
+          maxWidth: 'none',
+          minHeight: '0',
+          height: 'auto',
+          maxHeight: 'none',
+          overflow: 'visible',
+          transform: 'none',
+          boxSizing: 'border-box',
+          padding: '0 0 8mm',
+          visibility: 'hidden',
+        });
+        measurementCopy.style.setProperty('font-size', '12pt', 'important');
+        measurementCopy.style.setProperty('font-weight', '900', 'important');
+        measurementCopy.style.setProperty('line-height', '1.35', 'important');
+        measurementCopy.querySelectorAll('*').forEach((node) => {
+          node.style.setProperty('font-size', '12pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+          node.style.setProperty('line-height', '1.35', 'important');
+          node.style.setProperty('overflow-wrap', 'normal', 'important');
+          node.style.setProperty('word-break', 'normal', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-header-number, .invoice-header-number strong').forEach((node) => {
+          node.style.setProperty('white-space', 'normal', 'important');
+          node.style.setProperty('word-break', 'normal', 'important');
+          node.style.setProperty('overflow-wrap', 'normal', 'important');
+        });
+        measurementCopy.querySelectorAll('h1').forEach((node) => {
+          node.style.setProperty('font-size', '22pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+          node.style.setProperty('line-height', '1.2', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-header-number').forEach((node) => {
+          node.style.setProperty('font-size', '20pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-header-number strong').forEach((node) => {
+          node.style.setProperty('font-size', '22pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-printed-date').forEach((node) => {
+          node.style.setProperty('font-size', '9pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-customer-info *').forEach((node) => {
+          node.style.setProperty('font-size', '14pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+          node.style.setProperty('line-height', '1.4', 'important');
+          node.style.setProperty('white-space', 'normal', 'important');
+          node.style.setProperty('overflow', 'visible', 'important');
+          node.style.setProperty('text-overflow', 'clip', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-customer-info .grid > span').forEach((node) => {
+          node.style.setProperty('font-size', '12pt', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-customer-name').forEach((node) => {
+          node.style.setProperty('font-size', '16pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-payment-totals, .invoice-payment-totals *').forEach((node) => {
+          node.style.setProperty('font-size', '14pt', 'important');
+          node.style.setProperty('font-weight', '900', 'important');
+          node.style.setProperty('line-height', '1.4', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-item-grid-installment').forEach((node) => {
+          node.style.setProperty('grid-template-columns', 'minmax(0, 1fr) 65px 115px', 'important');
+        });
+        measurementCopy.querySelectorAll('.invoice-item-grid-cash').forEach((node) => {
+          node.style.setProperty('grid-template-columns', 'minmax(0, 1fr) 100px 65px 115px', 'important');
+        });
+        measurementCopy.querySelectorAll('img').forEach((node) => {
+          node.style.setProperty('max-width', '35mm', 'important');
+          node.style.setProperty('max-height', '45mm', 'important');
+        });
+        document.body.appendChild(measurementCopy);
+        const contentWrapper = measurementCopy.querySelector('.relative.z-10');
+        const contentWrapperHeight = contentWrapper?.getBoundingClientRect().height || 0;
+        const contentHeight = Math.max(
+          measurementCopy.scrollHeight,
+          measurementCopy.getBoundingClientRect().height,
+          contentWrapperHeight + ((8 * 96) / 25.4),
+          (measurementCopy.querySelector('.invoice-signatures')?.getBoundingClientRect().bottom || 0) + ((8 * 96) / 25.4)
+        );
+        measurementCopy.remove();
+        const scale = Math.min(1, availableHeight / contentHeight);
+        invoiceElement.style.setProperty('--invoice-print-scale', String(scale));
+        invoiceElement.style.setProperty('--invoice-print-width', `${194 / scale}mm`);
+        invoiceElement.style.setProperty('--invoice-print-min-height', `${281 / scale}mm`);
+      };
+      const clearInvoiceFit = () => {
+        invoiceElement.style.removeProperty('--invoice-print-scale');
+        invoiceElement.style.removeProperty('--invoice-print-width');
+        invoiceElement.style.removeProperty('--invoice-print-min-height');
+        window.removeEventListener('beforeprint', fitInvoiceToPage);
+      };
+      fitInvoiceToPage();
+      window.addEventListener('beforeprint', fitInvoiceToPage, { once: true });
+      window.addEventListener('afterprint', clearInvoiceFit, { once: true });
+    }
     window.print();
   };
 
@@ -70,25 +175,6 @@ const InvoiceDetails = () => {
   }, [invoice]);
 
   // =========================================================
-  // PRINT MODE: portrait = 80mm slip, landscape = A4 wide, half = A4 top-half only
-  // =========================================================
-  const [printOrientation, setPrintOrientation] = useState(() => {
-    try {
-      return localStorage.getItem('pos_invoice_orientation') || 'portrait';
-    } catch {
-      return 'portrait';
-    }
-  });
-
-  const handleOrientationChange = (mode) => {
-    setPrintOrientation(mode);
-    try {
-      localStorage.setItem('pos_invoice_orientation', mode);
-    } catch {
-      /* storage unavailable */
-    }
-  };
-
   // =========================================================
   // FORMATTERS
   // =========================================================
@@ -164,6 +250,7 @@ const InvoiceDetails = () => {
   const saleObj = invoice.sale || invoice;
   const isInstallmentInvoice =
     saleObj.paymentType === 'Installment';
+  const invoiceSnapshot = invoice.plan?.invoiceSnapshot || {};
   const downPaymentPaid = Number(saleObj.downPayment || 0);
   const downPaymentIsPaidFirstInstallment =
     isInstallmentInvoice &&
@@ -189,7 +276,8 @@ const InvoiceDetails = () => {
   const remainingAmount = isInstallmentInvoice
     ? Math.max(
         Number(
-          saleObj.remainingBalance ??
+          invoiceSnapshot.financedAmount ??
+            saleObj.remainingBalance ??
             invoice.plan?.remainingBalance ??
             totalAmount - downPaymentPaid
         ),
@@ -200,19 +288,54 @@ const InvoiceDetails = () => {
   const invoiceItems = Array.isArray(saleObj.items) && saleObj.items.length
     ? saleObj.items
     : [{ product: saleObj.product, quantity: invoiceQuantity, unitPrice: saleObj.unitPrice, discount: saleObj.discount || 0 }];
-  const installments = Array.isArray(invoice.installments)
-    ? invoice.installments
+  const getInvoiceItemProduct = (item) =>
+    item.product && typeof item.product === 'object' ? item.product : {};
+  const allProductDetailFields = [
+    { key: 'item', label: 'Item', getValue: (product, item, index) => `${index + 1}. ${product.name || product.productName || 'Product'}`, alwaysShow: true },
+    { key: 'model', label: 'Model', getValue: (product) => product.model || 'N/A', alwaysShow: true },
+    { key: 'imei', label: 'IMEI', getValue: (product) => product.imei, showIfPresent: true },
+    { key: 'engineNumber', label: 'Engine No', getValue: (product) => product.engineNumber, showIfPresent: true },
+    { key: 'chassisNumber', label: 'Chassis No', getValue: (product) => product.chassisNumber, showIfPresent: true },
+  ];
+  const invoiceProductDetailFields = allProductDetailFields.filter((field) =>
+    field.alwaysShow || invoiceItems.some((item) => Boolean(field.getValue(getInvoiceItemProduct(item), item)))
+  );
+  const invoiceProductDetailColumns = invoiceProductDetailFields
+    .map((_, index) => `minmax(0, ${index === 0 ? 1.5 : 1}fr)`)
+    .join(' ');
+  const snapshotSchedule = Array.isArray(invoiceSnapshot.installments)
+    ? invoiceSnapshot.installments
+    : [];
+  const downPaymentCountsAsFirstInstallment =
+    invoiceSnapshot.treatDownPaymentAsFirstInstallment ??
+    saleObj.treatDownPaymentAsFirstInstallment ??
+    false;
+  const installmentSchedule = snapshotSchedule.length
+    ? snapshotSchedule
+    : Array.isArray(invoice.invoiceSchedule)
+    ? invoice.invoiceSchedule
+    : Array.isArray(saleObj.installmentScheduleSnapshot)
+    ? saleObj.installmentScheduleSnapshot
     : [];
   const originalPlanMonths = Number(
-    saleObj.installmentDuration || invoice.plan?.months || 0
+    invoiceSnapshot.selectedDuration ||
+      saleObj.selectedInstallmentDuration ||
+      invoice.plan?.selectedDuration ||
+      saleObj.installmentDuration ||
+      invoice.plan?.months ||
+      0
   );
-
-  const firstPendingInstallment = installments.find(
-    (inst) => String(inst.status || '').toLowerCase() !== 'paid'
+  const remainingInstallmentCount = Number(
+    invoiceSnapshot.duration ??
+      saleObj.installmentDuration ??
+      invoice.plan?.duration ??
+      0
   );
-  const installmentAmount = Number(
-    firstPendingInstallment?.amount || installments[0]?.amount || 0
-  );
+  const firstScheduledInstallment = installmentSchedule.find(
+    (item) => Number(item.installmentNumber) === (downPaymentCountsAsFirstInstallment ? 2 : 1)
+  ) || installmentSchedule[0];
+  const installmentAmount = Number(firstScheduledInstallment?.amount || 0);
+  const installmentDueDay = 5;
 
   const customerPhoto = getImageSource(saleObj.customer?.liveImage || saleObj.customer?.photo);
   const customerFingerprint = getImageSource(saleObj.customer?.fingerprintImage);
@@ -233,44 +356,7 @@ const InvoiceDetails = () => {
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
-<div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 no-print">
-            <button
-              type="button"
-              onClick={() => handleOrientationChange('portrait')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
-                printOrientation === 'portrait'
-                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <RectangleVertical className="w-3.5 h-3.5" />
-              <span>Portrait</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOrientationChange('landscape')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
-                printOrientation === 'landscape'
-                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <RectangleHorizontal className="w-3.5 h-3.5" />
-              <span>Landscape</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOrientationChange('half')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
-                printOrientation === 'half'
-                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>Half Page</span>
-            </button>
-          </div>
+<span className="no-print rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black text-slate-600">A4 · Half Page</span>
 
           <button
             type="button"
@@ -288,15 +374,26 @@ const InvoiceDetails = () => {
       ====================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono text-slate-900"
+        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono font-bold text-slate-900"
       >
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
-          <span className={`rotate-[-28deg] whitespace-nowrap rounded-lg border-double border-4 px-4 py-1.5 text-4xl font-black tracking-[0.2em] ${invoicePaymentStatus === 'PAID' ? 'border-emerald-700 text-emerald-700 opacity-15' : 'border-rose-700 text-rose-700 opacity-10'}`}>{invoicePaymentStatus}</span>
-        </div>
+        {!isInstallmentInvoice && invoicePaymentStatus === 'PAID' && (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+            <span className="rotate-[-28deg] whitespace-nowrap rounded-lg border-double border-4 border-emerald-700 px-4 py-1.5 text-4xl font-black tracking-[0.2em] text-emerald-700 opacity-15">PAID</span>
+          </div>
+        )}
         <div className="relative z-10">
         {/* SHOP HEADER */}
-        <div className="text-center space-y-0.5 pb-2 border-b-2 border-dashed border-slate-300">
+        <div className="grid grid-cols-[35mm_minmax(0,1fr)_35mm] items-center gap-2 border-b-2 border-slate-500 pb-2">
+          <div className="self-start text-left">
+            {customerPhoto && (
+              <img src={customerPhoto} alt="Customer" className="h-[45mm] w-[35mm] rounded-lg border border-slate-500 object-cover" />
+            )}
+          </div>
+          <div className="text-center space-y-0.5">
           {/* BRAND NAME — auto-styled, prominent */}
+          <div className="invoice-header-number">
+            Invoice #: <strong>{saleObj.saleId || '—'}</strong>
+          </div>
           <h1 className="text-xl font-black uppercase tracking-[0.12em] text-slate-900 leading-tight">
             {settings?.shopName || 'Electronics Shop'}
           </h1>
@@ -318,10 +415,19 @@ const InvoiceDetails = () => {
           <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-widest mt-1">
             Tax Invoice / Sale Receipt
           </span>
+          <p className="invoice-printed-date">
+            Printed: {new Date().toLocaleString('en-PK')}
+          </p>
+          </div>
+          <div className="self-start text-right">
+            {customerFingerprint && (
+              <img src={customerFingerprint} alt="Fingerprint" className="ml-auto h-[45mm] w-[35mm] rounded-lg border border-slate-500 bg-white object-contain p-1" />
+            )}
+          </div>
         </div>
 
         {/* INVOICE METADATA */}
-        <div className="grid grid-cols-2 text-[10px] py-1.5 border-b border-dashed border-slate-300 gap-1 font-black">
+        <div className="invoice-metadata grid grid-cols-1 text-[10px] py-1.5 border-b border-slate-400 gap-1 font-black">
           <div>
             Invoice: <strong className="text-blue-600">{saleObj.saleId || '—'}</strong>
           </div>
@@ -331,25 +437,22 @@ const InvoiceDetails = () => {
         </div>
 
         {/* CUSTOMER + PRODUCT DETAILS */}
-        <div className="py-1.5 border-b border-dashed border-slate-300 text-[10px]">
+        <div className="invoice-customer-info py-1.5 border-b border-slate-400 text-[10px]">
           {/* Customer Column */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <div className="grid grid-cols-2 items-start gap-x-3 gap-y-0">
             <span className="col-span-2 text-[9px] uppercase font-black text-slate-400 block">
               Customer Info
             </span>
-            <p className="col-start-1 row-start-2 font-black text-slate-900 truncate">
-              {saleObj.customer?.fullName || 'Walk-in Customer'}
-            </p>
-            <p className="col-start-1 row-start-3 text-slate-600 font-bold text-[9px]">
-              {saleObj.customer?.mobileNumber || 'No Phone'}
-            </p>
-            {saleObj.customer?.cnic && <p className="col-start-2 row-start-2 self-center text-left text-slate-600 text-[9px]">CNIC: {saleObj.customer.cnic}</p>}
-            {saleObj.customer?.alternateMobileNumber && <p className="col-start-1 text-slate-600 text-[9px]">Alt phone: {saleObj.customer.alternateMobileNumber}</p>}
-            {saleObj.customer?.address && (
-              <p className="col-start-2 row-start-3 self-center text-left text-slate-500 text-[9px] leading-tight">
-                Address: {saleObj.customer.address}{saleObj.customer?.city ? `, ${saleObj.customer.city}` : ''}
-              </p>
-            )}
+            <div className="space-y-0 leading-tight">
+              <p className="invoice-customer-name m-0 font-black text-slate-900">Name: {saleObj.customer?.fullName || 'Walk-in Customer'}</p>
+              {saleObj.customer?.fatherName && <p className="m-0 font-bold text-slate-600">Father Name: {saleObj.customer.fatherName}</p>}
+              <p className="m-0 font-bold text-slate-600">Mobile No: {saleObj.customer?.mobileNumber || 'No Phone'}</p>
+              {saleObj.customer?.alternateMobileNumber && <p className="m-0 font-bold text-slate-600">Alt Phone: {saleObj.customer.alternateMobileNumber}</p>}
+            </div>
+            <div className="space-y-0 leading-tight">
+              {saleObj.customer?.cnic && <p className="m-0 font-bold text-slate-600">CNIC: {saleObj.customer.cnic}</p>}
+              {saleObj.customer?.address && <p className="m-0 font-bold text-slate-500">Address: {saleObj.customer.address}{saleObj.customer?.city ? `, ${saleObj.customer.city}` : ''}</p>}
+            </div>
           </div>
 
           {/* Product Column */}
@@ -382,101 +485,79 @@ const InvoiceDetails = () => {
         </div>
 
         {/* ITEMIZED SHOPPING RECEIPT LINES */}
-        <div className="border-b border-dashed border-slate-300 pb-2">
-          <div className="grid grid-cols-[minmax(0,1fr)_20px_68px] gap-1 border-b border-slate-300 pb-1 text-[9px] font-black uppercase tracking-wide"><span>Item</span><span className="text-right">Qty</span><span className="text-right">Price</span></div>
-          <div className="divide-y divide-dashed divide-slate-200">
+        <div className="invoice-items-section border-b border-slate-400 pb-2">
+          <div className={`invoice-item-grid ${isInstallmentInvoice ? 'invoice-item-grid-installment grid-cols-[minmax(0,1fr)_20px_68px]' : 'invoice-item-grid-cash grid-cols-[minmax(0,1fr)_58px_20px_68px]'} grid gap-1 border-b border-slate-400 pb-1 text-[9px] font-black uppercase tracking-wide`}>
+            <div className="grid min-w-0 text-[8px]" style={{ gridTemplateColumns: invoiceProductDetailColumns }}>
+              {invoiceProductDetailFields.map((field) => (
+                <span key={field.key} className="min-w-0 border-r border-slate-400 px-1 last:border-r-0">
+                  {field.label}
+                </span>
+              ))}
+            </div>
+            {!isInstallmentInvoice && <span className="border-l border-slate-400 pl-1 text-right">Unit Price</span>}
+            <span className="border-l border-slate-400 pl-1 text-right">Qty</span>
+            <span className="border-l border-slate-400 pl-1 text-right">Deal</span>
+          </div>
+          <div className="divide-y divide-slate-300">
             {invoiceItems.map((item, index) => {
-              const itemProduct = item.product && typeof item.product === 'object' ? item.product : {};
+              const itemProduct = getInvoiceItemProduct(item);
               const itemQty = Number(item.quantity || 0);
-              const itemPrice = Number(item.unitPrice || 0);
               const itemDiscount = Number(item.discount || 0);
-              const lineTotal = Math.max(0, itemQty * itemPrice - itemDiscount);
+              const itemDealPrice = Math.max(
+                0,
+                itemQty * Number(item.unitPrice || 0) - itemDiscount
+              );
+              const installmentItemDealPrice = Number(saleObj.finalTotal || 0) > 0
+                ? itemDealPrice * totalAmount / Number(saleObj.finalTotal)
+                : itemDealPrice;
               return <div key={String(item._id || itemProduct._id || index)} className="py-1.5">
-                <div className="grid grid-cols-[minmax(0,1fr)_20px_68px] items-start gap-1">
+                <div className={`invoice-item-grid ${isInstallmentInvoice ? 'invoice-item-grid-installment grid-cols-[minmax(0,1fr)_20px_68px]' : 'invoice-item-grid-cash grid-cols-[minmax(0,1fr)_58px_20px_68px]'} grid items-start gap-1`}>
                   <div className="min-w-0 flex-1">
-                    <p className="break-words text-[10px] font-black leading-tight">{itemProduct.name || itemProduct.productName || 'Product'}</p>
-                    {itemProduct.model && <p className="mt-0.5 break-words text-[9px] font-bold text-slate-600">Model: {itemProduct.model}</p>}
-                    {itemProduct.brand && <p className="break-words text-[8px] text-slate-500">Brand: {itemProduct.brand}</p>}
-                    {itemDiscount > 0 && <p className="text-[9px] font-bold text-slate-600">Discount: -{settings?.currency || 'PKR'} {itemDiscount.toLocaleString()}</p>}
-                    {itemProduct.imei && <p className="text-[8px] text-slate-500">IMEI: {itemProduct.imei}</p>}
+                    <div
+                      className="grid min-w-0 text-[8px] leading-tight"
+                      style={{ gridTemplateColumns: invoiceProductDetailColumns }}
+                    >
+                      {invoiceProductDetailFields.map((field) => (
+                        <div key={field.key} className="min-w-0 border-r border-slate-300 px-1 py-0.5 last:border-r-0">
+                          <p className="break-normal font-bold text-slate-900">
+                            {field.getValue(itemProduct, item, index) || '—'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    {itemDiscount > 0 && <p className="mt-0.5 text-[9px] font-bold text-slate-600">Discount: -{settings?.currency || 'PKR'} {itemDiscount.toLocaleString()}</p>}
                   </div>
-                  <span className="text-right text-[10px] font-black">{itemQty}</span>
-                  <span className="text-right text-[10px] font-black">{settings?.currency || 'PKR'} {lineTotal.toLocaleString()}</span>
+                  {!isInstallmentInvoice && <span className="border-l border-slate-300 pl-1 text-right text-[9px] font-bold">{Number(item.unitPrice || 0).toLocaleString()}</span>}
+                  <span className="border-l border-slate-300 pl-1 text-right text-[10px] font-black">{itemQty}</span>
+                  <span className="border-l border-slate-300 pl-1 text-right text-[10px] font-black">{(isInstallmentInvoice ? installmentItemDealPrice : itemDealPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
               </div>;
             })}
           </div>
         </div>
 
-        {/* CUSTOMER PHOTO & FINGERPRINT IMAGE ON SLIP */}
-        {(customerPhoto || customerFingerprint) && (
-          <div className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl space-y-1">
-            <span className="text-[8px] uppercase font-black text-slate-500 block text-center">
-              Customer Biometric & Photo Verification
-            </span>
-            
-            <div className="flex items-center justify-around gap-2 pt-1">
-              <div className="text-center">
-                {customerPhoto ? (
-                  <img
-                    loading="lazy"
-                    src={customerPhoto}
-                    alt="Customer"
-                    className="w-12 h-12 object-cover rounded-lg border border-slate-400 mx-auto"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg border border-slate-300 bg-white flex items-center justify-center mx-auto text-slate-400">
-                    <User className="w-5 h-5" />
-                  </div>
-                )}
-                <span className="text-[7.5px] font-bold text-slate-600 block mt-0.5">Photo</span>
-              </div>
-
-              <div className="text-center">
-                {customerFingerprint ? (
-                  <img
-                    loading="lazy"
-                    src={customerFingerprint}
-                    alt="Fingerprint"
-                    className="w-12 h-12 object-contain rounded-lg border border-slate-400 bg-white mx-auto p-0.5"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg border border-slate-300 bg-white flex items-center justify-center mx-auto text-slate-400">
-                    <Fingerprint className="w-5 h-5" />
-                  </div>
-                )}
-                <span className="text-[7.5px] font-bold text-slate-600 block mt-0.5">Fingerprint</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* URDU INSTALLMENT AGREEMENT (FOR INSTALLMENT DEALS) */}
+        {/* INSTALLMENT AGREEMENT (INSTALLMENT INVOICES ONLY) */}
         {isInstallmentInvoice && (
           <div
             dir="rtl"
-            className="py-2.5 border-b border-dashed border-slate-300 text-[10px] leading-relaxed text-right bg-slate-50/50 p-2 rounded-xl"
+            className="invoice-agreement-section space-y-1 border-b border-slate-500 bg-slate-50/50 p-2.5 text-right text-[12px] font-bold leading-relaxed"
           >
-            <p className="font-black text-slate-900 mb-1">
-              قسطوں کے معاہدے کی تصدیق
+            <p className="mb-1 text-[14px] font-black text-slate-900">قسطوں کے معاہدے کی تصدیق</p>
+            <p className="text-[12px] font-bold text-slate-900">
+              کل منصوبہ: <b className="text-slate-900">{originalPlanMonths} ماہ</b>
+              {' • '}باقی اقساط: <b className="text-slate-900">{remainingInstallmentCount}</b>
             </p>
-            <p>
-              ٹوٹل پلان:{' '}
-              <span className="font-black text-slate-900">{originalPlanMonths} ماہ</span>
-              {' • '}
-              ماہانہ قسط:{' '}
-              <span className="font-black text-slate-900">
-                {settings?.currency || 'PKR'} {installmentAmount.toLocaleString()}
-              </span>
+            <p className="text-[12px] font-bold text-slate-900">
+              ہر قسط: <b className="text-slate-900">{settings?.currency || 'PKR'} {installmentAmount.toLocaleString()}</b>
+              {' • '}ہر ماہ کی <b className="text-slate-900">{installmentDueDay ?? '—'} تاریخ</b> کو ادا کرنا لازم ہے۔
             </p>
-            <p className="text-[8.5px] text-slate-600 mt-1 leading-normal">
-              میں تصدیق کرتا ہوں کہ میں نے سامان بالکل درست حالت میں وصول کر لیا ہے اور قسطوں کے تمام شرائط و ضوابط کو قبول کرتا ہوں۔
+            <p className="text-[11px] font-bold text-slate-900">
+              تاخیر کی صورت میں جرمانہ ادا کرنا ہوگا۔ میں سامان وصول کرنے کی تصدیق کرتا ہوں۔
             </p>
           </div>
         )}
-
         {/* PAYMENT TOTALS SUMMARY */}
-        <div className="space-y-1.5 py-2 text-xs font-bold border-b border-dashed border-slate-300">
+        <div className="invoice-payment-totals space-y-1.5 py-2 text-xs font-bold border-b border-slate-400">
           <div className="flex justify-between text-slate-900 font-black">
             <span>Total Deal Amount:</span>
             <span>
@@ -494,6 +575,11 @@ const InvoiceDetails = () => {
               +{settings?.currency || 'PKR'} {displayedPaymentAmount.toLocaleString()}
             </span>
           </div>
+          {downPaymentIsPaidFirstInstallment && (
+            <p className="text-right text-[10px] font-black text-indigo-700">
+              Down Payment as First Installment
+            </p>
+          )}
 
           {(isInstallmentInvoice || invoicePaymentStatus === 'UNPAID') && (
             <div className="flex justify-between text-rose-600 font-black text-sm pt-1 border-t border-dotted border-slate-200">
@@ -506,21 +592,40 @@ const InvoiceDetails = () => {
         </div>
 
         {/* THANK YOU FOOTER */}
-        <div className="text-center pt-2 border-t border-dashed border-slate-200">
+        <div className="text-center pt-2 border-t border-slate-400">
           <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">
             *** Thank You for Shopping! Visit Again ***
           </p>
+          <p dir="rtl" className="mt-1 text-[10px] font-black text-slate-700">
+            الیکٹرونکس کی کوئی بھی چیز واپس یا تبدیل نہیں ہوگی۔
+          </p>
         </div>
+        {isInstallmentInvoice && (
+          <div className="invoice-signatures mt-8 grid grid-cols-2 gap-12 border-t border-slate-400 pt-3 text-center">
+            <div>
+              <div className="h-[28mm] border-b border-slate-700" />
+              <p className="pt-2 font-black text-slate-900">Customer Agreement & Signature</p>
+            </div>
+            <div>
+              <div className="h-[28mm] border-b border-slate-700" />
+              <p className="pt-2 font-black text-slate-900">Shop Signature & Stamp</p>
+            </div>
+          </div>
+        )}
         </div>
       </div>
       {/* =====================================================
           COMPACT PRINT STYLESHEET
       ====================================================== */}
       <style>{`
+        #printable-thermal-invoice .invoice-metadata {
+          display: none !important;
+        }
+
         @media print {
           @page {
-            size: ${printOrientation === 'landscape' ? 'A4 landscape' : printOrientation === 'half' ? 'A4 portrait' : '80mm auto'};
-            margin: ${printOrientation === 'portrait' ? '3mm 4mm' : '8mm'};
+            size: A4 portrait;
+            margin: 0 8mm 8mm;
           }
 
           html, body {
@@ -541,23 +646,127 @@ const InvoiceDetails = () => {
             visibility: visible !important;
           }
 
+          #printable-thermal-invoice * {
+            font-size: 12pt !important;
+            font-weight: 900 !important;
+            line-height: 1.35 !important;
+            overflow-wrap: normal !important;
+            word-break: normal !important;
+          }
+
+          #printable-thermal-invoice .invoice-payment-totals .flex {
+            flex-wrap: wrap !important;
+            gap: 2mm !important;
+          }
+
+          #printable-thermal-invoice .invoice-customer-info {
+            font-size: 14pt !important;
+          }
+
+          #printable-thermal-invoice .invoice-customer-info * {
+            font-size: 14pt !important;
+            font-weight: 900 !important;
+            line-height: 1.4 !important;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          #printable-thermal-invoice .invoice-customer-info .grid > span {
+            font-size: 12pt !important;
+          }
+
+          #printable-thermal-invoice .invoice-customer-name {
+            font-size: 16pt !important;
+            font-weight: 900 !important;
+          }
+
+          #printable-thermal-invoice .invoice-payment-totals,
+          #printable-thermal-invoice .invoice-payment-totals * {
+            font-size: 14pt !important;
+            font-weight: 900 !important;
+            line-height: 1.4 !important;
+          }
+
+          #printable-thermal-invoice .invoice-items-section,
+          #printable-thermal-invoice .invoice-agreement-section {
+            border: 1px solid #334155 !important;
+            border-radius: 2mm !important;
+            margin-top: 3mm !important;
+            padding: 3mm !important;
+            break-inside: avoid !important;
+          }
+
+          #printable-thermal-invoice .invoice-item-grid-installment {
+            grid-template-columns: minmax(0, 1fr) 65px 115px !important;
+          }
+
+          #printable-thermal-invoice .invoice-item-grid-cash {
+            grid-template-columns: minmax(0, 1fr) 100px 65px 115px !important;
+          }
+
+          #printable-thermal-invoice h1 {
+            font-size: 22pt !important;
+            font-weight: 900 !important;
+            line-height: 1.2 !important;
+          }
+
+          #printable-thermal-invoice .invoice-header-number {
+            margin-bottom: 1mm !important;
+            font-size: 20pt !important;
+            font-weight: 900 !important;
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow-wrap: normal !important;
+          }
+
+          #printable-thermal-invoice .invoice-header-number strong {
+            font-size: 22pt !important;
+            font-weight: 900 !important;
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow-wrap: normal !important;
+          }
+
+          #printable-thermal-invoice .invoice-printed-date {
+            margin-top: 1mm !important;
+            font-size: 9pt !important;
+            font-weight: 800 !important;
+          }
+
+          #printable-thermal-invoice img {
+            max-width: 35mm !important;
+            max-height: 45mm !important;
+          }
+
           .no-print {
             display: none !important;
           }
 
           #printable-thermal-invoice {
-            position: fixed !important;
-            left: 50% !important;
+            position: absolute !important;
+            left: 0 !important;
+            right: auto !important;
             top: 0 !important;
-            width: 100% !important;
-            max-width: ${printOrientation === 'landscape' ? '100%' : '80mm'} !important;
+            width: var(--invoice-print-width, 194mm) !important;
+            max-width: none !important;
+            min-height: var(--invoice-print-min-height, 281mm) !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
             margin: 0 !important;
-            transform: translateX(-50%) !important;
-            padding: 0 !important;
+            zoom: var(--invoice-print-scale, 1) !important;
+            transform: none !important;
+            box-sizing: border-box !important;
+            padding: 0 0 8mm !important;
+            padding-top: 0 !important;
+            margin-top: 0 !important;
             border: none !important;
             box-shadow: none !important;
             color: #000000 !important;
-            font-size: ${printOrientation === 'landscape' ? '9px' : '8px'} !important;
+            font-size: 12pt !important;
+            font-weight: 900 !important;
+            line-height: 1.35 !important;
           }
 
           img {

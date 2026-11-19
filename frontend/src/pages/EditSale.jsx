@@ -40,10 +40,13 @@ const EditSale = () => {
     product: '',
     quantity: 1,
     unitPrice: 0,
+    purchasePriceAtSale: 0,
     discount: 0,
     paymentType: 'Cash',
     downPayment: 0,
     installmentDuration: 3,
+    markupPercentage: 0,
+    treatDownPaymentAsFirstInstallment: false,
   });
 
   const [fetching, setFetching] = useState(true);
@@ -85,6 +88,7 @@ const EditSale = () => {
             quantity: Number(item.quantity || 1),
             unitPrice: Number(item.unitPrice || 0),
             discount: Number(item.discount || 0),
+            purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product?.purchasePrice ?? 0),
           })));
           setFormData({
             customerName: s.customer?.fullName || '',
@@ -96,10 +100,13 @@ const EditSale = () => {
             product: s.product?._id || '',
             quantity: s.quantity,
             unitPrice: s.unitPrice,
+            purchasePriceAtSale: Number(s.purchasePriceAtSale ?? s.product?.purchasePrice ?? 0),
             discount: s.discount,
             paymentType: s.paymentType,
             downPayment: s.downPayment,
-            installmentDuration: s.installmentDuration || 3,
+            installmentDuration: s.selectedInstallmentDuration || s.installmentDuration || 3,
+            markupPercentage: Number(s.markupPercentage || 0),
+            treatDownPaymentAsFirstInstallment: Boolean(s.treatDownPaymentAsFirstInstallment),
           });
         }
       } catch (err) {
@@ -137,6 +144,7 @@ const EditSale = () => {
       ...prev,
       product: prodId,
       unitPrice: found ? found.salePrice : 0,
+      purchasePriceAtSale: found ? found.purchasePrice : 0,
       quantity: 1,
     }));
   };
@@ -151,7 +159,12 @@ const EditSale = () => {
     const selectedProduct = products.find((product) => product._id === productId);
     setCashItems((currentItems) => currentItems.map((item, itemIndex) =>
       itemIndex === index
-        ? { ...item, product: productId, unitPrice: selectedProduct?.salePrice || 0 }
+        ? {
+            ...item,
+            product: productId,
+            unitPrice: selectedProduct?.salePrice || 0,
+            purchasePriceAtSale: selectedProduct?.purchasePrice || 0,
+          }
         : item
     ));
   };
@@ -171,9 +184,17 @@ const EditSale = () => {
   const finalTotal = formData.paymentType === 'Cash'
     ? cashFinalTotal
     : Math.max(0, subtotal - Number(formData.discount || 0));
+  const installmentMarkupBase = formData.treatDownPaymentAsFirstInstallment
+    ? Math.max(0, finalTotal - Number(formData.downPayment || 0))
+    : finalTotal;
+  const installmentMarkup = installmentMarkupBase * Number(formData.markupPercentage || 0) / 100;
+  const installmentFinancedBalance = formData.treatDownPaymentAsFirstInstallment
+    ? installmentMarkupBase + installmentMarkup
+    : Math.max(0, finalTotal + installmentMarkup - Number(formData.downPayment || 0));
+  const installmentTotalPayable = Number(formData.downPayment || 0) + installmentFinancedBalance;
   const remaining =
     formData.paymentType === 'Installment'
-      ? Math.max(0, finalTotal - Number(formData.downPayment || 0))
+      ? installmentFinancedBalance
       : 0;
 
   const handleSubmit = async (e) => {
@@ -193,6 +214,8 @@ const EditSale = () => {
       Number(item.quantity) < 1 ||
       !Number.isFinite(Number(item.unitPrice)) ||
       Number(item.unitPrice) < 0 ||
+      !Number.isFinite(Number(item.purchasePriceAtSale)) ||
+      Number(item.purchasePriceAtSale) < 0 ||
       Number(item.discount) < 0 ||
       Number(item.discount) > Number(item.quantity) * Number(item.unitPrice)
     )) {
@@ -217,6 +240,7 @@ const EditSale = () => {
               product: item.product,
               quantity: Number(item.quantity),
               unitPrice: Number(item.unitPrice),
+              purchasePriceAtSale: Number(item.purchasePriceAtSale),
               discount: Number(item.discount || 0),
             })),
           }
@@ -224,9 +248,11 @@ const EditSale = () => {
         product: formData.product,
         quantity: Number(formData.quantity),
         unitPrice: Number(formData.unitPrice),
+        purchasePriceAtSale: Number(formData.purchasePriceAtSale),
         discount: Number(formData.discount),
         paymentType: formData.paymentType,
         customer: formData.customerRef || null,
+        saleDate: formData.saleDate ? new Date(`${formData.saleDate}T12:00:00`).toISOString() : null,
         downPayment:
           formData.paymentType === 'Installment'
             ? Number(formData.downPayment)
@@ -235,6 +261,12 @@ const EditSale = () => {
           formData.paymentType === 'Installment'
             ? Number(formData.installmentDuration)
             : 0,
+        markupPercentage:
+          formData.paymentType === 'Installment'
+            ? Number(formData.markupPercentage || 0)
+            : 0,
+        treatDownPaymentAsFirstInstallment:
+          formData.paymentType === 'Installment' && formData.treatDownPaymentAsFirstInstallment,
           };
 
       await api.put(`/api/sales/${id}`, payload);
@@ -400,7 +432,7 @@ const EditSale = () => {
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Products in this cash sale</label>
                     <p className="mt-1 text-[11px] font-medium text-slate-400">Remove products or add another product to the invoice.</p>
                   </div>
-                  <button type="button" onClick={() => setCashItems((current) => [...current, { product: '', quantity: 1, unitPrice: 0, discount: 0 }])} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-700">
+                  <button type="button" onClick={() => setCashItems((current) => [...current, { product: '', quantity: 1, unitPrice: 0, purchasePriceAtSale: 0, discount: 0 }])} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-700">
                     <Plus className="h-4 w-4" /> Add Product
                   </button>
                 </div>
@@ -417,8 +449,9 @@ const EditSale = () => {
                       <option value="">Select Inventory Product...</option>
                       {products.map((product) => <option key={product._id} value={product._id}>{product.name} ({product.brand} {product.model}) — [Stock: {product.quantity}]</option>)}
                     </select>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Quantity<input type="number" min="1" required value={item.quantity} onChange={(event) => updateCashItem(index, 'quantity', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Unit Cost<input type="number" min="0" required value={item.purchasePriceAtSale} onChange={(event) => updateCashItem(index, 'purchasePriceAtSale', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500" /></label>
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Unit Selling Price<input type="number" min="0" required value={item.unitPrice} onChange={(event) => updateCashItem(index, 'unitPrice', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Product Discount<input type="number" min="0" value={item.discount} onChange={(event) => updateCashItem(index, 'discount', event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-blue-500" /></label>
                     </div>
@@ -452,7 +485,21 @@ const EditSale = () => {
             </div>
 
             {/* Unit Price & Quantity */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Purchase Price ({settings?.currency || 'PKR'})
+                </label>
+                <input
+                  type="number"
+                  name="purchasePriceAtSale"
+                  value={formData.purchasePriceAtSale}
+                  onChange={handleChange}
+                  min="0"
+                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                  required
+                />
+              </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                   Unit Price ({settings?.currency || 'PKR'}) <span className="text-rose-500">*</span>
@@ -534,7 +581,12 @@ const EditSale = () => {
 
             {/* Installment Parameters (Conditional) */}
             {formData.paymentType === 'Installment' && (
-              <div className="bg-indigo-50/50 border border-indigo-200/80 p-5 rounded-2xl space-y-4 animate-[pageEnter_0.25s_ease-out]">
+              <div className="space-y-4 animate-[pageEnter_0.25s_ease-out]">
+                <div className="rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4">
+                  <label htmlFor="saleDate" className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Sale date</label>
+                  <input id="saleDate" name="saleDate" type="date" required value={formData.saleDate} onChange={handleChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-xs" />
+                </div>
+                <div className="bg-indigo-50/50 border border-indigo-200/80 p-5 rounded-2xl space-y-4">
                 <div className="flex items-center gap-2">
                   <CalendarDays className="w-4 h-4 text-indigo-600" />
                   <h4 className="text-xs font-black uppercase tracking-wider text-indigo-900">
@@ -542,7 +594,7 @@ const EditSale = () => {
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-indigo-800 mb-1.5">
                       Down Payment ({settings?.currency || 'PKR'})
@@ -570,11 +622,25 @@ const EditSale = () => {
                       className="w-full h-11 border border-indigo-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
                       required
                     >
+                      {!['3', '6', '12', '24', '36'].includes(String(formData.installmentDuration)) && (
+                        <option value={formData.installmentDuration}>{formData.installmentDuration} Months Plan</option>
+                      )}
                       <option value="3">3 Months Plan</option>
                       <option value="6">6 Months Plan</option>
                       <option value="12">12 Months Plan</option>
+                      <option value="24">24 Months Plan</option>
+                      <option value="36">36 Months Plan</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-indigo-800 mb-1.5">Markup (%)</label>
+                    <input type="number" name="markupPercentage" value={formData.markupPercentage} onChange={handleChange} min="0" step="0.01" className="w-full h-11 border border-indigo-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all" />
+                  </div>
+                </div>
+                <label className="flex items-start gap-2.5 rounded-xl border border-indigo-200 bg-white/70 p-3 text-xs font-bold text-indigo-900">
+                  <input type="checkbox" name="treatDownPaymentAsFirstInstallment" checked={formData.treatDownPaymentAsFirstInstallment} onChange={(event) => setFormData((current) => ({ ...current, treatDownPaymentAsFirstInstallment: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-indigo-600" />
+                  <span>Count the down payment as installment #1</span>
+                </label>
                 </div>
               </div>
             )}
@@ -623,14 +689,14 @@ const EditSale = () => {
               <div className="border-t border-white/[0.08] pt-4 flex justify-between items-center">
                 <span className="text-sm font-black text-white">Net Total Payable</span>
                 <span className="text-lg font-black bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-                  {settings?.currency || 'PKR'} {finalTotal.toLocaleString()}
+                  {settings?.currency || 'PKR'} {(formData.paymentType === 'Installment' ? installmentTotalPayable : finalTotal).toLocaleString()}
                 </span>
               </div>
 
               {formData.paymentType === 'Installment' && (
                 <div className="space-y-2 border-t border-white/[0.08] pt-3.5 text-xs text-slate-400">
                   <div className="flex justify-between">
-                    <span>Down Payment</span>
+                    <span>Down Payment {formData.treatDownPaymentAsFirstInstallment ? '(Installment #1)' : ''}</span>
                     <span className="text-emerald-400 font-bold">
                       - {settings?.currency || 'PKR'} {Number(formData.downPayment || 0).toLocaleString()}
                     </span>

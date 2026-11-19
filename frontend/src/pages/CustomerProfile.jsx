@@ -2051,7 +2051,7 @@ const CustomerProfile = () => {
         @media print {
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 5mm;
           }
 
           html,
@@ -2079,8 +2079,13 @@ const CustomerProfile = () => {
 
           .customer-print-slip {
             position: absolute !important;
-            inset: 0 auto auto 0 !important;
+            inset: 0 !important;
             width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            transform: none !important;
+            box-sizing: border-box !important;
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -2089,6 +2094,7 @@ const CustomerProfile = () => {
             display: block !important;
             color: #000000;
             font-family: Arial, Helvetica, sans-serif;
+            font-weight: 700 !important;
           }
 
           .print-header {
@@ -2102,25 +2108,27 @@ const CustomerProfile = () => {
 
           .print-header h1 {
             margin: 0;
-            font-size: 14px;
+            font-size: 17px;
             font-weight: 900;
             text-transform: uppercase;
           }
 
           .print-header p {
             margin: 1px 0 0;
-            font-size: 8px;
-            font-weight: 700;
+            font-size: 10px;
+            font-weight: 900;
             color: #334155;
           }
 
           .print-header small {
-            font-size: 7px;
+            font-size: 9px;
+            font-weight: 700;
             color: #64748b;
           }
 
           .print-date {
-            font-size: 8px;
+            font-size: 9px;
+            font-weight: 800;
             color: #334155;
             text-align: right;
             display: flex;
@@ -2139,17 +2147,17 @@ const CustomerProfile = () => {
           .print-title {
             background: #f1f5f9;
             border-bottom: 1px solid #cbd5e1;
-            padding: 3px 6px;
-            font-size: 8.5px;
+            padding: 5px 8px;
+            font-size: 10px;
             font-weight: 900;
             color: #0f172a;
           }
 
           .print-content {
             display: grid;
-            grid-template-columns: 1fr 190px;
-            gap: 8px;
-            padding: 5px 6px;
+            grid-template-columns: minmax(0, 1fr) 140px;
+            gap: 12px;
+            padding: 9px 10px;
             align-items: start;
           }
 
@@ -2157,7 +2165,7 @@ const CustomerProfile = () => {
             display: grid;
             grid-template-columns: 1fr 1fr;
             column-gap: 12px;
-            row-gap: 4px;
+            row-gap: 6px;
           }
 
           .print-details > div {
@@ -2167,41 +2175,42 @@ const CustomerProfile = () => {
           }
 
           .print-details span {
-            font-size: 6.5px;
+            font-size: 8px;
             text-transform: uppercase;
             font-weight: 900;
-            color: #64748b;
-            margin-bottom: 0.5px;
+            color: #475569;
+            margin-bottom: 1px;
           }
 
           .print-details strong {
-            font-size: 8px;
-            font-weight: 700;
+            font-size: 9.5px;
+            font-weight: 900;
             color: #000000;
-            word-break: break-word;
+            word-break: normal;
           }
 
           .print-media-column {
             display: flex;
-            align-items: flex-start;
-            justify-content: flex-end;
-            gap: 6px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
           }
 
           .print-fingerprint-box,
           .print-photo-box {
-            width: 88px;
-            min-height: 80px;
+            width: 130px;
+            min-height: 112px;
             border: 0.5px solid #94a3b8;
             border-radius: 3px;
-            padding: 3px;
+            padding: 5px;
             text-align: center;
             background: #ffffff;
           }
 
           .print-fingerprint-title,
           .print-photo-title {
-            font-size: 6.5px;
+            font-size: 8px;
             font-weight: 900;
             color: #475569;
             margin-bottom: 2px;
@@ -2209,16 +2218,16 @@ const CustomerProfile = () => {
 
           .print-fingerprint-box img {
             display: block;
-            width: 65px;
-            height: 52px;
+            width: 112px;
+            height: 86px;
             object-fit: contain;
             margin: 0 auto 2px;
           }
 
           .print-photo-box img {
             display: block;
-            width: 65px;
-            height: 52px;
+            width: 112px;
+            height: 86px;
             object-fit: cover;
             border-radius: 2px;
             margin: 0 auto 2px;
@@ -2227,26 +2236,29 @@ const CustomerProfile = () => {
           .print-fingerprint-box small,
           .print-photo-box small {
             display: block;
-            font-size: 5.5px;
-            line-height: 1.1;
-            color: #64748b;
+            font-size: 7px;
+            line-height: 1.2;
+            color: #334155;
+            font-weight: 700;
           }
 
           .print-no-fingerprint,
           .print-no-photo {
-            height: 52px;
+            height: 86px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 6.5px;
-            color: #94a3b8;
+            font-size: 8px;
+            color: #64748b;
+            font-weight: 800;
           }
 
           .print-signatures {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-top: 14px;
+            gap: 16px;
+            margin-top: 28px;
+            padding-top: 8px;
             page-break-inside: avoid;
             break-inside: avoid;
           }
@@ -2261,8 +2273,8 @@ const CustomerProfile = () => {
           }
 
           .signature-box p {
-            font-size: 7px;
-            font-weight: 800;
+            font-size: 9px;
+            font-weight: 900;
             color: #0f172a;
             margin: 0;
           }

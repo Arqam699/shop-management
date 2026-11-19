@@ -1595,21 +1595,7 @@ const DueDates = () => {
                 </div>
 
                 <div className="space-y-1 text-xs">
-
-                  <div className="flex justify-between">
-
-                    <span className="text-slate-400">
-                      Plan ID:
-                    </span>
-
-                    <span className="font-bold text-slate-800">
-                      {plan.planId ||
-                        '—'}
-                    </span>
-
-                  </div>
-
-                  <div className="flex justify-between">
+<div className="flex justify-between">
 
                     <span className="text-slate-400">
                       Invoice:

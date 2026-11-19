@@ -480,6 +480,7 @@ app.use(
 
 app.use('/api/books', require('./routes/bookRoutes'));
 app.use('/books', require('./routes/bookRoutes'));
+app.use('/api/notes', require('./routes/noteRoutes'));
 
 // =====================================================
 // INSTALLMENTS

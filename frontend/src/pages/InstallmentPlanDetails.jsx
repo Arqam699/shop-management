@@ -28,6 +28,19 @@ import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import ExistingPrintPopup from '../components/ExistingPrintPopup';
 
+const getImageSource = (image) => {
+  if (!image || typeof image !== 'string') return '';
+  if (
+    image.startsWith('data:image/') ||
+    image.startsWith('http://') ||
+    image.startsWith('https://') ||
+    image.startsWith('blob:')
+  ) {
+    return image;
+  }
+  return `data:image/jpeg;base64,${image}`;
+};
+
 const InstallmentPlanDetails = () => {
   const { id } = useParams();
   const { settings } = useSettings();
@@ -44,10 +57,12 @@ const InstallmentPlanDetails = () => {
   const [selectedInstallment, setSelectedInstallment] = useState(null);
 
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
 
   const currency = settings?.currency || 'PKR';
+  const customerPhoto = getImageSource(plan?.customer?.liveImage || plan?.customer?.photo);
+  const customerFingerprint = getImageSource(plan?.customer?.fingerprintImage);
 
   // =========================================================
   // HELPERS
@@ -135,7 +150,50 @@ const InstallmentPlanDetails = () => {
     });
   };
 
+  const getInstallmentPaymentEntries = (installment) => {
+    const installmentNumber = Number(installment?.installmentNumber || 0);
+
+    return payments
+      .flatMap((payment) => {
+        const allocations = Array.isArray(payment?.allocations)
+          ? payment.allocations
+          : [];
+
+        if (allocations.length > 0) {
+          return allocations
+            .filter((allocation) => Number(allocation?.installmentNumber || 0) === installmentNumber)
+            .map((allocation) => ({
+              date: payment.paymentDate || payment.createdAt,
+              amount: Number(allocation.amount || 0) + Number(payment?.balanceReductionAmount || 0),
+              extraAmount: Number(payment?.balanceReductionAmount || 0),
+              paymentId: payment._id,
+            }));
+        }
+
+        const paymentInstallmentNumber = Number(
+          payment?.installment?.installmentNumber ||
+          payment?.currentInstallmentNumber ||
+          payment?.installmentNumber ||
+          0
+        );
+
+        return paymentInstallmentNumber === installmentNumber
+          ? [{
+              date: payment.paymentDate || payment.createdAt,
+              amount: Number(payment.amount || 0),
+              extraAmount: 0,
+              paymentId: payment._id,
+            }]
+          : [];
+      })
+      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  };
+
   const getInstallmentRemaining = (installment) => {
+    if (plan?.status === 'Completed' || Number(plan?.remainingBalance || 0) <= 0) {
+      return 0;
+    }
+
     const amount = roundMoney(installment?.amount);
     const paid = roundMoney(installment?.paidAmount);
 
@@ -156,6 +214,10 @@ const InstallmentPlanDetails = () => {
   };
 
   const isInstallmentPaid = (installment) => {
+    if (plan?.status === 'Completed' || Number(plan?.remainingBalance || 0) <= 0) {
+      return true;
+    }
+
     const remaining =
       getInstallmentRemaining(installment);
 
@@ -227,6 +289,9 @@ const InstallmentPlanDetails = () => {
   const quantity = Number(
     sale?.quantity || 1
   );
+  const financedProducts = Array.isArray(sale?.items) && sale.items.length > 0
+    ? sale.items
+    : [{ product: plan?.product, quantity }];
 
   const productUnitPrice = Number(
     sale?.unitPrice || 0
@@ -468,13 +533,15 @@ const InstallmentPlanDetails = () => {
         0
       )
     );
+  const balanceReduction = roundMoney(plan?.balanceReduction || 0);
 
   const totalCustomerPaid =
     downPaymentAsFirstInstallment
-      ? totalPaidInInstallments
+      ? roundMoney(totalPaidInInstallments + balanceReduction)
       : roundMoney(
           downPayment +
-            totalPaidInInstallments
+            totalPaidInInstallments +
+            balanceReduction
         );
 
   // =========================================================
@@ -510,7 +577,7 @@ const InstallmentPlanDetails = () => {
   const calculatedRemainingBalance =
     downPaymentAsFirstInstallment &&
     installments.length > 0
-      ? installmentRemainingTotal
+      ? Math.max(0, roundMoney(installmentRemainingTotal - balanceReduction))
       : Math.max(
           0,
           roundMoney(
@@ -562,7 +629,6 @@ const InstallmentPlanDetails = () => {
 
   const invoiceBillNumber =
     sale?.saleId ||
-    plan?.planId ||
     'N/A';
 
   const planStartDate =
@@ -595,6 +661,14 @@ const InstallmentPlanDetails = () => {
   // =========================================================
 
   const paymentHistory = useMemo(() => {
+    const newestReceipt = [...payments].sort(
+      (a, b) =>
+        new Date(b.paymentDate || b.createdAt) -
+        new Date(a.paymentDate || a.createdAt)
+    )[0];
+    const planIsSettled =
+      plan?.status === 'Completed' || Number(plan?.remainingBalance || 0) <= 0;
+
     return [...payments]
       .map((payment) => {
         const allocations = Array.isArray(payment?.allocations)
@@ -618,7 +692,8 @@ const InstallmentPlanDetails = () => {
           payment?.originalInstallmentAmount
         );
 
-        const payableAtPayment = roundMoney(
+        const actualPaid = roundMoney(payment?.amount);
+        const savedPayableAtPayment = roundMoney(
           primaryAllocation?.previousRemaining ??
             (savedOriginalInstallmentAmount > 0
               ? savedOriginalInstallmentAmount
@@ -628,22 +703,41 @@ const InstallmentPlanDetails = () => {
             payment?.installment?.amount ??
             0
         );
-
-        const actualPaid = roundMoney(payment?.amount);
+        const isLatestLegacySettlement =
+          planIsSettled &&
+          String(payment?._id) === String(newestReceipt?._id) &&
+          (payment?.planRemainingBalanceAfterPayment === null ||
+            payment?.planRemainingBalanceAfterPayment === undefined);
+        const payableAtPayment = roundMoney(
+          payment?.planPayableAmountAtPayment ??
+            (isLatestLegacySettlement
+              ? Math.min(savedPayableAtPayment, actualPaid)
+              : savedPayableAtPayment)
+        );
 
         const paidToCurrentInstallment = roundMoney(
           primaryAllocation?.amount ??
             Math.min(actualPaid, payableAtPayment)
         );
 
-        const extraPaid = roundMoney(
-          payment?.carryForwardAmount ??
-            Math.max(0, actualPaid - paidToCurrentInstallment)
+        const balanceReductionPaid = roundMoney(
+          payment?.balanceReductionAmount || 0
         );
 
+        const extraPaid = roundMoney(
+          payment?.carryForwardAmount ??
+            Math.max(0, actualPaid - paidToCurrentInstallment - balanceReductionPaid)
+        );
+
+        const planBalanceAfterPayment = payment?.planRemainingBalanceAfterPayment;
         const remainingAfterPayment = roundMoney(
-          primaryAllocation?.remainingAfterPayment ??
-            Math.max(0, payableAtPayment - paidToCurrentInstallment)
+          (planBalanceAfterPayment !== null &&
+            planBalanceAfterPayment !== undefined &&
+            Number(planBalanceAfterPayment) <= 0) ||
+            isLatestLegacySettlement
+            ? 0
+            : primaryAllocation?.remainingAfterPayment ??
+                Math.max(0, payableAtPayment - paidToCurrentInstallment)
         );
 
         return {
@@ -652,6 +746,7 @@ const InstallmentPlanDetails = () => {
           payableAtPayment,
           actualPaid,
           paidToCurrentInstallment,
+          balanceReductionPaid,
           extraPaid,
           remainingAfterPayment,
         };
@@ -661,7 +756,7 @@ const InstallmentPlanDetails = () => {
           new Date(b.paymentDate || b.createdAt) -
           new Date(a.paymentDate || a.createdAt)
       );
-  }, [payments]);
+  }, [payments, plan]);
 
   // =========================================================
   // SELECTED PAYMENT CALCULATIONS
@@ -697,52 +792,11 @@ const InstallmentPlanDetails = () => {
   const isOverPayment =
     enteredPayment >
     selectedRemaining;
+  const exceedsRemainingBalance =
+    enteredPayment > remainingBalance;
 
   // =========================================================
-  // FUTURE INSTALLMENTS
-  // =========================================================
-
-  const futureInstallments =
-    useMemo(() => {
-      if (!selectedInstallment) {
-        return [];
-      }
-
-      const currentNumber = Number(
-        selectedInstallment.installmentNumber
-      );
-
-      return installments
-        .filter((installment) => {
-          const installmentNumber =
-            Number(
-              installment.installmentNumber
-            );
-
-          return (
-            installmentNumber >
-              currentNumber &&
-            getInstallmentRemaining(
-              installment
-            ) > 0
-          );
-        })
-        .sort(
-          (a, b) =>
-            Number(
-              a.installmentNumber
-            ) -
-            Number(
-              b.installmentNumber
-            )
-        );
-    }, [
-      installments,
-      selectedInstallment,
-    ]);
-
-  // =========================================================
-  // OVERPAYMENT ALLOCATION PREVIEW
+  // OVERPAYMENT BALANCE REDUCTION PREVIEW
   // =========================================================
 
   const overpaymentAllocation =
@@ -753,79 +807,30 @@ const InstallmentPlanDetails = () => {
       ) {
         return {
           extra: 0,
-          perInstallment: 0,
-          allocations: [],
+          reduction: 0,
           leftover: 0,
         };
       }
 
-      if (
-        futureInstallments.length === 0
-      ) {
-        return {
-          extra: paymentDifference,
-          perInstallment: 0,
-          allocations: [],
-          leftover: paymentDifference,
-        };
-      }
-
-      const futureCount =
-        futureInstallments.length;
-
-      const baseShare = roundMoney(
-        paymentDifference /
-          futureCount
+      const availableBalanceAfterCurrentDue = Math.max(
+        0,
+        roundMoney(remainingBalance - selectedRemaining)
       );
-
-      let distributed = 0;
-
-      const allocations =
-        futureInstallments.map(
-          (installment, index) => {
-            let allocation =
-              baseShare;
-
-            if (
-              index ===
-              futureCount - 1
-            ) {
-              allocation =
-                roundMoney(
-                  paymentDifference -
-                    distributed
-                );
-            }
-
-            distributed =
-              roundMoney(
-                distributed +
-                  allocation
-              );
-
-            return {
-              installmentNumber:
-                installment.installmentNumber,
-              amount: allocation,
-            };
-          }
-        );
-
-      const leftover = roundMoney(
-        paymentDifference -
-          distributed
+      const reduction = roundMoney(
+        Math.min(paymentDifference, availableBalanceAfterCurrentDue)
       );
+      const leftover = roundMoney(paymentDifference - reduction);
 
       return {
         extra: paymentDifference,
-        perInstallment: baseShare,
-        allocations,
+        reduction,
         leftover,
       };
     }, [
       isOverPayment,
       paymentDifference,
-      futureInstallments,
+      remainingBalance,
+      selectedRemaining,
     ]);
 
   // =========================================================
@@ -835,6 +840,11 @@ const InstallmentPlanDetails = () => {
   const openPaymentModal = (
     installment
   ) => {
+    if (remainingBalance <= 0) {
+      toast.error('The plan balance is fully paid. No more payment is due.');
+      return;
+    }
+
     setSelectedInstallment(
       installment
     );
@@ -845,7 +855,7 @@ const InstallmentPlanDetails = () => {
       ).toString()
     );
 
-    setPaymentMethod('Cash');
+    setPaymentMethod('');
     setShowPaymentModal(true);
   };
 
@@ -862,7 +872,7 @@ const InstallmentPlanDetails = () => {
     setShowPaymentModal(false);
     setSelectedInstallment(null);
     setPaymentAmount('');
-    setPaymentMethod('Cash');
+    setPaymentMethod('');
   };
 
   // =========================================================
@@ -907,6 +917,16 @@ const InstallmentPlanDetails = () => {
       return;
     }
 
+    if (amount > remainingBalance) {
+      toast.error(`Payment cannot exceed remaining balance (${formatMoney(remainingBalance)}).`);
+      return;
+    }
+
+    if (!paymentMethod.trim()) {
+      toast.error('Please enter the payment method.');
+      return;
+    }
+
     const remaining =
       getInstallmentRemaining(
         selectedInstallment
@@ -931,7 +951,7 @@ const InstallmentPlanDetails = () => {
 
       allowOverPayment: true,
 
-      distributionMode: 'equal',
+      distributionMode: 'balance-reduction',
 
       carryShortfallForward: false,
 
@@ -948,14 +968,6 @@ const InstallmentPlanDetails = () => {
         );
 
       if (response.data?.success) {
-        const responseExtra =
-          roundMoney(
-            response.data?.extraPayment ??
-              response.data?.carryForwardAmount ??
-              response.data?.overPayment ??
-              0
-          );
-
         const responseAdvance =
           roundMoney(
             response.data?.advanceAmount ??
@@ -966,8 +978,9 @@ const InstallmentPlanDetails = () => {
 
         const backendDistributed =
           roundMoney(
-            response.data
-              ?.distributedAmount ?? 0
+            response.data?.balanceReductionAmount ??
+              response.data?.distributedAmount ??
+              0
           );
 
         // ===================================================
@@ -977,15 +990,18 @@ const InstallmentPlanDetails = () => {
         if (
           amount < remaining
         ) {
-          const newRemaining =
-            roundMoney(
-              remaining - amount
-            );
+          const updatedCurrentInstallment = response.data?.installments?.find(
+            (installment) => String(installment._id) === String(selectedInstallment._id)
+          );
+          const newRemaining = roundMoney(
+            updatedCurrentInstallment?.remainingAmount ?? remaining - amount
+          );
+          const unappliedAmount = roundMoney(response.data?.unallocatedAmount || 0);
 
           toast.success(
-            `Partial payment recorded. ${formatMoney(
-              newRemaining
-            )} remains on this installment.`
+            unappliedAmount > 0
+              ? `Payment recorded. ${formatMoney(amount - unappliedAmount)} applied to the plan; ${formatMoney(unappliedAmount)} kept as customer advance. ${formatMoney(newRemaining)} remains on this installment.`
+              : `Partial payment recorded. ${formatMoney(newRemaining)} remains on this installment.`
           );
         }
 
@@ -1007,53 +1023,13 @@ const InstallmentPlanDetails = () => {
         // ===================================================
 
         else {
-          const localExtra =
-            paymentDifference;
-
-          const extra =
-            responseExtra ||
-            localExtra;
-
-          const distributed =
-            backendDistributed ||
-            Math.min(
-              extra,
-              futureInstallments.reduce(
-                (sum, installment) =>
-                  sum +
-                  getInstallmentRemaining(
-                    installment
-                  ),
-                0
-              )
-            );
-
-          if (
-            responseAdvance > 0
-          ) {
-            toast.success(
-              `Payment recorded. ${formatMoney(
-                distributed
-              )} was distributed across future installments and ${formatMoney(
-                responseAdvance
-              )} was kept as customer advance.`
-            );
-          } else if (
-            futureInstallments.length >
-              0
-          ) {
-            toast.success(
-              `Payment recorded. ${formatMoney(
-                extra
-              )} extra payment was distributed across future installments.`
-            );
-          } else {
-            toast.success(
-              `Payment recorded. ${formatMoney(
-                extra
-              )} extra payment was kept as customer advance.`
-            );
-          }
+          const balanceReduced = backendDistributed;
+          const advance = responseAdvance || Math.max(0, paymentDifference - balanceReduced);
+          toast.success(
+            advance > 0
+              ? `Payment recorded. ${formatMoney(balanceReduced)} reduced the remaining balance; ${formatMoney(advance)} remains as customer advance. Installments were not changed by the extra amount.`
+              : `Payment recorded. ${formatMoney(balanceReduced)} extra payment reduced only the remaining balance; installment records were unchanged.`
+          );
         }
 
         const paymentId = response.data?.payment?._id;
@@ -1321,9 +1297,7 @@ Thank you - ${
                   </span>
 
                   <span className="text-[9px] font-bold text-slate-400">
-                    Plan ID:{' '}
-                    {plan.planId ||
-                      'N/A'}
+                    Invoice #{sale?.saleId || 'N/A'}
                   </span>
                 </div>
 
@@ -1409,7 +1383,7 @@ Thank you - ${
                 Full Name
               </span>
 
-              <p className="font-black text-slate-800 mt-0.5 truncate">
+              <p className="font-black text-slate-800 mt-0.5 break-words">
                 {plan.customer?.fullName ||
                   'N/A'}
               </p>
@@ -1487,15 +1461,44 @@ Thank you - ${
               </p>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+            <div className="col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-200/70">
               <span className="text-[9px] uppercase font-black text-slate-400 block">
-                Product
+                Products & Models
               </span>
 
-              <p className="font-black text-slate-800 mt-0.5 truncate">
-                {plan.product?.name ||
-                  'N/A'}
-              </p>
+              <div className="mt-1.5 space-y-2">
+                {financedProducts.map((item, index) => (
+                  <div
+                    key={item._id || item.product?._id || index}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
+                  >
+                    <p className="font-black text-slate-800 break-words">
+                      Product {index + 1}: {item.product?.name || 'Product'}
+                      <span className="ml-2 text-xs font-bold text-slate-500">
+                        Qty: {Number(item.quantity || 0)}
+                      </span>
+                    </p>
+                    <p className="text-xs font-bold text-slate-700 break-words">
+                      Model: {item.product?.model || item.model || 'N/A'}
+                    </p>
+                    {item.product?.imei && (
+                      <p className="w-full break-all text-xs font-semibold text-slate-600">
+                        IMEI: {item.product.imei}
+                      </p>
+                    )}
+                    {item.product?.engineNumber && (
+                      <p className="w-full break-all text-xs font-semibold text-slate-600">
+                        Engine No: {item.product.engineNumber}
+                      </p>
+                    )}
+                    {item.product?.chassisNumber && (
+                      <p className="w-full break-all text-xs font-semibold text-slate-600">
+                        Chassis No: {item.product.chassisNumber}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
@@ -1879,6 +1882,16 @@ Thank you - ${
                       isInstallmentPaid(
                         inst
                       );
+                    const installmentPaymentEntries =
+                      getInstallmentPaymentEntries(inst);
+                    const receivedThisMonth = roundMoney(
+                      installmentPaymentEntries.length
+                        ? installmentPaymentEntries.reduce(
+                            (sum, entry) => sum + Number(entry.amount || 0),
+                            0
+                          )
+                        : paidAmount
+                    );
 
                     return (
                       <tr
@@ -1927,7 +1940,21 @@ Thank you - ${
 
                         <td className="px-5 py-4 font-black text-emerald-600">
                           {formatMoney(
-                            paidAmount
+                            receivedThisMonth
+                          )}
+                          {installmentPaymentEntries.length > 0 && (
+                            <div className="mt-1.5 space-y-1 border-t border-emerald-100 pt-1.5 text-[10px] font-semibold leading-4 text-slate-600">
+                              {installmentPaymentEntries.map((entry, paymentIndex) => (
+                                <div key={`${entry.paymentId || inst._id}-${paymentIndex}`}>
+                                  <div>{formatDate(entry.date)}: {formatMoney(entry.amount)} received</div>
+                                  {entry.extraAmount > 0 && (
+                                    <div className="font-black text-indigo-700">
+                                      Extra: {formatMoney(entry.extraAmount)} (reduced total balance)
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </td>
 
@@ -1955,7 +1982,7 @@ Thank you - ${
 
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black border ${getStatusClasses(
-                              inst.status
+                              isPaid ? 'Paid' : inst.status
                             )}`}
                           >
 
@@ -2056,6 +2083,7 @@ Thank you - ${
         ) : (
           <div className="divide-y divide-slate-100">
             {paymentHistory.map((payment) => {
+              const isBalanceReduction = payment.balanceReductionPaid > 0;
               const isExtraPayment = payment.extraPaid > 0;
               const isShortPayment =
                 payment.actualPaid > 0 &&
@@ -2113,7 +2141,9 @@ Thank you - ${
                       }`}
                     >
                       <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 block">
-                        {isExtraPayment
+                        {isBalanceReduction
+                          ? 'Balance reduced'
+                          : isExtraPayment
                           ? 'Extra paid'
                           : isShortPayment
                           ? 'Still payable'
@@ -2128,7 +2158,9 @@ Thank you - ${
                             : 'text-emerald-700'
                         }`}
                       >
-                        {isExtraPayment
+                        {isBalanceReduction
+                          ? formatMoney(payment.balanceReductionPaid)
+                          : isExtraPayment
                           ? formatMoney(payment.extraPaid)
                           : isShortPayment
                           ? formatMoney(payment.remainingAfterPayment)
@@ -2140,6 +2172,11 @@ Thank you - ${
                   {isExtraPayment && (
                     <p className="mt-3 text-[11px] font-bold text-indigo-700">
                       Extra amount was paid and adjusted against future installments.
+                    </p>
+                  )}
+                  {isBalanceReduction && (
+                    <p className="mt-3 text-[11px] font-bold text-indigo-700">
+                      Extra paid: {formatMoney(payment.balanceReductionPaid)}. This amount reduced the total remaining balance; it was not carried into another installment.
                     </p>
                   )}
 
@@ -2285,9 +2322,9 @@ Thank you - ${
                       type="button"
                       onClick={() =>
                         setQuickAmount(
-                          roundMoney(
-                            selectedRemaining *
-                              2
+                          Math.min(
+                            roundMoney(selectedRemaining * 2),
+                            remainingBalance
                           )
                         )
                       }
@@ -2296,31 +2333,13 @@ Thank you - ${
                       2 × Due
                     </button>
 
-                    {futureInstallments.length >
-                      0 && (
+                    {remainingBalance > selectedRemaining && (
                       <button
                         type="button"
-                        onClick={() =>
-                          setQuickAmount(
-                            roundMoney(
-                              selectedRemaining +
-                                futureInstallments.reduce(
-                                  (
-                                    sum,
-                                    item
-                                  ) =>
-                                    sum +
-                                    getInstallmentRemaining(
-                                      item
-                                    ),
-                                  0
-                                )
-                            )
-                          )
-                        }
+                        onClick={() => setQuickAmount(remainingBalance)}
                         className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] font-black text-emerald-700 hover:bg-emerald-100"
                       >
-                        Clear Future Dues
+                        Pay Remaining Balance
                       </button>
                     )}
                   </div>
@@ -2389,9 +2408,7 @@ Thank you - ${
                         <div className="flex items-center gap-2 font-black">
                           <ArrowUpCircle className="w-4 h-4 text-indigo-600" />
 
-                          <span>
-                            Extra Payment Distribution
-                          </span>
+                          <span>Remaining Balance Reduction</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -2440,90 +2457,20 @@ Thank you - ${
                             </strong>
                           </div>
 
-                          {futureInstallments.length >
-                          0 ? (
-                            <p className="mt-2 font-semibold text-indigo-800">
-                              Extra amount will be distributed equally among{' '}
-                              <strong>
-                                {
-                                  futureInstallments.length
-                                }
-                              </strong>{' '}
-                              future unpaid installments.
-                            </p>
-                          ) : (
-                            <p className="mt-2 font-semibold text-indigo-800">
-                              There are no future unpaid installments. The extra amount will be saved as customer advance/credit.
-                            </p>
-                          )}
+                          <p className="mt-2 font-semibold text-indigo-800">
+                            Extra amount will be subtracted from the total remaining balance only. No installment amount or status will be changed by the extra payment.
+                          </p>
                         </div>
 
-                        {overpaymentAllocation
-                          .allocations
-                          .length >
-                          0 && (
-                          <div className="rounded-xl overflow-hidden border border-indigo-200 bg-white">
-
-                            <div className="px-3 py-2 bg-indigo-100/60 border-b border-indigo-200">
-                              <span className="text-[9px] uppercase font-black tracking-wider text-indigo-700">
-                                Equal Distribution Preview
-                              </span>
-                            </div>
-
-                            <div className="divide-y divide-indigo-100">
-
-                              {overpaymentAllocation.allocations.map(
-                                (
-                                  allocation
-                                ) => (
-                                  <div
-                                    key={
-                                      allocation.installmentNumber
-                                    }
-                                    className="px-3 py-2.5 flex items-center justify-between"
-                                  >
-                                    <span className="text-[11px] font-bold text-slate-700">
-                                      Month #
-                                      {
-                                        allocation.installmentNumber
-                                      }
-                                    </span>
-
-                                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-indigo-700">
-                                      +
-                                      {formatMoney(
-                                        allocation.amount
-                                      )}
-
-                                      <ArrowRight className="w-3 h-3" />
-                                    </span>
-                                  </div>
-                                )
-                              )}
-                            </div>
+                        {overpaymentAllocation.reduction > 0 && (
+                          <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-3 py-2.5">
+                            <span className="text-[11px] font-bold text-slate-700">Direct balance reduction</span>
+                            <strong className="text-[11px] font-black text-indigo-700">
+                              {formatMoney(overpaymentAllocation.reduction)}
+                            </strong>
                           </div>
                         )}
 
-                        {overpaymentAllocation.leftover >
-                          0 && (
-                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
-
-                            <div className="flex items-center gap-2 font-black">
-                              <Wallet className="w-4 h-4 text-emerald-600" />
-
-                              <span>
-                                Customer Advance
-                              </span>
-                            </div>
-
-                            <p className="mt-1 font-semibold">
-                              {formatMoney(
-                                overpaymentAllocation.leftover
-                              )}{' '}
-                              will remain as customer credit/advance.
-                            </p>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -2535,37 +2482,15 @@ Thank you - ${
                     Payment Method
                   </label>
 
-                  <select
-                    value={
-                      paymentMethod
-                    }
-                    onChange={(e) =>
-                      setPaymentMethod(
-                        e.target.value
-                      )
-                    }
-                    className="w-full h-11 border border-slate-200 rounded-xl px-3.5 text-xs sm:text-sm font-bold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
-                  >
-                    <option value="Cash">
-                      Cash
-                    </option>
-
-                    <option value="Bank Transfer">
-                      Bank Transfer
-                    </option>
-
-                    <option value="EasyPaisa">
-                      EasyPaisa
-                    </option>
-
-                    <option value="JazzCash">
-                      JazzCash
-                    </option>
-
-                    <option value="Card">
-                      Debit/Credit Card
-                    </option>
-                  </select>
+                  <input
+                    type="text"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    placeholder="Enter payment method (e.g. Cash, Bank Transfer)"
+                    required
+                    maxLength={80}
+                    className="w-full h-11 border border-slate-200 rounded-xl px-3.5 text-xs sm:text-sm font-bold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                  />
                 </div>
 
                 {isOverPayment && (
@@ -2574,9 +2499,15 @@ Thank you - ${
                     <CircleDollarSign className="w-4 h-4 shrink-0 text-blue-600" />
 
                     <p>
-                      You can collect more than the current monthly installment. The current installment will be cleared first, and the remaining amount will be distributed equally across future unpaid installments.
+                      You can collect more than this month’s installment. The extra reduces the overall remaining balance; the monthly installment amount stays unchanged. Payment cannot exceed the total remaining balance.
                     </p>
                   </div>
+                )}
+
+                {exceedsRemainingBalance && (
+                  <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
+                    Payment amount cannot be more than the total remaining balance ({formatMoney(remainingBalance)}). No advance will be accepted.
+                  </p>
                 )}
 
                 <div className="pt-3 flex items-center justify-between gap-3">
@@ -2598,14 +2529,15 @@ Thank you - ${
                     type="submit"
                     disabled={
                       paymentLoading ||
-                      !enteredPayment
+                      !enteredPayment ||
+                      exceedsRemainingBalance
                     }
                     className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                   >
                     {paymentLoading
                       ? 'Processing Payment...'
                       : isOverPayment
-                      ? 'Record & Distribute Payment'
+                      ? 'Record & Reduce Balance'
                       : isPartialPayment
                       ? 'Record Partial Payment'
                       : 'Confirm Payment'}
@@ -2624,7 +2556,16 @@ Thank you - ${
 
         <div className="print-header">
 
-          <div>
+          <div className="print-header-media">
+            {customerPhoto && (
+              <img className="customer-photo" src={customerPhoto} alt="Customer" />
+            )}
+          </div>
+
+          <div className="print-header-center">
+            <div className="print-invoice-number">
+              Invoice #: <strong>{invoiceBillNumber}</strong>
+            </div>
             <h1>
               {settings?.shopName ||
                 'Electronics Shop'}
@@ -2642,32 +2583,18 @@ Thank you - ${
                   : ''}
               </small>
             )}
+            {settings?.shopPhone && !settings?.shopAddress && (
+              <small>Phone: {settings.shopPhone}</small>
+            )}
+            <div className="print-date">
+              Printed: {new Date().toLocaleString('en-PK')}
+            </div>
           </div>
 
-          <div className="print-date text-right">
-            <span>
-              Plan ID:{' '}
-              <strong>
-                {plan.planId ||
-                  'N/A'}
-              </strong>
-            </span>
-
-            <span>
-              Invoice #:{' '}
-              <strong>
-                {
-                  invoiceBillNumber
-                }
-              </strong>
-            </span>
-
-            <span>
-              Printed:{' '}
-              {new Date().toLocaleString(
-                'en-PK'
-              )}
-            </span>
+          <div className="print-header-media">
+            {customerFingerprint && (
+              <img className="customer-fingerprint" src={customerFingerprint} alt="Customer fingerprint" />
+            )}
           </div>
         </div>
 
@@ -2687,9 +2614,9 @@ Thank you - ${
             </div>
 
             <div>
-              Customer ID:{' '}
+              Father Name:{' '}
               <b>
-                {plan.customer?.customerId ||
+                {plan.customer?.fatherName ||
                   'N/A'}
               </b>
             </div>
@@ -2709,51 +2636,52 @@ Thank you - ${
                   'N/A'}
               </b>
             </div>
+
+            <div>
+              Address:{' '}
+              <b>
+                {[plan.customer?.address, plan.customer?.city]
+                  .filter(Boolean)
+                  .join(', ') || 'N/A'}
+              </b>
+            </div>
+
           </div>
 
           <div className="print-box">
-            <strong>
+            <strong className="print-box-heading">
               FINANCED DEAL DETAILS:
             </strong>
 
-            <div>
-              Product:{' '}
-              <b>
-                {plan.product?.name ||
-                  'N/A'}
-              </b>
+            <div className="print-products-list">
+              {financedProducts.map((item, index) => (
+                <div className="print-product-row" key={item._id || item.product?._id || index}>
+                  <div className="print-product-heading">
+                    Product {index + 1}: {item.product?.name || 'Product'}
+                  </div>
+                  <div className="print-product-fields">
+                    <div className="print-product-primary-fields">
+                      <div><b>Model</b><span>{item.product?.model || item.model || 'N/A'}</span></div>
+                      <div><b>Qty</b><span>{Number(item.quantity || 0)}</span></div>
+                    </div>
+                    {item.product?.imei && <div><b>IMEI</b><span>{item.product.imei}</span></div>}
+                    {item.product?.engineNumber && <div><b>Engine No</b><span>{item.product.engineNumber}</span></div>}
+                    {item.product?.chassisNumber && <div><b>Chassis No</b><span>{item.product.chassisNumber}</span></div>}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div>
-              Quantity:{' '}
-              <b>
-                {quantity} Unit(s)
-              </b>
-            </div>
-
-            <div>
-              Total Deal:{' '}
-              <b>
-                {formatMoney(
-                  totalPayable
-                )}
-              </b>
-            </div>
-
-            <div>
-              Down Payment:{' '}
-              <b>
-                {formatMoney(
-                  downPayment
-                )}
-              </b>
-
-              {downPaymentAsFirstInstallment && (
-                <span>
-                  {' '}
-                  (Installment #1)
-                </span>
-              )}
+            <div className="print-deal-totals">
+              <div className="print-deal-total">
+                <span>Total Deal</span>
+                <b>{formatMoney(totalPayable)}</b>
+              </div>
+              <div className="print-deal-total">
+                <span>Down Payment</span>
+                <b>{formatMoney(downPayment)}</b>
+                {downPaymentAsFirstInstallment && <small>Counts as Installment #1</small>}
+              </div>
             </div>
           </div>
         </div>
@@ -2775,7 +2703,7 @@ Thank you - ${
                 Installment Amount
               </th>
               <th>
-                Paid Amount
+                Paid Amount / Payment Dates
               </th>
               <th>
                 Remaining Due
@@ -2791,7 +2719,15 @@ Thank you - ${
 
           <tbody>
             {installments.map(
-              (inst, idx) => (
+              (inst, idx) => {
+                const printPaymentEntries = getInstallmentPaymentEntries(inst);
+                const printReceivedTotal = roundMoney(
+                  printPaymentEntries.length
+                    ? printPaymentEntries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0)
+                    : inst.paidAmount || 0
+                );
+
+                return (
                 <tr key={idx}>
                   <td
                     style={{
@@ -2825,9 +2761,18 @@ Thank you - ${
 
                   <td>
                     {formatMoney(
-                      inst.paidAmount ||
-                        0
+                      printReceivedTotal
                     )}
+                    <div className="print-payment-history">
+                      {printPaymentEntries.map((entry, paymentIndex) => (
+                        <div key={`${entry.paymentId || idx}-${paymentIndex}`}>
+                          {formatDate(entry.date)}: {formatMoney(entry.amount)}
+                          {entry.extraAmount > 0 && (
+                            <strong> (Extra: {formatMoney(entry.extraAmount)})</strong>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </td>
 
                   <td>
@@ -2854,7 +2799,8 @@ Thank you - ${
                       : '—'}
                   </td>
                 </tr>
-              )
+                );
+              }
             )}
           </tbody>
         </table>
@@ -2932,9 +2878,32 @@ Thank you - ${
 
         @media print {
 
+          body * {
+            visibility: hidden !important;
+          }
+
+          .installment-print-slip,
+          .installment-print-slip * {
+            visibility: visible !important;
+          }
+
+          .installment-print-slip {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: auto !important;
+            width: 194mm !important;
+            box-sizing: border-box !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            transform: none !important;
+            transform-origin: top left !important;
+          }
+
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 0 8mm 8mm;
           }
 
           html,
@@ -2960,124 +2929,329 @@ Thank you - ${
           }
 
           .installment-print-slip {
-            width: 100%;
+            width: 194mm;
+            min-height: 281mm;
+            height: auto;
+            max-height: none;
+            box-sizing: border-box;
+            overflow: visible;
+            position: absolute !important;
+            top: 0 !important;
+            margin: 0 !important;
+            padding: 0 0 3mm !important;
             font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+            line-height: 1.35;
+            font-weight: 800;
+            color: #000000;
+          }
+
+          .installment-print-slip strong,
+          .installment-print-slip b,
+          .installment-print-slip th,
+          .installment-print-slip td,
+          .installment-print-slip p,
+          .installment-print-slip span,
+          .installment-print-slip small,
+          .installment-print-slip div {
+            font-weight: 800;
           }
 
           .print-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+            display: grid;
+            grid-template-columns: 25mm minmax(0, 1fr) 25mm;
+            align-items: center;
+            gap: 8px;
             border-bottom: 2px solid #0f172a;
-            padding-bottom: 4px;
-            margin-bottom: 6px;
+            margin: 0 0 6px;
+            padding: 0 0 5px;
+          }
+
+          .print-header-center {
+            min-width: 0;
+            text-align: center;
+          }
+
+          .print-invoice-number {
+            font-size: 16px;
+            font-weight: 900 !important;
+            margin-bottom: 4px;
+          }
+
+          .print-invoice-number strong {
+            font-size: 17px;
+            font-weight: 900 !important;
+          }
+
+          .print-header-media {
+            width: 25mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            text-align: center;
+          }
+
+          .print-header-media img {
+            display: block;
+            width: 25mm;
+            height: 32mm;
+            border: 1px solid #64748b;
+            border-radius: 6px;
+            background: #ffffff !important;
+          }
+
+          .print-header-media .customer-photo {
+            object-fit: cover;
+          }
+
+          .print-header-media .customer-fingerprint {
+            object-fit: contain;
+            padding: 2px;
+          }
+
+          .print-header-media small {
+            font-size: 8px;
+            font-weight: 900;
           }
 
           .print-header h1 {
-            font-size: 14px;
+            font-size: 22px;
             font-weight: 900;
             margin: 0;
             text-transform: uppercase;
           }
 
           .print-header p {
-            font-size: 8px;
-            font-weight: 700;
-            margin: 1px 0;
+            font-size: 14px;
+            font-weight: 900;
+            margin: 3px 0;
           }
 
           .print-header small {
-            font-size: 7px;
+            font-size: 11px;
+            font-weight: 800;
             color: #475569;
           }
 
           .print-date {
-            font-size: 7.5px;
-            display: flex;
-            flex-direction: column;
-            gap: 1px;
+            margin-top: 3px;
+            font-size: 10px;
+            font-weight: 800;
           }
 
           .print-grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-bottom: 6px;
+            gap: 4px;
+            margin-bottom: 4px;
           }
 
           .print-box {
             border: 1px solid #94a3b8;
-            padding: 4px 6px;
-            font-size: 7.5px;
-            line-height: 1.3;
+            padding: 3px 5px;
+            font-size: 10px;
+            line-height: 1.15;
+          }
+
+          .print-grid-2 > .print-box:first-child > div {
+            margin-top: 2mm;
+          }
+
+          .print-products-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin: 2px 0 3px;
+          }
+
+          .print-product-row {
+            border: 1px solid #94a3b8;
+            border-radius: 4px;
+            padding: 3px 4px;
+            overflow-wrap: normal;
+          }
+
+          .print-box-heading {
+            display: block;
+            border-bottom: 1px solid #64748b;
+            padding-bottom: 1px;
+            font-size: 10px;
+          }
+
+          .print-product-heading {
+            margin-bottom: 2px;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 2px;
+            font-size: 11px;
+            font-weight: 900;
+          }
+
+          .print-product-fields {
+            display: grid;
+            grid-template-columns: 1fr;
+            row-gap: 1px;
+          }
+
+          .print-product-fields > div:not(.print-product-primary-fields) {
+            display: grid;
+            grid-template-columns: 17mm minmax(0, 1fr);
+            gap: 2px;
+            align-items: start;
+            font-size: 9px;
+            line-height: 1.1;
+          }
+
+          .print-product-primary-fields {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+          }
+
+          .print-product-primary-fields > div {
+            display: grid;
+            grid-template-columns: 17mm minmax(0, 1fr);
+            gap: 2px;
+            align-items: start;
+            font-size: 9px;
+            line-height: 1.1;
+          }
+
+          .print-product-primary-fields > div:last-child {
+            grid-template-columns: auto auto;
+          }
+
+          .print-product-fields > div > b {
+            color: #334155;
+          }
+
+          .print-product-fields > div > span {
+            overflow-wrap: normal;
+          }
+
+          .print-deal-totals {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px;
+            border-top: 2px solid #0f172a;
+            padding-top: 3px;
+          }
+
+          .print-deal-total {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            align-items: center;
+            gap: 3px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 2px 3px;
+            min-width: 0;
+          }
+
+          .print-deal-total > span {
+            color: #475569;
+            font-size: 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .print-deal-total > b {
+            font-size: 9px;
+            font-weight: 900;
+            text-align: right;
+            overflow-wrap: normal;
+          }
+
+          .print-deal-total > small {
+            grid-column: 1 / -1;
+            font-size: 7px;
+            color: #475569;
+            font-weight: 800;
           }
 
           .print-section-title {
-            font-size: 8px;
+            font-size: 13px;
             font-weight: 900;
             border-bottom: 1px solid #0f172a;
             padding-bottom: 2px;
-            margin-bottom: 4px;
+            margin-bottom: 7px;
           }
 
           .print-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 7.5px;
-            margin-bottom: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 10px;
           }
 
           .print-table th {
             background-color: #f1f5f9 !important;
             border: 0.5px solid #94a3b8;
-            padding: 2.5px 3.5px;
+            padding: 5px 6px;
             font-weight: 900;
             text-align: left;
           }
 
           .print-table td {
             border: 0.5px solid #cbd5e1;
-            padding: 2.5px 3.5px;
+            padding: 5px 6px;
+            font-weight: 800;
+          }
+
+          .print-payment-history {
+            margin-top: 3px;
+            color: #334155;
+            font-size: 10px;
+            line-height: 1.3;
+            font-weight: 800;
           }
 
           .print-summary-box {
             display: flex;
             justify-content: space-between;
             border: 1.5px solid #0f172a;
-            padding: 4px 8px;
-            font-size: 8.5px;
-            margin-top: 6px;
-            margin-bottom: 14px;
+            padding: 9px 12px;
+            font-size: 13px;
+            font-weight: 900;
+            margin-top: 10px;
+            margin-bottom: 22px;
             background-color: #f8fafc !important;
           }
 
           .print-signatures {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin-top: 20px;
+            gap: 56px;
+            margin-top: 34px;
+            margin-bottom: 24px;
             page-break-inside: avoid;
           }
 
           .signature-box {
             text-align: center;
+            min-height: 105px;
           }
 
           .signature-line {
             border-top: 1px solid #0f172a;
-            margin-bottom: 3px;
+            margin-top: 76px;
+            margin-bottom: 6px;
           }
 
           .signature-box p {
-            font-size: 7.5px;
-            font-weight: 800;
+            font-size: 12px;
+            font-weight: 900;
             margin: 0;
           }
 
           .print-footer {
             margin-top: 10px;
             text-align: center;
-            font-size: 6.5px;
+            font-size: 10px;
+            font-weight: 800;
             color: #64748b;
             border-top: 0.5px solid #cbd5e1;
             padding-top: 3px;

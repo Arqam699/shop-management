@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+@media print {
+  body,
+  body * {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+}
+
 /* =====================================================
    MODERN PREMIUM UI EXTENSIONS
    ===================================================== */

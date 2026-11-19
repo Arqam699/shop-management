@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettings } from '../context/SettingsContext';
@@ -79,6 +79,10 @@ const addDaysToDateKey = (dateKey, days) => {
 };
 
 const Dashboard = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dashboardView = ['cash', 'installment'].includes(searchParams.get('view'))
+    ? searchParams.get('view')
+    : 'main';
   const { settings } = useSettings();
   const { admin } = useAuth();
 
@@ -126,12 +130,25 @@ const Dashboard = () => {
   const statsRequestInFlight = useRef(false);
 
   const [activeTableTab, setActiveTableTab] = useState(0);
+  const [cashDetailsPage, setCashDetailsPage] = useState(1);
   const [filterPreset, setFilterPreset] = useState('all');
 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  useEffect(() => {
+    if (dashboardView === 'cash' || dashboardView === 'installment') {
+      setFilterPreset('today');
+      setCustomStartDate('');
+      setCustomEndDate('');
+    }
+  }, [dashboardView]);
+
   const [globalSearch, setGlobalSearch] = useState('');
+
+  useEffect(() => {
+    setActiveTableTab(dashboardView === 'cash' ? 1 : 0);
+  }, [dashboardView]);
 
   // =========================================================
   // INDEX RECORD STATES
@@ -141,12 +158,6 @@ const Dashboard = () => {
   const [indexRecordLoading, setIndexRecordLoading] = useState(false);
   const [indexRecordError, setIndexRecordError] = useState('');
 
-  const [indexMonth, setIndexMonth] = useState(() => {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit',
-    }).formatToParts(new Date());
-    return `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}`;
-  });
 
   // =========================================================
   // FETCH DASHBOARD DATA
@@ -195,27 +206,23 @@ const Dashboard = () => {
   }, []);
 
   const fetchIndexRecord = async () => {
-    if (!indexMonth) return;
-
     try {
       setIndexRecordLoading(true);
       setIndexRecordError('');
 
-      const response = await api.get('/api/reports/index-record', {
-        params: { month: indexMonth },
-      });
+      const response = await api.get('/api/reports/index-record');
 
       if (response.data?.success) {
         setIndexRecordData(response.data.data);
       } else {
         setIndexRecordData(null);
-        setIndexRecordError('Unable to load the monthly index record.');
+        setIndexRecordError('Unable to load the overall index record.');
       }
     } catch (error) {
       console.error('Failed to load index record:', error);
       setIndexRecordData(null);
       setIndexRecordError(
-        error.response?.data?.message || 'Unable to load the monthly index record.'
+        error.response?.data?.message || 'Unable to load the overall index record.'
       );
     } finally {
       setIndexRecordLoading(false);
@@ -226,7 +233,7 @@ const Dashboard = () => {
     if (showIndexRecord) {
       fetchIndexRecord();
     }
-  }, [showIndexRecord, indexMonth]);
+  }, [showIndexRecord]);
 
   useEffect(() => {
     if (!showIndexRecord) return undefined;
@@ -239,7 +246,7 @@ const Dashboard = () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshIndexRecord);
     };
-  }, [showIndexRecord, indexMonth]);
+  }, [showIndexRecord]);
 
   // =========================================================
   // FORMATTERS & HELPERS
@@ -311,199 +318,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
   };
 
-  // =========================================================
-  // INDEX RECORD HELPERS
-  // =========================================================
-  const getPlanInstallments = (plan) => {
-    if (!plan) return [];
-    if (Array.isArray(plan.installments)) return plan.installments;
-    if (Array.isArray(plan.paymentSchedule)) return plan.paymentSchedule;
-    if (Array.isArray(plan.installmentSchedule)) return plan.installmentSchedule;
-    if (Array.isArray(plan.schedule)) return plan.schedule;
-    if (Array.isArray(plan.installmentList)) return plan.installmentList;
-    return [];
-  };
-
-  const getInstallmentDueDate = (installment) => {
-    if (!installment) return null;
-    return (
-      installment.dueDate ||
-      installment.date ||
-      installment.paymentDate ||
-      installment.installmentDate ||
-      null
-    );
-  };
-
-  const getInstallmentAmount = (installment) => {
-    if (!installment) return 0;
-    return Number(
-      installment.amount ??
-        installment.installmentAmount ??
-        installment.originalAmount ??
-        installment.totalAmount ??
-        0
-    );
-  };
-
-  const getInstallmentPaidAmount = (installment) => {
-    if (!installment) return 0;
-    return Number(
-      installment.paidAmount ?? installment.amountPaid ?? installment.paid ?? 0
-    );
-  };
-
-  const getInstallmentNumber = (installment, index) => {
-    if (!installment) return index + 1;
-    return Number(
-      installment.installmentNumber ??
-        installment.number ??
-        installment.installmentNo ??
-        index + 1
-    );
-  };
-
-  const getTotalInstallments = (plan, installments) => {
-    const value =
-      plan?.totalInstallments ??
-      plan?.numberOfInstallments ??
-      plan?.installmentCount ??
-      plan?.duration ??
-      plan?.installmentDuration ??
-      installments?.length ??
-      0;
-    return Number(value || 0);
-  };
-
-  const getCustomerMobile = (plan) => {
-    return String(
-      plan?.customer?.mobileNumber ??
-        plan?.customer?.mobile ??
-        plan?.mobileNumber ??
-        ''
-    );
-  };
-
-  const getCustomerCNIC = (plan) => {
-    return String(
-      plan?.customer?.cnic ??
-        plan?.customer?.cnicNumber ??
-        plan?.cnic ??
-        plan?.cnicNumber ??
-        ''
-    );
-  };
-
-  const getPreviousPaidAmount = (installments, currentNumber, plan) => {
-    let previousPaid = 0;
-    installments.forEach((item, index) => {
-      const itemNumber = getInstallmentNumber(item, index);
-      if (itemNumber < currentNumber) {
-        previousPaid += getInstallmentPaidAmount(item);
-      }
-    });
-
-    const hasFirstInstallmentAsDownPayment = installments.some((item, index) => {
-      const number = getInstallmentNumber(item, index);
-      return (
-        number === 1 &&
-        (item?.isDownPayment === true ||
-          item?.downPayment === true ||
-          item?.type === 'Down Payment')
-      );
-    });
-
-    if (currentNumber > 1 && !hasFirstInstallmentAsDownPayment) {
-      previousPaid += Number(plan?.downPayment || 0);
-    }
-
-    return previousPaid;
-  };
-
-  // =========================================================
-  // INDEX RECORD ROWS
-  // =========================================================
-  const fallbackIndexRecordRows = useMemo(() => {
-    if (!stats) return [];
-    const plans = stats?.installments?.activeFinancingList || [];
-    const selectedPlans = Array.isArray(plans) ? plans : [];
-    const rows = [];
-
-    selectedPlans.forEach((plan) => {
-      const installments = getPlanInstallments(plan);
-      if (!installments.length) return;
-
-      const totalInstallments = getTotalInstallments(plan, installments);
-
-      installments.forEach((installment, index) => {
-        const dueDate = getInstallmentDueDate(installment);
-        if (!dueDate) return;
-
-        const date = new Date(dueDate);
-        if (Number.isNaN(date.getTime())) return;
-
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const dueMonth = `${year}-${month}`;
-
-        if (dueMonth !== indexMonth) return;
-
-        const installmentAmount = getInstallmentAmount(installment);
-        const paidAmount = getInstallmentPaidAmount(installment);
-
-        if (paidAmount >= installmentAmount && installmentAmount > 0) return;
-
-        const installmentNumber = getInstallmentNumber(installment, index);
-
-        rows.push({
-          id: installment._id || `${plan._id}-${installmentNumber}-${index}`,
-          customerName: plan?.customer?.fullName || plan?.customer?.name || 'N/A',
-          mobile: getCustomerMobile(plan),
-          cnic: getCustomerCNIC(plan),
-          productName: plan?.product?.name || plan?.productName || 'Item',
-          model:
-            plan?.product?.model ||
-            plan?.product?.productModel ||
-            plan?.product?.modelNumber ||
-            plan?.model ||
-            plan?.productModel ||
-            plan?.modelNumber ||
-            'N/A',
-          installmentPrice: installmentAmount,
-          previousPaidAmount: getPreviousPaidAmount(
-            installments,
-            installmentNumber,
-            plan
-          ),
-          installmentNumber,
-          totalInstallments,
-          dueDate,
-        });
-      });
-    });
-
-    rows.sort((a, b) => {
-      const dateDifference =
-        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-      if (dateDifference !== 0) return dateDifference;
-      return a.customerName.localeCompare(b.customerName);
-    });
-
-    return rows;
-  }, [stats, indexMonth]);
-
-  const indexRecordRows = indexRecordData?.rows || fallbackIndexRecordRows;
-
-  const indexMonthLabel = useMemo(() => {
-    if (!indexMonth) return '';
-    const [year, month] = indexMonth.split('-');
-    const date = new Date(Number(year), Number(month) - 1, 1);
-    return date.toLocaleDateString('en-PK', {
-      timeZone: 'Asia/Karachi',
-      month: 'long',
-      year: 'numeric',
-    });
-  }, [indexMonth]);
+  // Overall installment register rows are loaded from the report endpoint.
+    const indexRecordRows = indexRecordData?.rows || [];
+  const indexRecordPrintedDate = PAKISTAN_DATE_FORMATTER.format(new Date());
+  const indexMoney = (value) => Number(value || 0).toLocaleString('en-PK');
 
   const fullDigits = (value) => {
     if (value === null || value === undefined) return '';
@@ -522,40 +340,23 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
   const handleIndexRecordCSV = () => {
     if (indexRecordRows.length === 0) {
-      return toast.error(`No due installments found for ${indexMonthLabel}.`);
+      return toast.error('No active installment plans found.');
     }
 
-    const headers = [
-      'Customer Name',
-      'Mobile Number',
-      'CNIC',
-      'Product Name',
-      'Model',
-      'Due Date',
-      'Installment Price',
-      'Previous Paid Amount',
-      'Paid Installments',
-      'This Installment',
-    ];
+    const headers = ['S.N.', 'Date of Material Purchase', 'Name of Customer', 'Invoice No.', 'Total Amount', 'Total Remaining Amount', 'Installment Amount + Remaining', 'Installment Plan & No.', 'Received Amount', 'Remain Amount', 'Receiver Sign', 'Installment Received Date', 'Phone No.', 'Remarks'];
 
     const rows = indexRecordRows.map((row) => {
       return [
+        row.serialNumber,
+        csvNormalCell(formatDate(row.purchaseDate)),
         csvNormalCell(row.customerName),
-        csvTextCell(row.mobile),
-        csvTextCell(row.cnic),
-        csvNormalCell(row.productName),
-        csvNormalCell(row.model),
-        csvNormalCell(formatDate(row.dueDate)),
-        csvNormalCell(
-          `${settings?.currency || 'PKR'} ${Number(row.installmentPrice || 0).toLocaleString()}`
-        ),
-        csvNormalCell(
-          `${settings?.currency || 'PKR'} ${Number(row.previousPaidAmount || 0).toLocaleString()}`
-        ),
-        csvNormalCell(
-          `${row.paidInstallments ?? Math.max(0, Number(row.installmentNumber || 1) - 1)} / ${row.totalInstallments}`
-        ),
-        csvNormalCell(row.installmentNumber),
+        csvTextCell(row.invoiceNumber),
+        csvNormalCell(Number(row.totalAmount || 0)),
+        csvNormalCell(Number(row.totalRemainingAmount || 0)),
+        csvNormalCell(Number(row.installmentAmount || 0)),
+        csvNormalCell(row.installmentPlan),
+        csvNormalCell(''), csvNormalCell(Number(row.remainingAmount || 0)), csvNormalCell(''), csvNormalCell(''),
+        csvTextCell(row.mobile), csvNormalCell(''),
       ].join(',');
     });
 
@@ -569,7 +370,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Index_Record_${indexMonth}.csv`;
+    link.download = `Installment_Index_Record_${pakistanDateKey()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -580,7 +381,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
   const handleIndexRecordPrint = () => {
     if (indexRecordRows.length === 0) {
-      return toast.error(`No due installments found for ${indexMonthLabel}.`);
+      return toast.error('No active installment plans found.');
     }
 
     window.scrollTo(0, 0);
@@ -592,6 +393,16 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     setTimeout(() => {
       window.print();
     }, 150);
+  };
+
+  const handlePrintInstallmentReceipt = (payment) => {
+    if (!payment?._id) return toast.error('Payment receipt ID is unavailable.');
+    const receiptUrl = new URL('/payments', window.location.origin);
+    receiptUrl.searchParams.set('receipt', payment._id);
+    receiptUrl.searchParams.set('print', '1');
+    receiptUrl.searchParams.set('close', '1');
+    const receiptWindow = window.open(receiptUrl.toString(), '_blank');
+    if (!receiptWindow) toast.error('Allow pop-ups to print the payment slip.');
   };
 
   // =========================================================
@@ -710,7 +521,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     const term = searchTerm;
     const custName = item.customer?.fullName?.toLowerCase() || '';
     const custPhone = item.customer?.mobileNumber || '';
-    const id = (item.saleId || item.planId || '').toLowerCase();
+    const id = (item.sale?.saleId || item.saleId || '').toLowerCase();
     const prodName = item.product?.name?.toLowerCase() || '';
 
     return (
@@ -749,6 +560,17 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         profit,
       };
     }), [cashSalesList, searchFilter]);
+  const cashDetailsPageSize = 20;
+  const cashDetailsPageCount = Math.max(1, Math.ceil(detailedCashProfitList.length / cashDetailsPageSize));
+  const currentCashDetailsPage = Math.min(cashDetailsPage, cashDetailsPageCount);
+  const visibleCashDetails = detailedCashProfitList.slice(
+    (currentCashDetailsPage - 1) * cashDetailsPageSize,
+    currentCashDetailsPage * cashDetailsPageSize
+  );
+
+  useEffect(() => {
+    setCashDetailsPage(1);
+  }, [searchTerm, filterPreset, customStartDate, customEndDate]);
 
   // =========================================================
   // DETAILED INSTALLMENT PROFIT LIST
@@ -834,13 +656,15 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
   const installmentTotals = useMemo(() => detailedInstallmentProfitList.reduce(
     (totals, sale) => ({
       cost: totals.cost + Number(sale.originalCost || 0),
+      sellingPrice: totals.sellingPrice + Number(sale.sellingPrice || 0),
       productProfit: totals.productProfit + Number(sale.productProfit || 0),
       markupProfit: totals.markupProfit + Number(sale.markupAmount || 0),
       revenue: totals.revenue + Number(sale.totalCustomerPayable || 0),
     }),
-    { cost: 0, productProfit: 0, markupProfit: 0, revenue: 0 }
+    { cost: 0, sellingPrice: 0, productProfit: 0, markupProfit: 0, revenue: 0 }
   ), [detailedInstallmentProfitList]);
   const installmentCost = installmentTotals.cost;
+  const installmentProductSellingPrice = installmentTotals.sellingPrice;
   const installmentBaseProductProfit = installmentTotals.productProfit;
   const installmentMarkupProfit = installmentTotals.markupProfit;
 
@@ -859,14 +683,20 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     [installmentSalesList]
   );
 
+  const isDownPayment = (payment) =>
+    payment.paymentType === 'Down Payment' ||
+    payment.type === 'Down Payment' ||
+    payment.isDownPayment === true;
   const installmentPayments = useMemo(() => filteredPaymentsList.reduce((sum, pay) => {
-    const isDownPay =
-      pay.paymentType === 'Down Payment' ||
-      pay.type === 'Down Payment' ||
-      pay.isDownPayment === true;
-    if (isDownPay) return sum;
+    if (isDownPayment(pay)) return sum;
     return sum + Number(pay.amount || 0);
   }, 0), [filteredPaymentsList]);
+  const installmentRecoveryList = useMemo(
+    () => filteredPaymentsList
+      .filter((payment) => !isDownPayment(payment))
+      .sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)),
+    [filteredPaymentsList]
+  );
 
   const totalInstallmentPaymentsReceived =
     installmentDownPayments + installmentPayments;
@@ -942,16 +772,37 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     },
   ];
 
+  const cashDashboardKpis = [
+    { name: 'Cash Sales', value: String(cashSalesList.length), icon: ShoppingCart, tone: 'blue', description: 'Sales in selected period' },
+  ];
+  const installmentDashboardKpis = [
+    { name: 'Installment Plans', value: String(installmentSalesList.length), icon: Layers, tone: 'blue', description: 'Plans started in selected period' },
+    { name: 'Installment Sale Value', value: money(installmentRevenue), icon: Receipt, tone: 'violet', description: 'Total customer payable' },
+    { name: 'Outstanding Balance', value: money(totalOutstanding), icon: Wallet, tone: 'amber', description: 'Remaining customer balances' },
+    { name: 'Product Purchase Cost', value: money(installmentCost), icon: Banknote, tone: 'amber', description: 'Total product purchase cost' },
+    { name: 'Installment Payment Recovery', value: money(installmentPayments), icon: CreditCard, tone: 'emerald', description: 'Received installment payments, excluding down payments' },
+  ];
+  const visibleKpis = dashboardView === 'cash'
+    ? cashDashboardKpis
+    : dashboardView === 'installment'
+    ? installmentDashboardKpis
+    : [...firstRowKpis, ...secondRowKpis];
+
   // CSV Export
   const handleDownloadCSV = () => {
-    if (filteredSalesList.length === 0) {
+    const exportSales = dashboardView === 'cash'
+      ? cashSalesList
+      : dashboardView === 'installment'
+      ? installmentSalesList
+      : filteredSalesList;
+    if (exportSales.length === 0) {
       return toast.error('No transaction data found in this selected date range.');
     }
 
     const headers =
       'Invoice ID,Customer Name,Product,Qty,Net Price,Payment Method,Date & Time';
 
-    const rows = filteredSalesList.map((s) => {
+    const rows = exportSales.map((s) => {
       const dateFormatted = new Date(s.saleDate).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
       return `"${s.saleId || ''}","${s.customer?.fullName || 'Walk-in'}","${
         s.product?.name || 'Deleted Product'
@@ -1137,10 +988,22 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           background: rgba(99, 102, 241, 0.45);
         }
 
+        .cash-profit-breakdown [class~="text-[8px]"] { font-size: 10px !important; }
+        .cash-profit-breakdown [class~="text-[9px]"] { font-size: 11px !important; }
+        .cash-profit-breakdown [class~="text-[10px]"] { font-size: 12px !important; }
+        .cash-profit-breakdown [class~="text-[11px]"] { font-size: 13px !important; }
+        .cash-profit-breakdown [class~="text-xs"] { font-size: 14px !important; }
+        .cash-profit-breakdown [class~="text-sm"] { font-size: 16px !important; }
+        .cash-profit-breakdown [class~="text-lg"] { font-size: 22px !important; }
+        .cash-profit-breakdown [class~="text-xl"] { font-size: 26px !important; }
+
         /* Default Screen: Hide print header */
         .index-print-header {
           display: none;
         }
+        .index-record-table th { white-space: normal; }
+        .index-record-table td { vertical-align: middle; }
+        .index-record-table td small { display: block; margin-top: 2px; font-size: 9px; color: #64748b; }
 
         /* =====================================================
            INDEX RECORD PRINT STYLESHEET
@@ -1148,7 +1011,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         @media print {
           @page {
             size: A4 landscape;
-            margin: 4mm 6mm;
+            margin: 5mm;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1176,11 +1039,17 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           #index-record-print {
             position: absolute !important;
             left: 0 !important;
+            right: auto !important;
             top: 0 !important;
             width: 100% !important;
-            max-width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            transform: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            box-sizing: border-box !important;
             background: #ffffff !important;
             border: none !important;
             display: block !important;
@@ -1195,26 +1064,54 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           .index-print-header {
             display: block !important;
             visibility: visible !important;
-            margin-bottom: 6px !important;
-            padding-bottom: 4px !important;
-            border-bottom: 2px solid #000000 !important;
+            margin: 0 0 2mm !important;
+            padding: 0 !important;
+            border: 2px solid #000000 !important;
+            text-align: center !important;
           }
 
-          .index-print-header h1,
-          .index-print-header p,
-          .index-print-header span {
+          .index-print-title {
+            display: block !important;
+            margin: 0 !important;
+            padding: 2mm 0 !important;
+            background: #fbe4d5 !important;
+            font-size: 19pt !important;
+            line-height: 1.1 !important;
+            border-bottom: 2px solid #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .index-print-company {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-around !important;
+            margin: 0 !important;
+            padding: 1.5mm 0 !important;
+            background: #dbe4f3 !important;
+            color: #31558e !important;
+            font-size: 15pt !important;
+            line-height: 1.1 !important;
+            text-transform: uppercase !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .index-print-header h1 {
             color: #000000 !important;
             visibility: visible !important;
           }
+          .index-print-company,
+          .index-print-company span { color: #31558e !important; visibility: visible !important; }
 
           .index-record-table {
             display: table !important;
             width: 100% !important;
             min-width: 100% !important;
             max-width: 100% !important;
-            table-layout: auto !important;
+            table-layout: fixed !important;
             border-collapse: collapse !important;
-            font-size: 8px !important;
+            font-size: 6.3pt !important;
             margin: 0 !important;
             visibility: visible !important;
           }
@@ -1239,27 +1136,28 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           .index-record-table th {
             display: table-cell !important;
             border: 1px solid #000000 !important;
-            background-color: #f1f5f9 !important;
+            background-color: #e8e8e8 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color: #000000 !important;
-            padding: 4px !important;
+            padding: 1.6mm 1mm !important;
             font-weight: 900 !important;
             text-align: center !important;
-            font-size: 7.5px !important;
+            font-size: 6.3pt !important;
             visibility: visible !important;
           }
 
           .index-record-table td {
             display: table-cell !important;
-            border: 1px solid #334155 !important;
-            padding: 3px 4px !important;
+            border: 1px solid #000000 !important;
+            padding: 1.2mm .8mm !important;
             color: #000000 !important;
             background: #ffffff !important;
-            font-size: 8px !important;
+            font-size: 6.3pt !important;
             line-height: 1.2 !important;
             text-align: center !important;
-            white-space: nowrap !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
             visibility: visible !important;
           }
 
@@ -1268,11 +1166,22 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             visibility: visible !important;
           }
 
-          .index-record-table td:nth-child(1),
-          .index-record-table td:nth-child(4),
-          .index-record-table td:nth-child(5) {
-            text-align: left !important;
-            white-space: normal !important;
+          .index-record-table td:nth-child(3) {
+            font-weight: 800 !important;
+          }
+
+          .index-record-table td:nth-child(9),
+          .index-record-table td:nth-child(11),
+          .index-record-table td:nth-child(12),
+          .index-record-table td:nth-child(14) {
+            min-width: 16mm !important;
+            height: 9mm !important;
+          }
+
+          .index-record-table td small {
+            color: #000 !important;
+            font-size: 6pt !important;
+            font-weight: 700 !important;
           }
 
           .print-footer {
@@ -1329,12 +1238,33 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         </h1>
 
         <p className="mt-1.5 text-xs sm:text-sm text-slate-400 max-w-2xl font-medium leading-relaxed">
-          Sales, collections, installment financing and profitability — all in one place.
+          {dashboardView === 'cash'
+            ? 'Cash sales, product costs, revenue and cash profit.'
+            : dashboardView === 'installment'
+            ? 'Installment plans, customer payments, outstanding balances and installment profit.'
+            : 'Sales, collections, installment financing and profitability — all in one place.'}
         </p>
       </div>
 
       {/* ACTION BUTTONS */}
       <div className="flex flex-wrap items-center gap-2.5">
+
+        <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-slate-300">
+          <span className="sr-only">Select dashboard</span>
+          <select
+            value={dashboardView}
+            onChange={(event) => {
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.set('view', event.target.value);
+              setSearchParams(nextParams);
+            }}
+            className="max-w-[190px] bg-transparent text-xs font-black text-white outline-none [&>option]:text-slate-900"
+          >
+            <option value="main">Main Dashboard</option>
+            <option value="cash">Cash Dashboard</option>
+            <option value="installment">Installment Dashboard</option>
+          </select>
+        </label>
 
         {/* REFRESH */}
         <button
@@ -1356,17 +1286,17 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         </span>
 
         {/* INDEX RECORD */}
-        <button
+        {dashboardView !== 'cash' && <button
           onClick={() => setShowIndexRecord(true)}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-lg shadow-amber-500/20"
         >
           <List className="w-3.5 h-3.5" />
           Index Record
-        </button>
+        </button>}
 
         {/* NEW CHECKOUT */}
         <Link
-          to="/sales/new"
+          to={dashboardView === 'cash' ? '/sales/new?type=cash' : dashboardView === 'installment' ? '/sales/new?type=installment' : '/sales/new'}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-blue-950/40 transition-all duration-300 hover:scale-[1.02] active:scale-95"
         >
           <PlusCircle className="w-3.5 h-3.5" />
@@ -1415,31 +1345,15 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         {/* =====================================================
             INDEX RECORD DRAWER / SECTION
         ====================================================== */}
-        {showIndexRecord && (
+        {dashboardView !== 'cash' && showIndexRecord && (
           <section
             id="index-record-print"
             className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden animate-[pageEnter_0.35s_cubic-bezier(0.16,1,0.3,1)]"
           >
             {/* PRINT ONLY HEADER */}
             <div className="index-print-header px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                    {settings?.shopName || 'Electronics Shop'}
-                  </h1>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5">
-                    Monthly Index Record — {indexMonthLabel}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[9px] uppercase tracking-widest font-black text-slate-500">
-                    Total Due Records
-                  </p>
-                  <p className="text-lg font-black text-slate-900">
-                    {indexRecordRows.length}
-                  </p>
-                </div>
-              </div>
+              <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">INDEX SHEET INSTALLMENT PLAN</h1>
+              <p className="index-print-company text-xs font-bold text-slate-700 mt-0.5"><span>{settings?.shopName || 'Electronics Shop'}</span><span>{indexRecordPrintedDate}</span></p>
             </div>
 
             {/* ON-SCREEN CONTROLS HEADER */}
@@ -1452,25 +1366,15 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   </div>
                   <div>
                     <h3 className="text-base font-black text-white">
-                      Index Record
+                      Index Sheet Installment Plan
                     </h3>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      Monthly installment due record
+                      Complete register of active installment plans
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5 index-print-actions">
-                  <div className="flex items-center gap-2 bg-white/10 border border-white/10 rounded-xl px-3 py-1.5">
-                    <Calendar className="w-4 h-4 text-amber-400" />
-                    <input
-                      type="month"
-                      value={indexMonth}
-                      onChange={(e) => setIndexMonth(e.target.value)}
-                      className="bg-transparent text-xs font-black text-white outline-none cursor-pointer"
-                    />
-                  </div>
-
                   <button
                     onClick={handleIndexRecordCSV}
                     className="inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-all hover:scale-[1.02] active:scale-95"
@@ -1501,19 +1405,19 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
               <div className="mt-3.5 pt-3.5 border-t border-white/[0.08] flex flex-wrap items-center gap-3">
                 <div className="px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08]">
                   <span className="text-[9px] uppercase tracking-wider font-black text-blue-300">
-                    Month:
+                    Register:
                   </span>
                   <span className="ml-2 text-xs font-black text-white">
-                    {indexMonthLabel}
+                    All active plans
                   </span>
                 </div>
 
                 <div className="px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08]">
                   <span className="text-[9px] uppercase tracking-wider font-black text-slate-400">
-                    Due Records:
+                    Printed:
                   </span>
                   <span className="ml-2 text-xs font-black text-white">
-                    {indexRecordRows.length}
+                    {indexRecordPrintedDate}
                   </span>
                 </div>
               </div>
@@ -1526,7 +1430,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 <div className="py-16 px-5 text-center">
                   <div className="w-7 h-7 mx-auto border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
                   <p className="mt-3 text-xs font-bold text-slate-500">
-                    Loading due installments for {indexMonthLabel}...
+                    Loading active installment plans...
                   </p>
                 </div>
               ) : indexRecordRows.length === 0 ? (
@@ -1535,114 +1439,42 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     <List className="w-5 h-5 text-slate-400" />
                   </div>
                   <h4 className="mt-3 text-sm font-black text-slate-700">
-                    No due installments found
+                    No active installment plans found
                   </h4>
                   <p className="mt-1 text-xs text-slate-400">
                     {indexRecordError ||
-                      `There are no unpaid installment records for ${indexMonthLabel}.`}
+                      'There are no active installment plans with an outstanding balance.'}
                   </p>
                 </div>
               ) : (
-                <table className="index-record-table w-full min-w-[1300px] text-left">
-                  <thead className="bg-slate-50 border-y border-slate-200">
+                <table className="index-record-table w-full min-w-[1500px] text-left">
+                  <colgroup>
+                    {[3, 7, 10, 6, 7, 8, 9, 7, 7, 8, 7, 8, 7, 6].map((width, index) => (
+                      <col key={index} style={{ width: `${width}%` }} />
+                    ))}
+                  </colgroup>
+                  <thead>
                     <tr>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        Customer Name
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        Mobile Number
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        CNIC
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        Product Name
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        Model
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                        Due Date
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400 text-right">
-                        Installment Price
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400 text-right">
-                        Previous Paid Amount
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400 text-center">
-                        Paid Installments
-                      </th>
-                      <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400 text-center">
-                        This Installment
-                      </th>
+                      <th>S.N.</th><th>Date of<br />Material Purchase</th><th>Name of Customer</th><th>Invoice No.</th><th>Total Amount</th><th>Total Remaining Amount</th><th>Installment Amount<br />+ Remaining</th><th>Installment Plan<br />&amp; No.</th><th>Received Amount</th><th>Remain Amount</th><th>Receiver Sign</th><th>Installment Received Date</th><th>Phone No.</th><th>Remarks</th>
                     </tr>
                   </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {indexRecordRows.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50/70 transition">
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-black text-slate-800">
-                            {row.customerName}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="mobile-cell text-xs font-bold text-slate-700 whitespace-nowrap">
-                            {fullDigits(row.mobile) || 'N/A'}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="cnic-cell text-xs font-bold text-slate-700 whitespace-nowrap">
-                            {fullDigits(row.cnic) || 'N/A'}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-bold text-slate-700">
-                            {row.productName}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-semibold text-slate-600">
-                            {row.model || 'N/A'}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-bold text-blue-600 whitespace-nowrap">
-                            {formatDate(row.dueDate)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-xs font-black text-indigo-600 whitespace-nowrap">
-                            {money(row.installmentPrice)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-xs font-black text-emerald-600 whitespace-nowrap">
-                            {money(row.previousPaidAmount)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-black text-slate-700 whitespace-nowrap">
-                            {row.paidInstallments ??
-                              Math.max(0, Number(row.installmentNumber || 1) - 1)}{' '}
-                            / {row.totalInstallments}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-100 text-[10px] font-black text-indigo-700 whitespace-nowrap">
-                            {row.installmentNumber}
-                          </span>
-                        </td>
+                  <tbody>
+                    {indexRecordRows.map((row, index) => (
+                      <tr key={row.id}>
+                        <td>{index + 1}</td>
+                        <td>{formatDate(row.purchaseDate)}</td>
+                        <td className="index-customer-cell">{row.customerName}</td>
+                        <td>{row.invoiceNumber}</td>
+                        <td>{indexMoney(row.totalAmount)}</td>
+                        <td>{indexMoney(row.totalRemainingAmount)}</td>
+                        <td>{indexMoney(row.installmentAmount)}</td>
+                        <td>{row.installmentPlan}</td>
+                        <td className="index-write-cell">&nbsp;</td>
+                        <td>{indexMoney(row.remainingAmount)}</td>
+                        <td className="index-write-cell">&nbsp;</td>
+                        <td className="index-write-cell">&nbsp;</td>
+                        <td>{fullDigits(row.mobile)}</td>
+                        <td className="index-write-cell">&nbsp;</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1729,7 +1561,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             KPI ROW 1
         ====================================================== */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {firstRowKpis.map((kpi) => {
+          {visibleKpis.map((kpi) => {
             const Icon = kpi.icon;
             const tone = toneStyles[kpi.tone];
 
@@ -1769,52 +1601,27 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         </div>
 
         {/* =====================================================
-            KPI ROW 2
-        ====================================================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {secondRowKpis.map((kpi) => {
-            const Icon = kpi.icon;
-            const tone = toneStyles[kpi.tone];
-
-            return (
-              <div
-                key={kpi.name}
-                className="premium-card group relative overflow-hidden p-5 shadow-sm"
-              >
-                <div
-                  className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.glow} to-transparent`}
-                />
-
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                      {kpi.name}
-                    </p>
-
-                    <p className="mt-2 text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate text-slate-900">
-                      {kpi.value}
-                    </p>
-
-                    <p className="mt-1 text-xs font-medium text-slate-400">
-                      {kpi.description}
-                    </p>
-                  </div>
-
-                  <div
-                    className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${tone.icon} group-hover:scale-110 transition-transform duration-300`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* =====================================================
             QUICK FINANCIAL SUMMARY
         ====================================================== */}
+        {dashboardView === 'cash' ? (
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative overflow-hidden bg-slate-950 rounded-2xl p-5 text-white shadow-xl border border-slate-800">
+            <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">Product Purchase Cost</p>
+            <p className="mt-2 text-2xl lg:text-3xl font-black tracking-tight">{money(cashCost)}</p>
+            <p className="mt-3 text-xs font-bold text-slate-400">Total purchase cost of cash sale products</p>
+          </div>
+          <div className="premium-card p-5 shadow-sm">
+            <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">Product Selling Price</p>
+            <p className="mt-2 text-2xl lg:text-3xl font-black text-slate-900">{money(cashRevenue)}</p>
+            <p className="mt-3 text-xs font-semibold text-slate-400">Total selling price of cash sale products</p>
+          </div>
+          <div className="premium-card p-5 shadow-sm">
+            <p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">Cash Profit</p>
+            <p className={`mt-2 text-2xl lg:text-3xl font-black ${cashProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(cashProfit)}</p>
+            <p className="mt-3 text-xs font-semibold text-slate-400">Selling price less purchase cost</p>
+          </div>
+        </section>
+        ) : dashboardView === 'installment' ? null : <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative overflow-hidden bg-slate-950 rounded-2xl p-5 text-white shadow-xl border border-slate-800">
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full blur-2xl" />
             <div className="relative z-10">
@@ -1894,12 +1701,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
               Gross profit after expenses
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* =====================================================
             PROFIT BREAKDOWN (Detailed Views)
         ====================================================== */}
-        <section className="bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden">
+        {dashboardView !== 'main' && <section className={`bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden ${dashboardView === 'cash' ? 'cash-profit-breakdown' : ''}`}>
           <div className="px-5 sm:px-6 py-5 border-b border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
@@ -1908,7 +1715,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     <TrendingUp className="w-4 h-4" />
                   </div>
                   <h3 className="text-lg font-black text-slate-900">
-                    Profit Breakdown
+                    {dashboardView === 'cash' ? 'Cash Profit Breakdown' : dashboardView === 'installment' ? 'Installment Profit Breakdown' : 'Profit Breakdown'}
                   </h3>
                 </div>
 
@@ -1919,23 +1726,23 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
               <div className="text-left sm:text-right">
                 <p className="text-[9px] uppercase tracking-widest font-black text-slate-400">
-                  Net Profit
+                  {dashboardView === 'cash' ? 'Cash Profit' : dashboardView === 'installment' ? 'Installment Profit' : 'Net Profit'}
                 </p>
                 <p
                   className={`text-xl font-black ${
-                    netProfitVal >= 0 ? 'text-emerald-600' : 'text-red-600'
+                    (dashboardView === 'cash' ? cashProfit : dashboardView === 'installment' ? installmentProfit : netProfitVal) >= 0 ? 'text-emerald-600' : 'text-red-600'
                   }`}
                 >
-                  {money(netProfitVal)}
+                  {money(dashboardView === 'cash' ? cashProfit : dashboardView === 'installment' ? installmentProfit : netProfitVal)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 p-5 sm:p-6">
+          <div className={`grid grid-cols-1 ${dashboardView === 'main' ? 'xl:grid-cols-2' : ''} gap-5 p-5 sm:p-6`}>
 
             {/* CASH BUSINESS */}
-            <div className="rounded-2xl border border-emerald-100 overflow-hidden bg-white shadow-sm">
+            {dashboardView !== 'installment' && <div className="rounded-2xl border border-emerald-100 overflow-hidden bg-white shadow-sm">
               <div className="px-5 py-4 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-white border-b border-emerald-100">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -1962,7 +1769,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 <div className="space-y-3">
                   <div className="flex justify-between items-center gap-4">
                     <span className="text-xs font-semibold text-slate-500">
-                      Cash Revenue
+                      {dashboardView === 'cash' ? 'Product Selling Price' : 'Cash Revenue'}
                     </span>
                     <span className="text-sm font-black text-slate-900">
                       {money(cashRevenue)}
@@ -1996,7 +1803,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                         Cash Sale Details
                       </h5>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        Cost, selling price and profit per sale.
+                        Unit cost, selling price and profit per sale.
                       </p>
                     </div>
                     <Receipt className="w-4 h-4 text-emerald-500" />
@@ -2010,8 +1817,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 custom-scrollbar">
-                      {detailedCashProfitList.map((sale, index) => (
+                    <>
+                    <div className="space-y-3 max-h-[900px] overflow-y-auto pr-1 custom-scrollbar">
+                      {visibleCashDetails.map((sale, index) => (
                         <div
                           key={sale._id || index}
                           className="group rounded-xl border border-slate-200 bg-slate-50/50 p-4 hover:bg-white hover:border-emerald-200 hover:shadow-sm transition"
@@ -2026,6 +1834,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                   {sale.customer?.fullName || 'Walk-in Customer'}
                                 </span>
                               </div>
+                              {sale.customer && (
+                                <div className="ml-9 mt-1 space-y-0.5 text-[10px] text-slate-500">
+                                  {sale.customer.mobileNumber && <p>Phone: {sale.customer.mobileNumber}</p>}
+                                  {sale.customer.cnic && <p>CNIC: {sale.customer.cnic}</p>}
+                                </div>
+                              )}
 
                               <div className="flex items-start gap-2 mt-2.5">
                                 <ShoppingCart className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
@@ -2033,9 +1847,19 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                   <p className="font-bold text-xs text-slate-700 break-words">
                                     {sale.product?.name || 'Deleted Product'}
                                   </p>
+                                  {(sale.product?.brand || sale.product?.category) && (
+                                    <p className="text-[10px] text-slate-500 mt-0.5">
+                                      {[sale.product?.brand, sale.product?.category].filter(Boolean).join(' · ')}
+                                    </p>
+                                  )}
                                   <p className="text-[10px] font-semibold text-indigo-600 mt-0.5">
                                     Model: {sale.product?.model || sale.product?.productModel || sale.product?.modelNumber || sale.model || sale.productModel || sale.modelNumber || 'N/A'}
                                   </p>
+                                  {(sale.product?.serialNumber || sale.product?.imei || sale.product?.chassisNumber || sale.product?.engineNumber) && (
+                                    <p className="text-[10px] text-slate-500 mt-0.5">
+                                      {[sale.product?.serialNumber && `Serial: ${sale.product.serialNumber}`, sale.product?.imei && `IMEI: ${sale.product.imei}`, sale.product?.chassisNumber && `Chassis: ${sale.product.chassisNumber}`, sale.product?.engineNumber && `Engine: ${sale.product.engineNumber}`].filter(Boolean).join(' · ')}
+                                    </p>
+                                  )}
                                   <p className="text-[10px] text-slate-400 mt-0.5">
                                     Qty {sale.quantity}
                                     <span className="mx-1">•</span>
@@ -2055,13 +1879,13 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
                             <div>
                               <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
-                                Cost
+                                Unit Cost
                               </p>
-                              <p className="font-bold text-red-600 text-[11px] mt-0.5">
-                                {money(sale.originalCost)}
+                              <p className="font-bold text-slate-700 text-[11px] mt-0.5">
+                                {money(sale.purchasePrice)}
                               </p>
                             </div>
 
@@ -2071,15 +1895,6 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                               </p>
                               <p className="font-bold text-slate-800 text-[11px] mt-0.5">
                                 {money(sale.sellingPrice)}
-                              </p>
-                            </div>
-
-                            <div>
-                              <p className="text-[8px] uppercase tracking-wider font-black text-slate-400">
-                                Unit Cost
-                              </p>
-                              <p className="font-bold text-slate-700 text-[11px] mt-0.5">
-                                {money(sale.purchasePrice)}
                               </p>
                             </div>
 
@@ -2095,13 +1910,40 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                         </div>
                       ))}
                     </div>
+                    {detailedCashProfitList.length > cashDetailsPageSize && (
+                      <div className="mt-4 flex flex-col gap-3 border-t border-emerald-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs font-semibold text-slate-500">
+                          Showing {(currentCashDetailsPage - 1) * cashDetailsPageSize + 1}–{Math.min(currentCashDetailsPage * cashDetailsPageSize, detailedCashProfitList.length)} of {detailedCashProfitList.length} cash sales
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCashDetailsPage((page) => Math.max(1, page - 1))}
+                            disabled={currentCashDetailsPage === 1}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Previous
+                          </button>
+                          <span className="text-xs font-bold text-slate-600">Page {currentCashDetailsPage} of {cashDetailsPageCount}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCashDetailsPage((page) => Math.min(cashDetailsPageCount, page + 1))}
+                            disabled={currentCashDetailsPage === cashDetailsPageCount}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    </>
                   )}
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* INSTALLMENT BUSINESS */}
-            <div className="rounded-2xl border border-indigo-100 overflow-hidden bg-white shadow-sm">
+            {dashboardView !== 'cash' && <div className="rounded-2xl border border-indigo-100 overflow-hidden bg-white shadow-sm">
               <div className="px-5 py-4 bg-gradient-to-r from-indigo-500/10 via-indigo-500/5 to-white border-b border-indigo-100">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -2179,7 +2021,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 </div>
 
                 {/* INSTALLMENT DETAILS */}
-                <div className="mt-6 pt-5 border-t border-indigo-100">
+                {dashboardView !== 'installment' && <div className="mt-6 pt-5 border-t border-indigo-100">
                   <div className="flex items-center justify-between gap-3 mb-4">
                     <div>
                       <h5 className="text-sm font-black text-slate-900">
@@ -2376,14 +2218,24 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                       ))}
                     </div>
                   )}
-                </div>
+                </div>}
               </div>
-            </div>
+            </div>}
 
           </div>
 
           {/* FINAL PROFIT SUMMARY */}
-          <div className="mx-5 sm:mx-6 mb-6 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50">
+            {dashboardView === 'cash' ? (
+          <div className="mx-5 sm:mx-6 mb-6 rounded-2xl border border-emerald-200 overflow-hidden bg-emerald-50/50">
+            <div className="px-5 py-4 bg-emerald-700 text-white flex items-center justify-between gap-4"><div><h4 className="font-black text-sm">Cash Profit Summary</h4><p className="text-[10px] text-emerald-100 mt-0.5">Cash sales less cash sale product cost.</p></div><Banknote className="w-5 h-5" /></div>
+            <div className="p-5 space-y-3"><div className="flex justify-between"><span className="text-xs font-semibold text-slate-500">Product Cost</span><span className="text-sm font-black text-red-600">− {money(cashCost)}</span></div><div className="border-t border-emerald-200 pt-3 flex justify-between"><span className="text-sm font-black">Cash Profit</span><span className="text-lg font-black text-emerald-700">{money(cashProfit)}</span></div></div>
+            </div>
+            ) : dashboardView === 'installment' ? (
+            <div className="mx-5 sm:mx-6 mb-6 rounded-2xl border border-indigo-200 overflow-hidden bg-indigo-50/50">
+              <div className="px-5 py-4 bg-indigo-800 text-white flex items-center justify-between gap-4"><div><h4 className="font-black text-sm">Installment Profit Summary</h4><p className="text-[10px] text-indigo-100 mt-0.5">Installment product margin and financing markup.</p></div><CreditCard className="w-5 h-5" /></div>
+              <div className="p-5 space-y-3"><div className="flex justify-between"><span className="text-xs font-semibold text-slate-500">Product Margin</span><span className="text-sm font-black">{money(installmentBaseProductProfit)}</span></div><div className="flex justify-between"><span className="text-xs font-semibold text-slate-500">Financing Markup</span><span className="text-sm font-black text-indigo-600">{money(installmentMarkupProfit)}</span></div><div className="border-t border-indigo-200 pt-3 flex justify-between"><span className="text-sm font-black">Installment Profit</span><span className="text-lg font-black text-indigo-700">{money(installmentProfit)}</span></div></div>
+            </div>
+            ) : <div className="mx-5 sm:mx-6 mb-6 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50">
             <div className="px-5 py-4 bg-slate-950 text-white flex items-center justify-between gap-4">
               <div>
                 <h4 className="font-black text-sm">
@@ -2457,29 +2309,33 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 </span>
               </div>
             </div>
-          </div>
-        </section>
+          </div>}
+        </section>}
 
         {/* =====================================================
             LEDGERS + URGENT DUES
         ====================================================== */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {dashboardView !== 'main' && <div className={`grid grid-cols-1 gap-6`}>
 
           {/* LEDGER */}
-          <section className="xl:col-span-2 bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+          <section className={`${dashboardView === 'main' ? 'xl:col-span-2' : ''} bg-white border border-slate-200/80 rounded-3xl shadow-sm overflow-hidden flex flex-col`}>
             <div className="p-4 sm:p-5 border-b border-slate-100">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <h3 className="text-base font-black text-slate-900">
-                    Transaction Ledger
+                    {dashboardView === 'installment' ? 'Installment Recovery' : 'Transaction Ledger'}
                   </h3>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    Monitor financing and cash transactions.
+                    {dashboardView === 'installment'
+                      ? 'All received installment payments for the selected date range.'
+                      : dashboardView === 'cash'
+                      ? 'Cash sale transactions.'
+                      : 'Monitor financing and cash transactions.'}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
-                  <button
+                {dashboardView !== 'installment' && <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
+                  {dashboardView === 'main' && <button
                     onClick={() => setActiveTableTab(0)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
                       activeTableTab === 0
@@ -2488,7 +2344,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     }`}
                   >
                     Financing ({activeFinancingLedgerList.length})
-                  </button>
+                  </button>}
 
                   <button
                     onClick={() => setActiveTableTab(1)}
@@ -2500,12 +2356,75 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   >
                     Cash ({cashSales.length})
                   </button>
-                </div>
+                </div>}
               </div>
             </div>
 
+            {dashboardView === 'installment' && (
+              <div className="space-y-4 p-4 sm:p-6">
+                {installmentRecoveryList.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 py-14 text-center">
+                    <CreditCard className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-3 text-sm font-bold text-slate-600">No installment payments received</p>
+                    <p className="mt-1 text-xs text-slate-400">Received qist payments for this date range will appear here.</p>
+                  </div>
+                ) : (
+                  <>
+                  <div className="flex flex-col gap-1 rounded-xl bg-indigo-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h4 className="text-sm font-black text-indigo-950">Total Recovery</h4>
+                    <p className="text-xs font-bold text-indigo-700">{installmentRecoveryList.length} payments · {money(installmentPayments)}</p>
+                  </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[680px] text-left">
+                        <thead className="border-b border-slate-100 bg-white">
+                          <tr>
+                            <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">Received At</th>
+                            <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">Customer</th>
+                            <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">Invoice Number</th>
+                            <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">Installment</th>
+                            <th className="px-4 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">Method</th>
+                            <th className="px-4 py-3 text-right text-[9px] font-black uppercase tracking-wider text-slate-400">Amount Received</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs">
+                          {installmentRecoveryList.map((payment, index) => {
+                            const installmentNumbers = payment.allocations?.length
+                              ? payment.allocations.map((allocation) => allocation.installmentNumber).filter(Boolean).join(', ')
+                              : payment.installment?.installmentNumber;
+                            return (
+                              <tr key={payment._id || index} className="hover:bg-slate-50">
+                                <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-600">{formatDateTime(payment.paymentDate)}</td>
+                                <td className="px-4 py-3 font-bold text-slate-800">{payment.customer?.fullName || 'Customer'}</td>
+                                <td className="px-4 py-3 font-semibold text-slate-700">{payment.sale?.saleId || '—'}</td>
+                                <td className="px-4 py-3 text-slate-600">{installmentNumbers ? `#${installmentNumbers}` : '—'}</td>
+                                <td className="px-4 py-3 text-slate-600">{payment.paymentMethod || 'Cash'}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-3">
+                                    <span className="font-black text-emerald-700">{money(payment.amount)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePrintInstallmentReceipt(payment)}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-black text-white transition hover:bg-indigo-500"
+                                      title="Print payment receipt"
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                      Print Slip
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* FINANCING TABLE */}
-            {activeTableTab === 0 && (
+            {dashboardView === 'main' && activeTableTab === 0 && (
               <div className="overflow-x-auto flex-1">
                 {activeFinancingLedgerList.length === 0 ? (
                   <div className="py-14 text-center">
@@ -2524,7 +2443,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     <thead className="bg-slate-50/80 border-b border-slate-200">
                       <tr>
                         <th className="px-5 py-3.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                          Plan
+                          Invoice
                         </th>
                         <th className="px-5 py-3.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
                           Buyer
@@ -2559,7 +2478,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                             className="group hover:bg-slate-50/80 transition"
                           >
                             <td className="px-5 py-3.5 font-black text-indigo-600">
-                              {plan.planId}
+                              {plan.sale?.saleId || 'Invoice unavailable'}
                             </td>
 
                             <td className="px-5 py-3.5 font-bold text-slate-800">
@@ -2612,7 +2531,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             )}
 
             {/* CASH TABLE */}
-            {activeTableTab === 1 && (
+            {dashboardView !== 'installment' && activeTableTab === 1 && (
               <div className="overflow-x-auto flex-1">
                 {cashSales.length === 0 ? (
                   <div className="py-14 text-center">
@@ -2708,7 +2627,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           </section>
 
           {/* URGENT DUES */}
-          <section className="bg-white border border-red-100 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+          {dashboardView === 'main' && <section className="bg-white border border-red-100 rounded-3xl shadow-sm overflow-hidden flex flex-col">
             <div className="px-5 py-4 bg-gradient-to-r from-red-500/10 via-red-500/5 to-white border-b border-red-100">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -2817,9 +2736,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                 ))}
               </div>
             )}
-          </section>
+          </section>}
 
-        </div>
+        </div>}
 
       </div>
     </>

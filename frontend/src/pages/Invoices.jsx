@@ -169,9 +169,24 @@ const Invoices = () => {
   // =====================================================
   // FILTERED INVOICES
   // =====================================================
+  const invoiceSearchTerm = debouncedSearchTerm.toLowerCase().trim();
+  const invoiceSearchDigits = invoiceSearchTerm.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const isInvoiceLookupTerm =
+    /^\d{1,10}$/.test(invoiceSearchDigits) || /^[a-z]+[-/]?\d+[a-z0-9-]*$/i.test(invoiceSearchTerm);
+  const hasInvoiceNumberMatch = !isInvoiceLookupTerm || invoices.some((invoice) => {
+    const invoiceNumber = String(invoice.saleId || '').toLowerCase();
+    return invoiceNumber.includes(invoiceSearchTerm) ||
+      invoiceNumber.replace(/[^a-z0-9]/g, '').includes(invoiceSearchTerm.replace(/[^a-z0-9]/g, ''));
+  });
+
   const filteredInvoices = useMemo(
-    () =>
-      invoices.filter((inv) => {
+    () => {
+      const hasExactInvoiceSearch = Boolean(invoiceSearchDigits) && invoices.some((invoice) => {
+        const invoiceDigits = String(invoice.saleId || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+        return invoiceDigits === invoiceSearchDigits;
+      });
+
+      return invoices.filter((inv) => {
     const custName = inv.customer?.fullName?.toLowerCase() || '';
     const sId = inv.saleId?.toLowerCase() || '';
     const prodName = [
@@ -180,22 +195,35 @@ const Invoices = () => {
     ].filter(Boolean).join(' ').toLowerCase();
     const custCnic = inv.customer?.cnic || inv.customer?.CNIC || '';
     const custMobile = inv.customer?.mobileNumber || inv.customer?.mobile || '';
-    const term = debouncedSearchTerm.toLowerCase().trim();
-
-    const matchesSearch =
-      custName.includes(term) ||
-      matchesMobileSearch(custMobile, term) ||
-      matchesCnicSearch(custCnic, term) ||
+    const term = invoiceSearchTerm;
+    const invoiceDigits = sId.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const matchesExactInvoiceNumber = Boolean(invoiceSearchDigits) && invoiceDigits === invoiceSearchDigits;
+    const matchesInvoiceNumber =
       sId.includes(term) ||
-      prodName.includes(term);
+      sId.replace(/[^a-z0-9]/g, '').includes(term.replace(/[^a-z0-9]/g, ''));
+
+    const matchesSearch = hasExactInvoiceSearch
+      ? matchesExactInvoiceNumber
+      : custName.includes(term) ||
+        matchesMobileSearch(custMobile, term) ||
+        matchesCnicSearch(custCnic, term) ||
+        matchesInvoiceNumber ||
+        prodName.includes(term);
 
     const matchesDate = isDateInFilter(inv.saleDate || inv.createdAt);
 
       return matchesSearch && matchesDate;
-    }),
+    }).sort((a, b) => String(b.saleId || '').localeCompare(
+      String(a.saleId || ''),
+      undefined,
+      { numeric: true, sensitivity: 'base' }
+    ));
+    },
     [
       invoices,
       debouncedSearchTerm,
+      invoiceSearchDigits,
+      invoiceSearchTerm,
       filterPreset,
       customStartDate,
       customEndDate,
@@ -667,6 +695,14 @@ const Invoices = () => {
       {/* =====================================================
           INVOICES LEDGER TABLE
       ====================================================== */}
+      {!loading && isInvoiceLookupTerm && !hasInvoiceNumberMatch && filteredInvoices.length > 0 && (
+        <div
+          role="status"
+          className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-black text-amber-900"
+        >
+          No invoice number matched &quot;{invoiceSearchTerm}&quot;. Other search matches are shown below.
+        </div>
+      )}
       <DataTable
         columns={invoiceColumns}
         rows={filteredInvoices}
@@ -675,8 +711,8 @@ const Invoices = () => {
         pageSize={PAGE_SIZE}
         onPageChange={setPage}
         emptyIcon={FileText}
-        emptyTitle="No tax invoices found"
-        emptyHint='Try switching filters to "All-Time" or click "New Invoice Checkout" to generate fresh sales receipts.'
+        emptyTitle={invoiceSearchTerm ? `No matching invoice or sale found for "${invoiceSearchTerm}".` : 'No tax invoices found'}
+        emptyHint={invoiceSearchTerm ? '' : 'Try switching filters to "All-Time" or click "New Invoice Checkout" to generate fresh sales receipts.'}
         maxTableHeight="65vh"
         enablePageJump
       />

@@ -136,8 +136,8 @@ const getDashboardStats = async (
 
     const [
       salesList,
-      activeFinancingList,
-      paymentsList,
+      allFinancingPlans,
+      allPaymentsList,
       expensesList,
     ] = await Promise.all([
 
@@ -146,9 +146,10 @@ const getDashboardStats = async (
       // ------------------------------------------------------
       Sale.find({
         shopId,
+        book: null,
       })
-        .populate('customer', 'fullName mobileNumber')
-        .populate('product', 'name model purchasePrice')
+        .populate('customer', 'fullName mobileNumber cnic fatherName address city')
+        .populate('product', 'name brand category model serialNumber imei chassisNumber engineNumber purchasePrice')
         .sort({
           createdAt: 1,
         })
@@ -163,6 +164,7 @@ const getDashboardStats = async (
       })
         .populate('customer', 'fullName mobileNumber mobile cnic')
         .populate('product', 'name model')
+        .populate('sale', 'saleId book')
         .sort({
           createdAt: 1,
         })
@@ -179,7 +181,7 @@ const getDashboardStats = async (
         },
       })
         .populate('customer', 'fullName mobileNumber')
-        .populate('sale', 'saleId')
+        .populate('sale', 'saleId book')
         .populate('installmentPlan', 'planId')
         .populate('installment', 'installmentNumber')
         .sort({
@@ -201,6 +203,14 @@ const getDashboardStats = async (
 
 
     ]);
+
+    // A sale assigned to a book belongs to Book Wise Audit, not the live
+    // dashboard. Keep its invoice, payments, and customer history untouched.
+    const auditPlanIds = allFinancingPlans
+      .filter((plan) => Boolean(plan.sale?.book))
+      .map((plan) => plan._id);
+    const activeFinancingList = allFinancingPlans.filter((plan) => !plan.sale?.book);
+    const paymentsList = allPaymentsList.filter((payment) => !payment.sale?.book);
 
 
     // ========================================================
@@ -810,6 +820,7 @@ const getDashboardStats = async (
       await Installment.find({
 
         shopId,
+        installmentPlan: { $nin: auditPlanIds },
 
         status: {
           $in: [
@@ -866,6 +877,7 @@ const getDashboardStats = async (
       InstallmentPlan.countDocuments({
         shopId,
         status: 'Active',
+        _id: { $nin: auditPlanIds },
       }),
 
 
@@ -875,6 +887,7 @@ const getDashboardStats = async (
       InstallmentPlan.countDocuments({
         shopId,
         status: 'Overdue',
+        _id: { $nin: auditPlanIds },
       }),
 
 
@@ -1183,12 +1196,10 @@ const getDashboardStats = async (
 
 
 // ============================================================
-// GET MONTHLY INDEX RECORD
+// GET OVERALL INSTALLMENT INDEX RECORD
 //
-// @desc    Get all unpaid/partially-paid installments due
-//          in a selected month for the current shop
-//
-// @route   GET /api/reports/index-record?month=2026-09
+// @desc    Get one register row for each active installment plan
+// @route   GET /api/reports/index-record
 // @access  Private
 // ============================================================
 const getIndexRecord = async (
@@ -1205,591 +1216,86 @@ const getIndexRecord = async (
       req.shopId;
 
 
-    // ========================================================
-    // MONTH
-    // ========================================================
+    const plans = await InstallmentPlan.find({
+      shopId,
+      status: { $in: ['Active', 'Overdue'] },
+      remainingBalance: { $gt: 0 },
+    }).populate([
+      { path: 'customer' },
+      { path: 'product' },
+      { path: 'sale', populate: [{ path: 'customer' }, { path: 'product' }] },
+    ]).sort({ createdAt: 1, _id: 1 });
 
-    const month =
-      String(
-        req.query.month || ''
-      ).trim();
+    const planIds = plans.map((plan) => plan._id);
+    const allInstallments = planIds.length
+      ? await Installment.find({ shopId, installmentPlan: { $in: planIds } })
+        .sort({ installmentNumber: 1, dueDate: 1 })
+      : [];
+    const byPlan = new Map();
+    allInstallments.forEach((item) => {
+      const id = item.installmentPlan?.toString();
+      if (!id) return;
+      if (!byPlan.has(id)) byPlan.set(id, []);
+      byPlan.get(id).push(item);
+    });
 
+    const rows = plans.map((plan, index) => {
+      const scheduled = byPlan.get(plan._id.toString()) || [];
+      const unpaid = scheduled.filter((item) =>
+        !['Paid', 'Settled'].includes(item.status) &&
+        Number(item.remainingAmount ?? item.amount ?? 0) > 0
+      );
+      const next = unpaid[0] || null;
+      const totalInstallments = Number(
+        plan.selectedDuration || plan.invoiceSnapshot?.selectedDuration ||
+        scheduled.length || plan.duration || 0
+      );
+      const paidInstallments = scheduled.filter((item) =>
+        ['Paid', 'Settled'].includes(item.status) ||
+        (Number(item.amount || item.originalAmount || 0) > 0 &&
+          Number(item.paidAmount || 0) >= Number(item.amount || item.originalAmount || 0))
+      ).length;
+      const customer = plan.customer || plan.sale?.customer || {};
+      const sale = plan.sale || {};
+      const totalRemaining = Number(plan.remainingBalance || 0);
+      const nextAmount = Number(next?.amount || next?.originalAmount || 0);
+      const nextRemaining = Number(next?.remainingAmount ?? Math.max(0, nextAmount - Number(next?.paidAmount || 0)));
 
-    // --------------------------------------------------------
-    // Validate month format
-    // --------------------------------------------------------
+      return {
+        id: plan._id.toString(),
+        serialNumber: index + 1,
+        purchaseDate: sale.saleDate || sale.createdAt || plan.createdAt || plan.firstDueDate,
+        customerName: customer.fullName || customer.name || 'N/A',
+        invoiceNumber: sale.saleId || sale.invoiceNumber || sale.invoiceNo || 'N/A',
+        totalAmount: Number(plan.totalAmount || sale.totalAmount || sale.grandTotal || 0),
+        totalRemainingAmount: totalRemaining,
+        installmentAmount: nextAmount,
+        installmentRemainingAmount: nextRemaining,
+        installmentPlan: `${totalInstallments}M / ${paidInstallments}`,
+        installmentNumber: next?.installmentNumber || null,
+        receivedAmount: '',
+        remainingAmount: totalRemaining,
+        receiverSign: '',
+        installmentReceivedDate: '',
+        mobile: customer.mobileNumber || customer.mobile || customer.phone || customer.phoneNumber || '',
+        remarks: '',
+        nextDueDate: next?.dueDate || null,
+        productName: plan.product?.name || sale.product?.name || plan.invoiceSnapshot?.productName || '',
+      };
+    });
 
-    if (
-      !/^\d{4}-\d{2}$/.test(
-        month
+    rows.sort((a, b) =>
+      String(a.invoiceNumber || '').localeCompare(
+        String(b.invoiceNumber || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
       )
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'Invalid month. Expected format YYYY-MM.',
-      });
-    }
-
-
-    const [
-      yearString,
-      monthString,
-    ] =
-      month.split('-');
-
-
-    const year =
-      Number(
-        yearString
-      );
-
-
-    const monthNumber =
-      Number(
-        monthString
-      );
-
-
-    // --------------------------------------------------------
-    // Validate actual month
-    // --------------------------------------------------------
-
-    if (
-      monthNumber < 1 ||
-      monthNumber > 12
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'Invalid month.',
-      });
-    }
-
-
-    // ========================================================
-    // MONTH DATE RANGE
-    // ========================================================
-
-    const startDate = new Date(
-      Date.UTC(year, monthNumber - 1, 1) - 5 * 60 * 60 * 1000
     );
-
-
-    const endDate = new Date(
-      Date.UTC(year, monthNumber, 1) - 5 * 60 * 60 * 1000
-    );
-
-
-    // ========================================================
-    // GET INSTALLMENTS FOR SELECTED MONTH
-    // ========================================================
-
-    const installments =
-      await Installment.find({
-
-        shopId,
-
-        dueDate: {
-
-          $gte:
-            startDate,
-
-          $lt:
-            endDate,
-        },
-
-        status: {
-
-          $nin: [
-            'Paid',
-            'Settled',
-          ],
-        },
-
-      })
-        .populate({
-
-          path:
-            'installmentPlan',
-
-          populate: [
-
-            {
-              path:
-                'customer',
-            },
-
-            {
-              path:
-                'product',
-            },
-
-            {
-              path:
-                'sale',
-
-              populate: [
-
-                {
-                  path:
-                    'customer',
-                },
-
-                {
-                  path:
-                    'product',
-                },
-              ],
-            },
-          ],
-        })
-        .sort({
-
-          dueDate: 1,
-
-          installmentNumber: 1,
-        });
-
-
-    // ========================================================
-    // NO RECORDS
-    // ========================================================
-
-    if (
-      installments.length === 0
-    ) {
-
-      return res.status(200).json({
-
-        success: true,
-
-        data: {
-
-          month,
-
-          totalRecords:
-            0,
-
-          totalInstallmentAmount:
-            0,
-
-          rows: [],
-        },
-      });
-    }
-
-
-    // ========================================================
-    // GET ALL INSTALLMENTS FOR THESE PLANS
-    // ========================================================
-
-    const planIds = [
-      ...new Set(
-
-        installments
-
-          .map(
-            installment =>
-              installment
-                .installmentPlan
-                ?._id
-                ?.toString()
-          )
-
-          .filter(Boolean)
-      ),
-    ];
-
-
-    const allPlanInstallments =
-      await Installment.find({
-
-        shopId,
-
-        installmentPlan: {
-
-          $in:
-            planIds,
-        },
-
-      })
-        .sort({
-
-          installmentNumber: 1,
-        });
-
-
-    // ========================================================
-    // GROUP INSTALLMENTS BY PLAN
-    // ========================================================
-
-    const installmentsByPlan =
-      new Map();
-
-
-    for (
-      const installment
-      of allPlanInstallments
-    ) {
-
-      const planId =
-        installment
-          .installmentPlan
-          ?.toString();
-
-
-      if (
-        !planId
-      ) {
-        continue;
-      }
-
-
-      if (
-        !installmentsByPlan.has(
-          planId
-        )
-      ) {
-
-        installmentsByPlan.set(
-          planId,
-          []
-        );
-      }
-
-
-      installmentsByPlan
-        .get(planId)
-        .push(
-          installment
-        );
-    }
-
-
-    // ========================================================
-    // BUILD INDEX RECORD ROWS
-    // ========================================================
-
-    const rows =
-      installments.map(
-        installment => {
-
-          const plan =
-            installment
-              .installmentPlan;
-
-
-          const customer =
-            plan?.customer ||
-            plan?.sale?.customer;
-
-
-          const product =
-            plan?.product ||
-            plan?.sale?.product;
-
-
-          const planId =
-            plan?._id
-              ?.toString();
-
-
-          const planInstallments =
-            installmentsByPlan.get(
-              planId
-            ) || [];
-
-
-          // ==================================================
-          // PREVIOUS PAID AMOUNT
-          // ==================================================
-
-          let previousPaidAmount =
-            0;
-
-
-          for (
-            const previousInstallment
-            of planInstallments
-          ) {
-
-            if (
-              previousInstallment
-                .installmentNumber <
-              installment
-                .installmentNumber
-            ) {
-
-              previousPaidAmount +=
-                Number(
-                  previousInstallment
-                    .paidAmount ||
-                  0
-                );
-            }
-          }
-
-
-          // ==================================================
-          // DOWN PAYMENT
-          // ==================================================
-
-          if (
-            plan &&
-            !plan
-              .treatDownPaymentAsFirstInstallment
-          ) {
-
-            previousPaidAmount +=
-              Number(
-                plan.downPayment ||
-                0
-              );
-          }
-
-
-          // ==================================================
-          // TOTAL INSTALLMENTS
-          // ==================================================
-
-          const totalInstallments =
-            Number(
-
-              plan?.selectedDuration ||
-
-              plan?.duration ||
-
-              plan
-                ?.invoiceSnapshot
-                ?.selectedDuration ||
-
-              plan
-                ?.invoiceSnapshot
-                ?.duration ||
-
-              0
-            );
-
-
-          // ==================================================
-          // PAID INSTALLMENTS
-          // ==================================================
-
-          const paidInstallments =
-            planInstallments.filter(
-              planInstallment => {
-
-                const amount =
-                  Number(
-
-                    planInstallment.amount ||
-
-                    planInstallment
-                      .originalAmount ||
-
-                    0
-                  );
-
-
-                const paidAmount =
-                  Number(
-                    planInstallment
-                      .paidAmount ||
-                    0
-                  );
-
-
-                return (
-
-                  planInstallment
-                    .status ===
-                    'Paid' ||
-
-                  planInstallment
-                    .status ===
-                    'Settled' ||
-
-                  (
-                    amount > 0 &&
-                    paidAmount >= amount
-                  )
-                );
-              }
-            ).length;
-
-
-          // ==================================================
-          // CUSTOMER FIELDS
-          // ==================================================
-
-          const customerName =
-            customer?.fullName ||
-            customer?.name ||
-            'N/A';
-
-
-          const mobileNumber =
-            customer?.mobileNumber ||
-            customer?.mobile ||
-            customer?.phone ||
-            customer?.phoneNumber ||
-            customer?.contactNumber ||
-            plan?.sale?.customer
-              ?.mobileNumber ||
-            plan?.sale?.customer
-              ?.mobile ||
-            plan?.sale?.customer
-              ?.phone ||
-            'N/A';
-
-
-          const cnic =
-            customer?.cnic ||
-            customer?.CNIC ||
-            customer?.cnicNumber ||
-            customer?.nationalId ||
-            plan?.sale?.customer
-              ?.cnic ||
-            plan?.sale?.customer
-              ?.CNIC ||
-            'N/A';
-
-
-          // ==================================================
-          // PRODUCT FIELDS
-          // ==================================================
-
-          const productName =
-            product?.name ||
-            product?.productName ||
-            plan
-              ?.invoiceSnapshot
-              ?.productName ||
-            'N/A';
-
-
-          const model =
-            product?.model ||
-            product?.productModel ||
-            product?.modelNumber ||
-            plan
-              ?.invoiceSnapshot
-              ?.model ||
-            'N/A';
-
-
-          // ==================================================
-          // INSTALLMENT PRICE
-          // ==================================================
-
-          const installmentPrice =
-            Number(
-
-              installment.amount ||
-
-              installment
-                .originalAmount ||
-
-              0
-            );
-
-
-          // ==================================================
-          // RETURN ROW
-          // ==================================================
-
-          return {
-
-            id:
-              installment
-                ._id
-                ?.toString(),
-
-            customerName,
-
-            mobile:
-              mobileNumber,
-
-            mobileNumber,
-
-            cnic,
-
-            productName,
-
-            model,
-
-            installmentPrice,
-
-            previousPaidAmount,
-
-            paidInstallments,
-
-            installmentNumber:
-              Number(
-                installment
-                  .installmentNumber ||
-                0
-              ),
-
-            totalInstallments,
-
-            installmentLabel:
-              `${Number(
-                installment
-                  .installmentNumber ||
-                0
-              )} / ${totalInstallments}`,
-
-            dueDate:
-              installment.dueDate,
-
-            paidAmount:
-              Number(
-                installment
-                  .paidAmount ||
-                0
-              ),
-
-            remainingAmount:
-              Number(
-                installment
-                  .remainingAmount ||
-                0
-              ),
-
-            status:
-              installment.status,
-          };
-        }
-      );
-
-
-    // ========================================================
-    // TOTAL INSTALLMENT VALUE
-    // ========================================================
-
-    const totalInstallmentAmount =
-      rows.reduce(
-        (
-          sum,
-          row
-        ) =>
-          sum +
-          (
-            Number(
-              row.installmentPrice ||
-              0
-            )
-          ),
-        0
-      );
+    rows.forEach((row, index) => {
+      row.serialNumber = index + 1;
+    });
+
+    const totalRemainingAmount = rows.reduce((sum, row) => sum + row.totalRemainingAmount, 0);
 
 
     // ========================================================
@@ -1802,12 +1308,10 @@ const getIndexRecord = async (
 
       data: {
 
-        month,
-
         totalRecords:
           rows.length,
 
-        totalInstallmentAmount,
+        totalRemainingAmount,
 
         rows,
       },
@@ -1825,7 +1329,7 @@ const getIndexRecord = async (
       success: false,
 
       message:
-        'Failed to load monthly index record',
+        'Failed to load overall index record',
 
       error:
         error.message,

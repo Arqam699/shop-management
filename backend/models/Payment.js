@@ -84,13 +84,7 @@ const paymentSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: [
-        'Cash',
-        'Bank Transfer',
-        'Easypaisa',
-        'JazzCash',
-        'Other'
-      ],
+      trim: true,
       default: 'Cash',
     },
 
@@ -133,6 +127,33 @@ const paymentSchema = new mongoose.Schema(
     carryForwardAmount: {
       type: Number,
       default: 0,
+    },
+
+    // Extra payment applied to the plan balance without changing installments.
+    balanceReductionAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Receipt-time snapshot: limits the current month's payable to the
+    // amount actually owed on the plan and records the post-payment balance.
+    planPayableAmountAtPayment: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    planRemainingBalanceAfterPayment: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    advanceAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     notes: {

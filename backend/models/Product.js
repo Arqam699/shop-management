@@ -29,6 +29,7 @@ const productSchema = new mongoose.Schema(
 
     imei: { type: String, trim: true }, // Optional for Mobiles
     chassisNumber: { type: String, trim: true }, // Required for Motorbikes
+    engineNumber: { type: String, trim: true }, // Required for Motorbikes
 
     purchasePrice: { type: Number, required: true, min: 0 },
 

@@ -36,6 +36,7 @@ const AddEditProduct = () => {
     serialNumber: '',
     imei: '',
     chassisNumber: '',
+    engineNumber: '',
     purchasePrice: '',
     salePrice: '',
     quantity: '',
@@ -133,10 +134,18 @@ const AddEditProduct = () => {
     }
 
     // 3. Category-Specific Validation
-    if (formData.category === 'Motorbikes' && !formData.chassisNumber?.trim()) {
-      setErrorMsg('Chassis Number is required for Motorbikes.');
-      setLoading(false);
-      return;
+    if (formData.category === 'Motorbikes') {
+      if (!formData.chassisNumber?.trim()) {
+        setErrorMsg('Chassis Number is required for Motorbikes.');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.engineNumber?.trim()) {
+        setErrorMsg('Engine Number is required for Motorbikes.');
+        setLoading(false);
+        return;
+      }
     }
 
     if (formData.category === 'Mobile Phones' && !formData.imei?.trim()) {
@@ -432,6 +441,27 @@ const AddEditProduct = () => {
                     }`}
                   />
                 </div>
+
+                {formData.category === 'Motorbikes' && (
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Bike className="w-3 h-3 text-emerald-600" />
+                        Engine No. (Bikes)
+                      </span>
+                      <span className="text-[9px] text-rose-500 font-bold">Required</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="engineNumber"
+                      value={formData.engineNumber || ''}
+                      onChange={handleChange}
+                      placeholder="Motorbike engine number"
+                      required
+                      className="w-full h-11 border border-emerald-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
             </div>

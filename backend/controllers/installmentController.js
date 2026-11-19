@@ -145,7 +145,7 @@ const calculateInstallmentTotals = (installments = []) => {
 //
 // Instead:
 //
-// remainingBalance = SUM(all installment remainingAmount)
+// remainingBalance = SUM(all installment remainingAmount) - plan balance reductions
 //
 // totalPaid = SUM(all installment paidAmount)
 // ============================================================
@@ -165,12 +165,16 @@ const refreshPlanFinancials = async (
       installments
     );
 
-  plan.remainingBalance =
-    totals.remainingBalance;
+  plan.remainingBalance = Math.max(
+    0,
+    roundMoney(totals.remainingBalance - Number(plan.balanceReduction || 0))
+  );
 
   return {
     installments,
-    ...totals
+    ...totals,
+    totalPaid: roundMoney(totals.totalPaid + Number(plan.balanceReduction || 0)),
+    remainingBalance: plan.remainingBalance,
   };
 };
 
@@ -267,7 +271,11 @@ const getInstallmentPlans = async (
       InstallmentPlan.find(plansFilter)
         .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product', 'name brand model')
-        .populate('sale', 'saleId paymentType finalTotal totalWithMarkup markupAmount purchasePriceAtSale quantity unitPrice discount')
+        .populate({
+          path: 'sale',
+          select: 'saleId paymentType finalTotal totalWithMarkup markupAmount purchasePriceAtSale quantity unitPrice discount items',
+          populate: { path: 'items.product', select: 'name brand model sku' },
+        })
         .sort({
           createdAt: -1
         });
@@ -341,10 +349,10 @@ const getInstallmentPlans = async (
       // If DP is first installment,
       // it is already inside totalPaid.
       plan.totalPaid =
-        totals.totalPaid;
+        roundMoney(totals.totalPaid + Number(plan.balanceReduction || 0));
 
       plan.remainingBalance =
-        totals.remainingBalance;
+        Math.max(0, roundMoney(totals.remainingBalance - Number(plan.balanceReduction || 0)));
 
       plan.installmentScheduleTotal =
         totals.scheduledTotal;
@@ -458,6 +466,13 @@ const getDueInstallments = async (
     // ========================================================
 
     for (const item of installments) {
+      if (
+        item.installmentPlan?.status === 'Completed' &&
+        Number(item.installmentPlan?.remainingBalance || 0) <= 0
+      ) {
+        continue;
+      }
+
       if (!item.dueDate) {
         continue;
       }
@@ -677,7 +692,7 @@ const getInstallmentPlanById = async (
       })
         .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
-        .populate('sale');
+        .populate({ path: 'sale', populate: { path: 'items.product' } });
 
     if (!plan) {
       return res.status(404).json({
@@ -698,7 +713,7 @@ const getInstallmentPlanById = async (
       })
         .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
-        .populate('sale');
+        .populate({ path: 'sale', populate: { path: 'items.product' } });
 
     const installments =
       await Installment.find({
@@ -739,10 +754,10 @@ const getInstallmentPlanById = async (
     // ========================================================
 
     refreshedPlan.totalPaid =
-      totals.totalPaid;
+      roundMoney(totals.totalPaid + Number(refreshedPlan.balanceReduction || 0));
 
     refreshedPlan.remainingBalance =
-      totals.remainingBalance;
+      Math.max(0, roundMoney(totals.remainingBalance - Number(refreshedPlan.balanceReduction || 0)));
 
     refreshedPlan.installmentScheduleTotal =
       totals.scheduledTotal;
@@ -807,9 +822,7 @@ const getInstallmentPlanById = async (
 // 2. Underpayment NEVER carries forward.
 // 3. Exact payment clears current.
 // 4. Overpayment clears current first.
-// 5. Extra is distributed equally across future installments.
-// 6. If one future installment gets fully cleared,
-//    remaining extra is redistributed.
+// 5. Extra reduces only the overall plan balance; no installment is changed.
 // 7. Scheduled amount NEVER changes.
 // 8. Only paidAmount / remainingAmount / status change.
 // 9. One Payment record stores allocations.
@@ -926,9 +939,12 @@ const payInstallment = async (
         allPlanInstallmentsBefore
       );
 
-    if (
-      totalsBefore.remainingBalance <= 0
-    ) {
+    const balanceBeforePayment = Math.max(
+      0,
+      roundMoney(totalsBefore.remainingBalance - Number(plan.balanceReduction || 0))
+    );
+
+    if (balanceBeforePayment <= 0) {
       plan.remainingBalance = 0;
       plan.status = 'Completed';
 
@@ -937,6 +953,13 @@ const payInstallment = async (
       return res.status(400).json({
         message:
           'This installment plan is already completed'
+      });
+    }
+
+    if (amountToPay > balanceBeforePayment) {
+      return res.status(400).json({
+        message: `Payment cannot exceed the remaining balance of ${balanceBeforePayment}`,
+        remainingBalance: balanceBeforePayment,
       });
     }
 
@@ -1020,7 +1043,8 @@ const payInstallment = async (
       roundMoney(
         Math.min(
           paymentLeft,
-          currentRemainingBefore
+          currentRemainingBefore,
+          balanceBeforePayment
         )
       );
 
@@ -1117,201 +1141,21 @@ const payInstallment = async (
     let extraAdjustedAmount =
       0;
 
-    if (
-      extraPayment > 0
-    ) {
-      const futureInstallments =
-        await Installment.find({
-          shopId,
-          installmentPlan:
-            plan._id,
-
-          installmentNumber: {
-            $gt:
-              currentInstallment.installmentNumber
-          },
-
-          remainingAmount: {
-            $gt: 0
-          }
-        })
-          .sort({
-            installmentNumber: 1
-          });
-
-      let remainingExtra =
-        extraPayment;
-
-      let availableFuture =
-        futureInstallments;
-
-      while (
-        remainingExtra > 0.009 &&
-        availableFuture.length > 0
-      ) {
-        const equalShare =
-          roundMoney(
-            remainingExtra /
-            availableFuture.length
-          );
-
-        if (
-          equalShare <= 0
-        ) {
-          break;
-        }
-
-        const nextRound = [];
-
-        let distributedThisRound =
-          0;
-
-        for (
-          const installment
-          of availableFuture
-        ) {
-          if (
-            remainingExtra <= 0.009
-          ) {
-            break;
-          }
-
-          const previousRemaining =
-            roundMoney(
-              installment.remainingAmount
-            );
-
-          if (
-            previousRemaining <= 0
-          ) {
-            continue;
-          }
-
-          const allocationAmount =
-            roundMoney(
-              Math.min(
-                equalShare,
-                previousRemaining,
-                remainingExtra
-              )
-            );
-
-          if (
-            allocationAmount <= 0
-          ) {
-            continue;
-          }
-
-          installment.paidAmount =
-            roundMoney(
-              Number(
-                installment.paidAmount || 0
-              ) +
-              allocationAmount
-            );
-
-          installment.remainingAmount =
-            roundMoney(
-              Math.max(
-                0,
-                Number(
-                  installment.amount || 0
-                ) -
-                Number(
-                  installment.paidAmount || 0
-                )
-              )
-            );
-
-          if (
-            installment.remainingAmount <=
-            0
-          ) {
-            installment.remainingAmount =
-              0;
-
-            installment.status =
-              'Paid';
-
-            installment.paidDate =
-              paymentDate;
-          } else {
-            installment.status =
-              installment.paidAmount > 0
-                ? 'Partially Paid'
-                : 'Pending';
-          }
-
-          await installment.save();
-
-          allocations.push({
-            installment:
-              installment._id,
-
-            installmentNumber:
-              installment.installmentNumber,
-
-            amount:
-              allocationAmount,
-
-            previousRemaining,
-
-            remainingAfterPayment:
-              installment.remainingAmount,
-
-            allocationType:
-              'Extra Payment Adjustment'
-          });
-
-          distributedThisRound =
-            roundMoney(
-              distributedThisRound +
-              allocationAmount
-            );
-
-          extraAdjustedAmount =
-            roundMoney(
-              extraAdjustedAmount +
-              allocationAmount
-            );
-
-          actualAllocatedAmount =
-            roundMoney(
-              actualAllocatedAmount +
-              allocationAmount
-            );
-
-          remainingExtra =
-            roundMoney(
-              remainingExtra -
-              allocationAmount
-            );
-
-          if (
-            installment.remainingAmount >
-            0.009
-          ) {
-            nextRound.push(
-              installment
-            );
-          }
-        }
-
-        if (
-          distributedThisRound <= 0
-        ) {
-          break;
-        }
-
-        availableFuture =
-          nextRound;
-      }
-
-      paymentLeft =
-        roundMoney(
-          remainingExtra
-        );
-
+    if (extraPayment > 0) {
+      const balanceAfterCurrentPayment = Math.max(
+        0,
+        roundMoney(balanceBeforePayment - currentAllocation)
+      );
+      extraAdjustedAmount = roundMoney(
+        Math.min(extraPayment, balanceAfterCurrentPayment)
+      );
+      plan.balanceReduction = roundMoney(
+        Number(plan.balanceReduction || 0) + extraAdjustedAmount
+      );
+      actualAllocatedAmount = roundMoney(
+        actualAllocatedAmount + extraAdjustedAmount
+      );
+      paymentLeft = roundMoney(extraPayment - extraAdjustedAmount);
     } else {
       paymentLeft = 0;
     }
@@ -1384,8 +1228,10 @@ const payInstallment = async (
     // SUM(actual installment remaining)
     // ========================================================
 
-    const newPlanBalance =
-      totalsAfter.remainingBalance;
+    const newPlanBalance = Math.max(
+      0,
+      roundMoney(totalsAfter.remainingBalance - Number(plan.balanceReduction || 0))
+    );
 
     plan.remainingBalance =
       newPlanBalance;
@@ -1414,6 +1260,17 @@ const payInstallment = async (
 
       plan.status =
         'Completed';
+
+      // A full payoff settles the schedule. Keep each installment's actual
+      // paidAmount intact so the monthly received figures remain truthful.
+      if (newPlanBalance <= 0) {
+        for (const installment of allPlanInstallments) {
+          if (Number(installment.remainingAmount || 0) <= 0) continue;
+          installment.status = 'Paid';
+          installment.paidDate = paymentDate;
+          await installment.save();
+        }
+      }
 
     } else {
       const overdueExists =
@@ -1480,7 +1337,7 @@ const payInstallment = async (
       extraAdjustedAmount > 0
     ) {
       defaultNote =
-        `Payment of ${amountToPay} received. Extra payment of ${extraAdjustedAmount} was equally adjusted across remaining installments.`;
+        `Payment of ${amountToPay} received. Extra payment of ${extraAdjustedAmount} reduced the total remaining balance without changing installment amounts.`;
     }
 
     if (
@@ -1524,6 +1381,18 @@ const payInstallment = async (
 
         carryForwardAmount,
 
+        balanceReductionAmount:
+          extraAdjustedAmount,
+
+        planPayableAmountAtPayment:
+          Math.min(currentRemainingBefore, balanceBeforePayment),
+
+        planRemainingBalanceAfterPayment:
+          newPlanBalance,
+
+        advanceAmount:
+          paymentLeft,
+
         allocations,
 
         notes:
@@ -1542,7 +1411,7 @@ const payInstallment = async (
       })
         .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
         .populate('product')
-        .populate('sale');
+        .populate({ path: 'sale', populate: { path: 'items.product' } });
 
     const updatedInstallments =
       await Installment.find({
@@ -1562,6 +1431,9 @@ const payInstallment = async (
       calculateInstallmentTotals(
         updatedInstallments
       );
+    const totalPaidAfter = roundMoney(
+      finalTotals.totalPaid + Number(updatedPlan.balanceReduction || 0)
+    );
 
     const dpFirst =
       isDownPaymentFirstInstallment(
@@ -1571,16 +1443,13 @@ const payInstallment = async (
     // IMPORTANT:
     //
     // Whether DP-first is ON or OFF,
-    // actual paid installments are the source
-    // for installment payment history.
+    // actual paid installments plus direct balance reductions are the source
+    // for plan payment totals.
     //
     // We NEVER add DP separately when it is
     // represented as installment #1.
-    updatedPlan.totalPaid =
-      finalTotals.totalPaid;
-
     updatedPlan.remainingBalance =
-      finalTotals.remainingBalance;
+      Math.max(0, roundMoney(finalTotals.remainingBalance - Number(updatedPlan.balanceReduction || 0)));
 
     updatedPlan.installmentScheduleTotal =
       finalTotals.scheduledTotal;
@@ -1611,7 +1480,7 @@ const payInstallment = async (
 
       message:
         extraAdjustedAmount > 0
-          ? `Payment recorded. ${extraAdjustedAmount} extra payment was adjusted equally across remaining installments.`
+          ? `Payment recorded. ${extraAdjustedAmount} extra payment reduced the remaining balance without changing installment amounts.`
           : 'Payment recorded successfully',
 
       payment,
@@ -1625,16 +1494,25 @@ const payInstallment = async (
       extraPayment:
         extraAdjustedAmount,
 
+      balanceReductionAmount:
+        extraAdjustedAmount,
+
+      distributedAmount:
+        extraAdjustedAmount,
+
+      advanceAmount:
+        paymentLeft,
+
       carryForwardAmount,
 
       allocations,
 
       // Helpful financial values for frontend
       totalPaid:
-        finalTotals.totalPaid,
+        totalPaidAfter,
 
       remainingBalance:
-        finalTotals.remainingBalance,
+        updatedPlan.remainingBalance,
 
       installmentScheduleTotal:
         finalTotals.scheduledTotal,

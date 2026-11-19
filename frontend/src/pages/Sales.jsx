@@ -185,31 +185,59 @@ const Sales = () => {
   // =====================================================
   // SEARCH + DATE FILTER
   // =====================================================
+  const invoiceSearchTerm = debouncedSearchTerm.toLowerCase().trim();
+  const invoiceSearchDigits = invoiceSearchTerm.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const isInvoiceSearchTerm =
+    /^[a-z]+[-/]?\d+[a-z0-9-]*$/i.test(invoiceSearchTerm) || /^\d{1,10}$/.test(invoiceSearchDigits);
+  const hasInvoiceNumberMatch = !isInvoiceSearchTerm || sales.some((sale) => {
+    const invoiceNumber = String(sale.saleId || '').toLowerCase();
+    return invoiceNumber.includes(invoiceSearchTerm) ||
+      invoiceNumber.replace(/[^a-z0-9]/g, '').includes(invoiceSearchTerm.replace(/[^a-z0-9]/g, ''));
+  });
+
   const filteredSales = useMemo(
-    () =>
-      sales.filter((sale) => {
+    () => {
+      const term = debouncedSearchTerm.toLowerCase().trim();
+      const searchDigits = term.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+      const hasExactInvoiceSearch = Boolean(searchDigits) && sales.some((sale) => {
+        const invoiceDigits = String(sale.saleId || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+        return invoiceDigits === searchDigits;
+      });
+
+      return sales.filter((sale) => {
     const custName = sale.customer?.fullName?.toLowerCase() || '';
     const custPhone = sale.customer?.mobileNumber || '';
     const custCnic = sale.customer?.cnic || sale.customer?.CNIC || '';
     const sId = sale.saleId?.toLowerCase() || '';
-    const prodName = sale.product?.name?.toLowerCase() || '';
-    const term = debouncedSearchTerm.toLowerCase().trim();
-
-    const matchesSearch =
-      custName.includes(term) ||
-      custPhone.includes(term) ||
-      matchesMobileSearch(custPhone, term) ||
-      matchesCnicSearch(custCnic, term) ||
+    const prodName = (sale.items?.length
+      ? sale.items.map((item) => item.product?.name || '').join(' ')
+      : sale.product?.name || '').toLowerCase();
+    const invoiceDigits = sId.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const normalizedSearchDigits = term.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const matchesExactInvoiceNumber = Boolean(normalizedSearchDigits) && invoiceDigits === normalizedSearchDigits;
+    const matchesInvoiceNumber =
       sId.includes(term) ||
-      prodName.includes(term);
+      sId.replace(/[^a-z0-9]/g, '').includes(term.replace(/[^a-z0-9]/g, ''));
+    const matchesSearch = hasExactInvoiceSearch
+      ? matchesExactInvoiceNumber
+      : custName.includes(term) ||
+        custPhone.includes(term) ||
+        matchesMobileSearch(custPhone, term) ||
+        matchesCnicSearch(custCnic, term) ||
+        matchesInvoiceNumber ||
+        prodName.includes(term);
 
     const matchesDate = isDateInFilter(sale.saleDate || sale.createdAt);
 
       return matchesSearch && matchesDate;
     }).sort((a, b) =>
-      String(a.saleId || '').localeCompare(String(b.saleId || ''), undefined, { numeric: true, sensitivity: 'base' })
-      || new Date(a.saleDate || a.createdAt || 0) - new Date(b.saleDate || b.createdAt || 0)
-    ),
+      String(b.saleId || '').localeCompare(
+        String(a.saleId || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      )
+    );
+    },
     [
       sales,
       debouncedSearchTerm,
@@ -665,6 +693,14 @@ const Sales = () => {
         {/* =====================================================
             CASH SALES TABLE
         ====================================================== */}
+        {!loading && isInvoiceSearchTerm && !hasInvoiceNumberMatch && filteredSales.length > 0 && (
+          <div
+            role="status"
+            className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center text-sm font-black text-amber-900"
+          >
+            No invoice number matched &quot;{invoiceSearchTerm}&quot;. Other search matches are shown below.
+          </div>
+        )}
         <DataTable
           columns={salesColumns}
           rows={filteredSales}
@@ -673,8 +709,8 @@ const Sales = () => {
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
           emptyIcon={ShoppingCart}
-          emptyTitle="No cash sales logged"
-          emptyHint='Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.'
+          emptyTitle={isInvoiceSearchTerm ? `No invoice found for "${invoiceSearchTerm}".` : 'No cash sales logged'}
+          emptyHint={isInvoiceSearchTerm ? '' : 'Try switching date filters to "All-Time" or click "New Cash Sale" to make a sale.'}
           maxTableHeight="65vh"
           enablePageJump
         />

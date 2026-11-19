@@ -775,7 +775,6 @@ const getPaymentScore = (customer) => {
       sale.saleNo,
       sale.billNumber,
       sale.receiptNo,
-      sale._id ? `INV-${String(sale._id).slice(-5).toUpperCase()}` : '',
       '-'
     );
   };
@@ -1433,7 +1432,7 @@ const getPaymentScore = (customer) => {
               <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
                 
                 {/* PHOTO */}
-                <div className="shrink-0 flex flex-col items-center">
+                <div className={`shrink-0 flex flex-col items-center ${!isGuarantor ? 'customer-card-media' : ''}`}>
                   <SafeImage
                     src={photo}
                     alt={name || 'Person Photo'}
@@ -1538,7 +1537,7 @@ const getPaymentScore = (customer) => {
                 </div>
 
                 {/* FINGERPRINT BOX */}
-                <div className="shrink-0 flex flex-col items-center">
+                <div className={`shrink-0 flex flex-col items-center ${!isGuarantor ? 'customer-card-media' : ''}`}>
                   <div className="w-20 sm:w-24 rounded-2xl border border-slate-200 bg-slate-50 p-2 text-center print:w-16 print:p-1 print:rounded-lg">
                     <span className="text-[8px] uppercase tracking-wider text-slate-400 font-black block mb-1 print:text-[6.5px]">
                       Biometric
@@ -1822,8 +1821,13 @@ const getPaymentScore = (customer) => {
           
           {/* PRINT-ONLY OFFICIAL HEADER */}
           <div className="print-only ledger-print-header">
-            <div className="flex items-center justify-between pb-2 border-b-2 border-slate-900">
-              <div>
+            <div className="ledger-print-brand-row">
+              <div className="ledger-print-customer-photo">
+                {getPhoto(ledger.customer) ? (
+                  <img src={getPhoto(ledger.customer)} alt="Customer photo" />
+                ) : <span>Customer Photo</span>}
+              </div>
+              <div className="ledger-print-shop-brand">
                 <h1 className="text-base font-black tracking-tight text-slate-900 uppercase">
                   {settings?.shopName || 'Electronics Shop'}
                 </h1>
@@ -1835,12 +1839,17 @@ const getPaymentScore = (customer) => {
                 )}
               </div>
 
-              <div className="text-right text-[8.5px] font-bold text-slate-800">
+              <div className="ledger-print-customer-fingerprint">
+                {getFingerprintImage(ledger.customer) ? (
+                  <img src={getFingerprintImage(ledger.customer)} alt="Customer fingerprint" />
+                ) : <span>Fingerprint</span>}
+              </div>
+            </div>
+            <div className="ledger-print-customer-meta text-[8.5px] font-bold text-slate-800">
                 <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
                 <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
                 <p>Added At: {formatDateTime(ledger.customer?.createdAt)}</p>
                 <p>Statement Date: {formatDateTime(new Date())}</p>
-              </div>
             </div>
           </div>
 
@@ -1997,13 +2006,24 @@ const getPaymentScore = (customer) => {
                     (plan?.status === 'Completed' || plan?.plan?.status === 'Completed') &&
                     (plan?.completedByReturn || planReturns.length > 0);
 
-                  // Get linked invoice
+                  // Resolve the plan's linked sale so every plan is identified
+                  // by its customer invoice number, never the internal plan ID.
+                  const linkedSale =
+                    (plan?.sale && typeof plan.sale === 'object' ? plan.sale : null) ||
+                    ledger.sales.find((sale) => {
+                      const saleId = String(getId(sale) || '');
+                      const linkedSaleId = String(getId(plan?.sale) || getId(plan?.saleId) || '');
+                      return saleId && linkedSaleId && saleId === linkedSaleId;
+                    });
+                  const directInvoiceReference = [plan?.sale, plan?.saleId].find(
+                    (value) => typeof value === 'string' && value.trim() && !/^[a-f\d]{24}$/i.test(value.trim())
+                  );
                   const planInvoice = firstValue(
-                    plan?.planId,
-                    plan?.sale?.saleId,
-                    plan?.sale?.invoiceNumber,
-                    plan?.saleId,
-                    `PLAN-#${planIdx + 1}`
+                    linkedSale ? getInvoiceNumber(linkedSale) : '',
+                    plan?.invoiceNumber,
+                    plan?.invoiceNo,
+                    directInvoiceReference,
+                    'Invoice unavailable'
                   );
 
                   return (
@@ -2011,7 +2031,7 @@ const getPaymentScore = (customer) => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 print:mb-1.5">
                         <div>
                           <span className="font-black text-xs sm:text-sm text-slate-900 print:text-[9px]">
-                            Plan #{planIdx + 1}: {plan?.planName || `${getInstallmentCount(plan)} Months Financing Plan`} [Ref: <strong>{planInvoice}</strong>]
+                            Invoice #<strong>{planInvoice}</strong> — {plan?.planName || `${getInstallmentCount(plan)} Months Financing Plan`}
                           </span>
                           <span className="text-[10px] text-slate-500 font-bold ml-2 print:text-[7.5px]">
                             (Status: <strong className={status === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}>{status}</strong>)
@@ -2222,11 +2242,17 @@ const getPaymentScore = (customer) => {
           #customer-ledger-print {
             position: absolute !important;
             left: 0 !important;
+            right: auto !important;
             top: 0 !important;
             width: 100% !important;
-            max-width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            transform: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            box-sizing: border-box !important;
             background: #ffffff !important;
             box-shadow: none !important;
             border: none !important;
@@ -2238,6 +2264,79 @@ const getPaymentScore = (customer) => {
 
           .print-only {
             display: block !important;
+          }
+
+          .ledger-print-header {
+            margin-bottom: 6px !important;
+            padding-bottom: 4px !important;
+            border-bottom: 2px solid #0f172a !important;
+          }
+
+          .ledger-print-brand-row {
+            display: grid !important;
+            grid-template-columns: 82px minmax(0, 1fr) 82px !important;
+            align-items: center !important;
+            gap: 8px !important;
+            min-height: 76px !important;
+          }
+
+          .ledger-print-customer-photo,
+          .ledger-print-customer-fingerprint {
+            width: 76px !important;
+            height: 68px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border: 1px solid #94a3b8 !important;
+            border-radius: 4px !important;
+            overflow: hidden !important;
+            color: #64748b !important;
+            font-size: 6.5px !important;
+            font-weight: 700 !important;
+            text-align: center !important;
+          }
+
+          .ledger-print-customer-photo img,
+          .ledger-print-customer-fingerprint img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
+          }
+
+          .ledger-print-customer-photo img {
+            object-fit: cover !important;
+          }
+
+          .ledger-print-shop-brand {
+            text-align: center !important;
+          }
+
+          .ledger-print-shop-brand h1 {
+            margin: 0 !important;
+            font-size: 15px !important;
+            font-weight: 900 !important;
+            line-height: 1.15 !important;
+          }
+
+          .ledger-print-shop-brand p {
+            margin: 2px 0 0 !important;
+          }
+
+          .ledger-print-customer-meta {
+            display: flex !important;
+            justify-content: center !important;
+            flex-wrap: wrap !important;
+            gap: 4px 14px !important;
+            text-align: center !important;
+            padding-top: 3px !important;
+          }
+
+          .ledger-print-customer-meta p {
+            margin: 0 !important;
+          }
+
+          .customer-card-media {
+            display: none !important;
           }
 
           .person-card-print {

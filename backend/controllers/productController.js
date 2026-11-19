@@ -186,7 +186,7 @@ const getProducts = async (req, res) => {
 
     let productsQuery =
       Product.find(query)
-        .select('name category brand model sku serialNumber imei chassisNumber purchasePrice salePrice quantity minStockLevel supplier warrantyPeriod purchaseDate status createdAt')
+        .select('name category brand model sku serialNumber imei chassisNumber engineNumber purchasePrice salePrice quantity minStockLevel supplier warrantyPeriod purchaseDate status createdAt')
         .sort({
           createdAt: 1,
         })
@@ -290,6 +290,15 @@ const getProductById = async (req, res) => {
 // ============================================================
 const createProduct = async (req, res) => {
   try {
+
+    if (String(req.body.category || '').trim() === 'Motorbikes') {
+      if (!String(req.body.chassisNumber || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Chassis Number is required for Motorbikes.' });
+      }
+      if (!String(req.body.engineNumber || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Engine Number is required for Motorbikes.' });
+      }
+    }
 
     const {
       purchasePrice,
@@ -451,6 +460,18 @@ const updateProduct = async (req, res) => {
         message:
           'Product not found',
       });
+    }
+
+    const updatedCategory = String(req.body.category ?? product.category).trim();
+    const updatedChassisNumber = req.body.chassisNumber ?? product.chassisNumber;
+    const updatedEngineNumber = req.body.engineNumber ?? product.engineNumber;
+    if (updatedCategory === 'Motorbikes') {
+      if (!String(updatedChassisNumber || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Chassis Number is required for Motorbikes.' });
+      }
+      if (!String(updatedEngineNumber || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Engine Number is required for Motorbikes.' });
+      }
     }
 
 

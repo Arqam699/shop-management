@@ -40,6 +40,20 @@ const normalizeDate = (value) => {
   return date;
 };
 
+const addMonthsClamped = (value, months) => {
+  const date = new Date(value);
+  const day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + Number(months || 0));
+  const lastDay = new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    0
+  ).getDate();
+  date.setDate(Math.min(day, lastDay));
+  return date;
+};
+
 // ============================================================
 // BOOLEAN HELPER
 // ============================================================
@@ -206,6 +220,39 @@ const generateSaleID = async (shopId) => {
   const seq = await getNextSequence(
     `sale_${shopId}`,
     () => getMaxSaleNumber(shopId)
+  );
+
+  return `SALE-${String(seq).padStart(4, '0')}`;
+};
+
+const generatePaymentID = async (shopId) => {
+  const payments = await Payment.find({ shopId })
+    .select('paymentId')
+    .lean();
+
+  const maxNumber = payments.reduce((max, payment) => {
+    const match = String(payment.paymentId || '').match(/\d+/);
+    return match ? Math.max(max, Number(match[0])) : max;
+  }, 0);
+
+  return String(maxNumber + 1).padStart(2, '0');
+};
+
+const generateLatestSaleID = async (shopId) => {
+  const counterId = `sale_${shopId}`;
+  const maxSaleNumber = await getMaxSaleNumber(shopId);
+
+  // Imported or manually numbered invoices may be ahead of the saved counter.
+  // Move the counter forward before allocating an edit's replacement invoice.
+  await Counter.findOneAndUpdate(
+    { _id: counterId },
+    { $max: { seq: maxSaleNumber } },
+    { upsert: true }
+  );
+
+  const seq = await getNextSequence(
+    counterId,
+    () => Promise.resolve(maxSaleNumber)
   );
 
   return `SALE-${String(seq).padStart(4, '0')}`;
@@ -761,11 +808,69 @@ const createSale = async (req, res) => {
     // PRODUCT
     // ========================================================
 
-    const productDoc =
-      await Product.findOne({
-        _id: product,
-        shopId
-      });
+    let normalizedInstallmentItems = null;
+    if (paymentType === 'Installment' && Array.isArray(items) && items.length > 0) {
+      normalizedInstallmentItems = [];
+      for (const item of items) {
+        const itemProductId = item?.product?._id || item?.product?.id || item?.product;
+        const itemQty = Number(item?.quantity);
+        const itemPrice = roundMoney(item?.unitPrice);
+        const itemDiscount = roundMoney(item?.discount || 0);
+        const itemStockAdjustment = Number(item?.stockAdjustment || 0);
+        if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isFinite(itemDiscount) || itemDiscount < 0 || itemDiscount > roundMoney(itemQty * itemPrice) || !Number.isInteger(itemStockAdjustment)) {
+          return res.status(400).json({ message: 'Each installment sale item needs a valid product, quantity, price, discount, and stock change.' });
+        }
+        const itemProduct = await Product.findOne({ _id: itemProductId, shopId });
+        if (!itemProduct) return res.status(404).json({ message: 'An installment sale product was not found.' });
+        const itemPurchasePrice = item?.purchasePriceAtSale === undefined
+          ? Number(itemProduct.purchasePrice || 0)
+          : roundMoney(item.purchasePriceAtSale);
+        if (!Number.isFinite(itemPurchasePrice) || itemPurchasePrice < 0) {
+          return res.status(400).json({ message: `Purchase price for ${itemProduct.name} must be a valid non-negative amount.` });
+        }
+        normalizedInstallmentItems.push({
+          product: itemProduct,
+          quantity: itemQty,
+          unitPrice: itemPrice,
+          discount: itemDiscount,
+          stockAdjustment: itemStockAdjustment,
+          purchasePriceAtSale: itemPurchasePrice,
+        });
+      }
+
+      const requestedQuantity = normalizedInstallmentItems.reduce((sum, item) => sum + item.quantity, 0);
+      const itemDiscountTotal = roundMoney(normalizedInstallmentItems.reduce((sum, item) => sum + item.discount, 0));
+      if (requestedQuantity !== qty) {
+        return res.status(400).json({ message: 'Sale quantity must match the total quantity of its products.' });
+      }
+      if (Math.abs(itemDiscountTotal - discountAmount) > 0.01) {
+        return res.status(400).json({ message: 'Sale discount must match the total of item discounts.' });
+      }
+
+      const stockByProduct = new Map();
+      for (const item of normalizedInstallmentItems) {
+        const key = String(item.product._id);
+        const stock = stockByProduct.get(key) || {
+          product: item.product,
+          quantity: 0,
+          adjustment: 0,
+        };
+        stock.quantity += item.quantity;
+        stock.adjustment += item.stockAdjustment;
+        stockByProduct.set(key, stock);
+      }
+      for (const stock of stockByProduct.values()) {
+        const availableAfterAdjustment = Number(stock.product.quantity || 0) + stock.adjustment;
+        if (availableAfterAdjustment < 0 || availableAfterAdjustment < stock.quantity) {
+          return res.status(400).json({ message: `Insufficient stock for ${stock.product.name}. Current quantity: ${stock.product.quantity}. Adjust stock before selling.` });
+        }
+      }
+    }
+
+    const productDoc = normalizedInstallmentItems?.[0]?.product || await Product.findOne({
+      _id: product,
+      shopId
+    });
 
     if (!productDoc) {
       return res.status(404).json({
@@ -775,17 +880,17 @@ const createSale = async (req, res) => {
     }
 
     const currentStock = Number(productDoc.quantity || 0);
-    const installmentStockAdjustment = paymentType === 'Installment' ? Number(stockAdjustment || 0) : 0;
+    const installmentStockAdjustment = paymentType === 'Installment' && !normalizedInstallmentItems ? Number(stockAdjustment || 0) : 0;
     const stockAfterAdjustment = currentStock + installmentStockAdjustment;
-    if (!Number.isInteger(installmentStockAdjustment) || stockAfterAdjustment < 0 || stockAfterAdjustment < qty) {
+    if (!normalizedInstallmentItems && (!Number.isInteger(installmentStockAdjustment) || stockAfterAdjustment < 0 || stockAfterAdjustment < qty)) {
       return res.status(400).json({
         message:
           `Insufficient stock. Current quantity: ${currentStock}. Adjust stock before selling.`
       });
     }
-    const salePurchasePrice = purchasePriceAtSale === undefined
+    const salePurchasePrice = normalizedInstallmentItems?.[0]?.purchasePriceAtSale ?? (purchasePriceAtSale === undefined
       ? Number(productDoc.purchasePrice || 0)
-      : roundMoney(purchasePriceAtSale);
+      : roundMoney(purchasePriceAtSale));
     if (!Number.isFinite(salePurchasePrice) || salePurchasePrice < 0) {
       return res.status(400).json({ message: 'Purchase price must be a valid non-negative amount.' });
     }
@@ -794,10 +899,9 @@ const createSale = async (req, res) => {
     // SALE TOTAL
     // ========================================================
 
-    const subtotal =
-      roundMoney(
-        qty * price
-      );
+    const subtotal = normalizedInstallmentItems
+      ? roundMoney(normalizedInstallmentItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))
+      : roundMoney(qty * price);
 
     const finalTotal =
       roundMoney(
@@ -1008,11 +1112,9 @@ const createSale = async (req, res) => {
         futureSchedule =
           validation.schedule;
       } else {
-        const firstDueDate =
-          new Date();
-
-        firstDueDate.setMonth(
-          firstDueDate.getMonth() + 1
+        const firstDueDate = addMonthsClamped(
+          recordedSaleDate,
+          treatDownPayment ? 1 : 0
         );
 
         futureSchedule =
@@ -1042,7 +1144,7 @@ const createSale = async (req, res) => {
       invoiceSchedule.push({
         installmentNumber: 1,
         amount: dPayment,
-        dueDate: new Date()
+        dueDate: recordedSaleDate
       });
     }
 
@@ -1084,31 +1186,74 @@ const createSale = async (req, res) => {
     // ========================================================
 
     let previousQuantity = currentStock;
+    let newQuantity = currentStock - qty;
+    if (normalizedInstallmentItems) {
+      const stockByProduct = new Map();
+      for (const item of normalizedInstallmentItems) {
+        const key = String(item.product._id);
+        const stock = stockByProduct.get(key) || {
+          product: item.product,
+          quantity: 0,
+          adjustment: 0,
+        };
+        stock.quantity += item.quantity;
+        stock.adjustment += item.stockAdjustment;
+        stockByProduct.set(key, stock);
+      }
+      for (const stock of stockByProduct.values()) {
+        const itemPreviousQuantity = Number(stock.product.quantity || 0);
+        if (stock.adjustment !== 0) {
+          const adjustedQuantity = itemPreviousQuantity + stock.adjustment;
+          stock.product.quantity = adjustedQuantity;
+          await stock.product.save();
+          await StockMovement.create({
+            shopId,
+            product: stock.product._id,
+            type: 'Adjustment',
+            quantity: Math.abs(stock.adjustment),
+            previousQuantity: itemPreviousQuantity,
+            newQuantity: adjustedQuantity,
+            reason: 'Installment sale stock adjustment',
+            reference: invoiceNumber,
+          });
+        }
+        const salePreviousQuantity = Number(stock.product.quantity || 0);
+        stock.product.quantity = salePreviousQuantity - stock.quantity;
+        await stock.product.save();
+        await createSaleStockMovement({
+          shopId,
+          product: stock.product._id,
+          quantity: stock.quantity,
+          previousQuantity: salePreviousQuantity,
+          newQuantity: stock.product.quantity,
+          reference: invoiceNumber,
+          reason: `Installment Sale ${invoiceNumber}`,
+        });
+      }
+      previousQuantity = Number(productDoc.quantity || 0) + qty;
+      newQuantity = Number(productDoc.quantity || 0);
+    } else {
+      if (installmentStockAdjustment !== 0) {
+        const adjustedQuantity = currentStock + installmentStockAdjustment;
+        productDoc.quantity = adjustedQuantity;
+        await productDoc.save();
+        await StockMovement.create({
+          shopId,
+          product: productDoc._id,
+          type: 'Adjustment',
+          quantity: Math.abs(installmentStockAdjustment),
+          previousQuantity: currentStock,
+          newQuantity: adjustedQuantity,
+          reason: 'Installment sale stock adjustment',
+          reference: invoiceNumber,
+        });
+        previousQuantity = adjustedQuantity;
+      }
 
-    if (installmentStockAdjustment !== 0) {
-      const adjustedQuantity = currentStock + installmentStockAdjustment;
-      productDoc.quantity = adjustedQuantity;
+      newQuantity = previousQuantity - qty;
+      productDoc.quantity = newQuantity;
       await productDoc.save();
-      await StockMovement.create({
-        shopId,
-        product: productDoc._id,
-        type: 'Adjustment',
-        quantity: Math.abs(installmentStockAdjustment),
-        previousQuantity: currentStock,
-        newQuantity: adjustedQuantity,
-        reason: 'Installment sale stock adjustment',
-        reference: invoiceNumber,
-      });
-      previousQuantity = adjustedQuantity;
     }
-
-    const newQuantity =
-      previousQuantity - qty;
-
-    productDoc.quantity =
-      newQuantity;
-
-    await productDoc.save();
 
     // ========================================================
     // SALE
@@ -1126,7 +1271,17 @@ const createSale = async (req, res) => {
 
         customer,
 
-        product,
+        product: productDoc._id,
+
+        ...(normalizedInstallmentItems ? {
+          items: normalizedInstallmentItems.map((item) => ({
+            product: item.product._id,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount,
+            purchasePriceAtSale: item.purchasePriceAtSale,
+          })),
+        } : {}),
 
         quantity:
           qty,
@@ -1193,25 +1348,17 @@ const createSale = async (req, res) => {
     // STOCK MOVEMENT
     // ========================================================
 
-    await createSaleStockMovement({
-      shopId,
-
-      product:
-        productDoc._id,
-
-      quantity:
-        qty,
-
-      previousQuantity,
-
-      newQuantity,
-
-      reference:
-        invoiceNumber,
-
-      reason:
-        `Installment Sale ${invoiceNumber}`
-    });
+    if (!normalizedInstallmentItems) {
+      await createSaleStockMovement({
+        shopId,
+        product: productDoc._id,
+        quantity: qty,
+        previousQuantity,
+        newQuantity,
+        reference: invoiceNumber,
+        reason: `Installment Sale ${invoiceNumber}`
+      });
+    }
 
     // ========================================================
     // PLAN
@@ -1223,7 +1370,7 @@ const createSale = async (req, res) => {
     const firstDueDate =
       futureSchedule.length > 0
         ? futureSchedule[0].dueDate
-        : new Date();
+        : recordedSaleDate;
 
     const plan =
       await InstallmentPlan.create({
@@ -1236,7 +1383,7 @@ const createSale = async (req, res) => {
 
         customer,
 
-        product,
+        product: productDoc._id,
 
         totalAmount:
           totalWithMarkup,
@@ -1336,13 +1483,13 @@ const createSale = async (req, res) => {
           0,
 
         dueDate:
-          new Date(),
+          recordedSaleDate,
 
         status:
           'Paid',
 
         paidDate:
-          new Date(),
+          recordedSaleDate,
 
         isSettledByPlanPayment:
           false
@@ -1392,20 +1539,43 @@ const createSale = async (req, res) => {
     }
 
     // ========================================================
-    // IMPORTANT:
-    //
-    // NO Payment.create() FOR DP-FIRST MODE.
-    //
-    // Previously this was causing:
-    //
-    // Installment #1 Paid = 50,000
-    // +
-    // Payment DP = 50,000
-    // =
-    // 100,000
-    //
-    // Now DP exists only once.
-    // ========================================================
+    let initialDownPaymentReceipt = null;
+
+    // Create a receipt record for the down payment. The installment remains
+    // the source of truth for balances; this payment only records the receipt
+    // and its allocation to installment #1.
+    if (treatDownPayment && dPayment > 0) {
+      const firstInstallment = await Installment.findOne({
+        shopId,
+        installmentPlan: plan._id,
+        installmentNumber: 1,
+      });
+
+      if (firstInstallment) {
+        const paymentId = await generatePaymentID(shopId);
+
+        initialDownPaymentReceipt = await Payment.create({
+          shopId,
+          paymentId,
+          customer,
+          sale: sale._id,
+          installmentPlan: plan._id,
+          installment: firstInstallment._id,
+          amount: dPayment,
+          paymentDate: recordedSaleDate,
+          originalInstallmentAmount: dPayment,
+          carryForwardAmount: 0,
+          allocations: [{
+            installment: firstInstallment._id,
+            installmentNumber: 1,
+            amount: dPayment,
+            previousRemaining: dPayment,
+            remainingAfterPayment: 0,
+          }],
+          notes: 'Down payment received at sale and counted as installment #1.',
+        });
+      }
+    }
 
     // ========================================================
     // RESPONSE
@@ -1456,6 +1626,9 @@ const createSale = async (req, res) => {
 
         installments:
           createdInstallments,
+
+        paymentReceipt:
+          initialDownPaymentReceipt,
 
         calculation: {
           saleTotal:
@@ -1720,6 +1893,50 @@ const updateSaleBook = async (req, res) => {
   }
 };
 
+const bulkUpdateSalesBook = async (req, res) => {
+  try {
+    const rawSaleIds = Array.isArray(req.body?.saleIds) ? req.body.saleIds : [];
+    const saleIds = [...new Set(rawSaleIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    const bookId = String(req.body?.bookId || '').trim();
+
+    if (!saleIds.length || saleIds.length > 500 || saleIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+      return res.status(400).json({ success: false, message: 'Select between 1 and 500 valid sales.' });
+    }
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'bookId')) {
+      return res.status(400).json({ success: false, message: 'Choose a book or explicitly choose Unassign.' });
+    }
+    let book = null;
+    if (bookId) {
+      if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        return res.status(400).json({ success: false, message: 'Select a valid book or choose Unassign.' });
+      }
+      book = await Book.findOne({ _id: bookId, shopId: req.shopId }).select('_id');
+      if (!book) return res.status(404).json({ success: false, message: 'Selected book was not found.' });
+    }
+
+    const matchingSaleCount = await Sale.countDocuments({ shopId: req.shopId, _id: { $in: saleIds } });
+    if (matchingSaleCount !== saleIds.length) {
+      return res.status(404).json({ success: false, message: 'One or more selected sales were not found.' });
+    }
+
+    const result = await Sale.updateMany(
+      { shopId: req.shopId, _id: { $in: saleIds } },
+      book ? { $set: { book: book._id } } : { $unset: { book: 1 } }
+    );
+
+    return res.json({
+      success: true,
+      data: { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount },
+      message: book
+        ? `${result.modifiedCount} sale(s) assigned to the selected book.`
+        : `${result.modifiedCount} sale(s) unassigned from their books.`,
+    });
+  } catch (error) {
+    console.error('Bulk update sale book error:', error);
+    return res.status(500).json({ success: false, message: 'Could not assign the selected sales to the book.' });
+  }
+};
+
 // ============================================================
 // UPDATE SALE
 // ============================================================
@@ -1765,6 +1982,10 @@ const updateSale = async (req, res) => {
       });
     }
 
+    // An edit creates a newly numbered version of this invoice. Payment
+    // collection does not go through this handler and must keep the current ID.
+    sale.saleId = await generateLatestSaleID(shopId);
+
     const {
       customer =
         sale.customer,
@@ -1780,6 +2001,9 @@ const updateSale = async (req, res) => {
 
       unitPrice =
         sale.unitPrice,
+
+      purchasePriceAtSale =
+        sale.purchasePriceAtSale ?? 0,
 
       discount =
         sale.discount,
@@ -1891,19 +2115,24 @@ const updateSale = async (req, res) => {
         const quantity = Number(item?.quantity);
         const unitPrice = roundMoney(item?.unitPrice);
         const discount = roundMoney(item?.discount || 0);
+        const purchasePriceAtSale = item?.purchasePriceAtSale === undefined
+          ? undefined
+          : roundMoney(item.purchasePriceAtSale);
         if (
           !mongoose.Types.ObjectId.isValid(productId) ||
           !Number.isInteger(quantity) || quantity <= 0 ||
           !Number.isFinite(unitPrice) || unitPrice < 0 ||
           !Number.isFinite(discount) || discount < 0 ||
-          discount > roundMoney(quantity * unitPrice)
+          discount > roundMoney(quantity * unitPrice) ||
+          (purchasePriceAtSale !== undefined &&
+            (!Number.isFinite(purchasePriceAtSale) || purchasePriceAtSale < 0))
         ) {
           return res.status(400).json({
             message: 'Each product needs a valid selection, quantity, price, and discount.',
           });
         }
         requestedProductIds.push(productId);
-        parsedItems.push({ productId, quantity, unitPrice, discount });
+        parsedItems.push({ productId, quantity, unitPrice, discount, purchasePriceAtSale });
       }
 
       const allProductIds = [...new Set([
@@ -1966,13 +2195,15 @@ const updateSale = async (req, res) => {
 
       const normalizedItems = parsedItems.map((item) => {
         const productDoc = productById.get(item.productId);
-        const savedPurchasePrice = oldPurchasePriceByProduct.get(item.productId);
+        const savedPurchasePrice = item.purchasePriceAtSale ??
+          oldPurchasePriceByProduct.get(item.productId) ??
+          productDoc.purchasePrice;
         return {
           product: productDoc._id,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           discount: item.discount,
-          purchasePriceAtSale: Number(savedPurchasePrice ?? productDoc.purchasePrice ?? 0),
+          purchasePriceAtSale: Number(savedPurchasePrice ?? 0),
         };
       });
       const itemSubtotal = roundMoney(normalizedItems.reduce(
@@ -2041,6 +2272,9 @@ const updateSale = async (req, res) => {
     const price =
       roundMoney(unitPrice);
 
+    const purchasePrice =
+      roundMoney(purchasePriceAtSale);
+
     const discountAmount =
       roundMoney(discount);
 
@@ -2067,6 +2301,16 @@ const updateSale = async (req, res) => {
       return res.status(400).json({
         message:
           'Invalid unit price.'
+      });
+    }
+
+    if (
+      !Number.isFinite(purchasePrice) ||
+      purchasePrice < 0
+    ) {
+      return res.status(400).json({
+        message:
+          'Invalid purchase price.'
       });
     }
 
@@ -2482,11 +2726,9 @@ const updateSale = async (req, res) => {
         futureSchedule =
           validation.schedule;
       } else {
-        const firstDueDate =
-          new Date();
-
-        firstDueDate.setMonth(
-          firstDueDate.getMonth() + 1
+        const firstDueDate = addMonthsClamped(
+          updatedSaleDate,
+          treatDownPayment ? 1 : 0
         );
 
         futureSchedule =
@@ -2524,7 +2766,7 @@ const updateSale = async (req, res) => {
           dPayment,
 
         dueDate:
-          new Date()
+          updatedSaleDate
       });
     }
 
@@ -2716,7 +2958,7 @@ const updateSale = async (req, res) => {
       product;
 
     sale.purchasePriceAtSale =
-      Number(newProduct.purchasePrice || 0);
+      purchasePrice;
 
     sale.quantity =
       qty;
@@ -2773,6 +3015,8 @@ const updateSale = async (req, res) => {
             item.dueDate
         })
       );
+
+    sale.saleDate = updatedSaleDate;
 
     await sale.save();
 
@@ -3847,6 +4091,7 @@ module.exports = {
   getSales,
   getSaleById,
   updateSaleBook,
+  bulkUpdateSalesBook,
   createSale,
   updateSale,
   deleteSale

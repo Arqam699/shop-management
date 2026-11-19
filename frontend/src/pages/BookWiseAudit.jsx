@@ -13,9 +13,13 @@ const BookWiseAudit = () => {
   const [selectedBookId, setSelectedBookId] = useState('');
   const [saleSearch, setSaleSearch] = useState('');
   const [invoiceSearch, setInvoiceSearch] = useState('');
-  const [savingSaleId, setSavingSaleId] = useState('');
+  const [invoiceRangeStart, setInvoiceRangeStart] = useState('');
+  const [invoiceRangeEnd, setInvoiceRangeEnd] = useState('');
+  const [selectedSaleIds, setSelectedSaleIds] = useState([]);
+  const [assignmentBookId, setAssignmentBookId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const currency = settings?.currency || 'PKR';
   const money = (value) => `${currency} ${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -41,12 +45,17 @@ const BookWiseAudit = () => {
   useEffect(() => { loadBooks(); }, []);
 
   const selectedBook = books.find((book) => String(book._id) === String(selectedBookId));
+  const allBooksSummary = books.reduce((totals, book) => ({
+    purchaseCost: totals.purchaseCost + Number(book.summary?.purchaseCost || 0),
+    sellingTotal: totals.sellingTotal + Number(book.summary?.sellingTotal || 0),
+    profit: totals.profit + Number(book.summary?.profit || 0),
+  }), { purchaseCost: 0, sellingTotal: 0, profit: 0 });
   const filteredSales = sales.filter((sale) => {
     const term = saleSearch.trim().toLowerCase();
     if (!term) return true;
     const productNames = (sale.items?.length ? sale.items.map((item) => item.product?.name) : [sale.product?.name]).filter(Boolean).join(' ').toLowerCase();
     return String(sale.saleId || '').toLowerCase().includes(term) || productNames.includes(term);
-  });
+  }).sort((a, b) => String(a.saleId || '').localeCompare(String(b.saleId || ''), undefined, { numeric: true, sensitivity: 'base' }));
   const unassignedSalesCount = sales.filter((sale) => !sale.book?._id && !sale.book).length;
   const productGroups = useMemo(() => {
     if (!selectedBook) return [];
@@ -143,16 +152,56 @@ const BookWiseAudit = () => {
     }
   };
 
-  const changeSaleBook = async (saleId, bookId) => {
+  const toggleSaleSelection = (saleId) => {
+    setSelectedSaleIds((current) => current.includes(saleId)
+      ? current.filter((id) => id !== saleId)
+      : [...current, saleId]);
+  };
+
+  const toggleFilteredSales = () => {
+    const filteredIds = filteredSales.map((sale) => sale._id);
+    const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedSaleIds.includes(id));
+    setSelectedSaleIds((current) => allSelected
+      ? current.filter((id) => !filteredIds.includes(id))
+      : [...new Set([...current, ...filteredIds])]);
+  };
+
+  const selectInvoiceRange = () => {
+    const start = invoiceRangeStart.trim();
+    const end = invoiceRangeEnd.trim();
+    if (!start || !end) return toast.error('Enter both the starting and ending invoice numbers.');
+    const compareInvoices = (left, right) => String(left || '').localeCompare(String(right || ''), undefined, { numeric: true, sensitivity: 'base' });
+    if (compareInvoices(start, end) > 0) return toast.error('Starting invoice must come before ending invoice.');
+
+    const matchingIds = sales
+      .filter((sale) => {
+        const invoice = String(sale.saleId || '').trim();
+        return invoice && compareInvoices(invoice, start) >= 0 && compareInvoices(invoice, end) <= 0;
+      })
+      .map((sale) => sale._id);
+    if (!matchingIds.length) return toast.error('No invoices were found in that range.');
+    setSelectedSaleIds(matchingIds);
+    toast.success(`${matchingIds.length} invoice(s) in the range selected.`);
+  };
+
+  const assignSelectedSales = async () => {
+    if (!selectedSaleIds.length) return toast.error('Select at least one sale.');
+    if (!assignmentBookId) return toast.error('Choose a book or select Unassign from book.');
+    const shouldUnassign = assignmentBookId === '__unassign__';
     try {
-      setSavingSaleId(saleId);
-      await api.put(`/api/sales/${saleId}/book`, { bookId: bookId || null });
-      toast.success(bookId ? 'Sale assigned to book.' : 'Sale removed from its book.');
+      setBulkSaving(true);
+      await api.put('/api/sales/bulk-book', { saleIds: selectedSaleIds, bookId: shouldUnassign ? null : assignmentBookId });
+      const assignedBook = books.find((book) => String(book._id) === String(assignmentBookId));
+      toast.success(shouldUnassign
+        ? `${selectedSaleIds.length} sale(s) unassigned from their books.`
+        : `${selectedSaleIds.length} sale(s) assigned to ${assignedBook?.name || 'the selected book'}.`);
+      setSelectedSaleIds([]);
+      setAssignmentBookId('');
       await loadBooks();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Could not update sale book.');
+      toast.error(error?.response?.data?.message || 'Could not assign the selected sales.');
     } finally {
-      setSavingSaleId('');
+      setBulkSaving(false);
     }
   };
 
@@ -166,6 +215,25 @@ const BookWiseAudit = () => {
         </div>
         <button type="button" onClick={loadBooks} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /> Refresh</button>
       </header>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-950 px-5 py-4 text-white sm:px-6">
+          <h2 className="text-sm font-black">All Books Combined Totals</h2>
+          <p className="mt-1 text-xs text-slate-400">Purchase cost, selling amount aur profit ka jama total.</p>
+        </div>
+        <div className="grid gap-px bg-slate-100 sm:grid-cols-3">
+          {[
+            ['Total Purchase Cost', allBooksSummary.purchaseCost, Package, 'text-rose-600'],
+            ['Total Selling Price', allBooksSummary.sellingTotal, ReceiptText, 'text-indigo-600'],
+            ['Total Profit', allBooksSummary.profit, TrendingUp, 'text-emerald-600'],
+          ].map(([label, value, Icon, color]) => (
+            <div key={label} className="bg-white p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-slate-500"><Icon className={`h-4 w-4 ${color}`} /><p className="text-[10px] font-black uppercase tracking-wider">{label}</p></div>
+              <p className={`mt-2 text-xl font-black tracking-tight sm:text-2xl ${color}`}>{money(value)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <form onSubmit={createBook} className="premium-card flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-5">
         <label className="flex-1 text-xs font-bold text-slate-700">New book name
@@ -181,18 +249,70 @@ const BookWiseAudit = () => {
           <div className="flex flex-wrap gap-2">{books.map((book) => <button key={book._id} type="button" onClick={() => setSelectedBookId(book._id)} className={`rounded-xl border px-4 py-2 text-sm font-black transition ${String(book._id) === String(selectedBookId) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300'}`}>{book.name}</button>)}</div>
           <details open={unassignedSalesCount > 0} className="premium-card overflow-hidden">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
-              <span><span className="block text-sm font-black text-slate-900">Assign or move old sales</span><span className="mt-1 block text-xs text-slate-500">Choose a book for each sale. You can change it later.</span></span>
+              <span><span className="block text-sm font-black text-slate-900">Assign or move old sales</span><span className="mt-1 block text-xs text-slate-500">Select multiple invoices, choose one book, then confirm once.</span></span>
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-800">{unassignedSalesCount} unassigned</span>
             </summary>
             <div className="border-t border-slate-100 p-4 sm:p-5">
               <input value={saleSearch} onChange={(event) => setSaleSearch(event.target.value)} placeholder="Search by invoice or product..." className="mb-3 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-500" />
+              <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <label className="min-w-36 flex-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  From invoice
+                  <input value={invoiceRangeStart} onChange={(event) => setInvoiceRangeStart(event.target.value)} placeholder="e.g. INV-100" className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-indigo-500" />
+                </label>
+                <label className="min-w-36 flex-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  To invoice
+                  <input value={invoiceRangeEnd} onChange={(event) => setInvoiceRangeEnd(event.target.value)} placeholder="e.g. INV-120" className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-indigo-500" />
+                </label>
+                <button type="button" onClick={selectInvoiceRange} disabled={bulkSaving} className="h-9 rounded-lg border border-indigo-200 bg-white px-4 text-xs font-black text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">Select Range</button>
+              </div>
+              <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={filteredSales.length > 0 && filteredSales.every((sale) => selectedSaleIds.includes(sale._id))}
+                    onChange={toggleFilteredSales}
+                    disabled={!filteredSales.length || bulkSaving}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Select visible ({filteredSales.length})
+                </label>
+                <span className="text-xs font-black text-indigo-700">{selectedSaleIds.length} selected</span>
+                <select
+                  value={assignmentBookId}
+                  onChange={(event) => setAssignmentBookId(event.target.value)}
+                  disabled={bulkSaving}
+                  aria-label="Book for selected sales"
+                  className="h-10 min-w-44 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 disabled:opacity-60"
+                >
+                  <option value="">Choose a book</option>
+                  <option value="__unassign__">Unassign from book</option>
+                  {books.map((book) => <option key={book._id} value={book._id}>{book.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={assignSelectedSales}
+                  disabled={!selectedSaleIds.length || !assignmentBookId || bulkSaving}
+                  className="h-10 rounded-lg bg-indigo-600 px-4 text-xs font-black text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {bulkSaving ? 'Updating...' : assignmentBookId === '__unassign__' ? 'Confirm Unassign' : 'Confirm Assignment'}
+                </button>
+                {selectedSaleIds.length > 0 && <button type="button" onClick={() => setSelectedSaleIds([])} disabled={bulkSaving} className="h-10 rounded-lg px-3 text-xs font-bold text-slate-500 hover:bg-white disabled:opacity-50">Clear</button>}
+              </div>
               <div className="max-h-[520px] space-y-2 overflow-y-auto">
                 {filteredSales.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No sales found.</p> : filteredSales.map((sale) => {
                   const saleBookId = sale.book?._id || sale.book || '';
+                  const currentBookName = books.find((book) => String(book._id) === String(saleBookId))?.name || 'Unassigned';
                   const productNames = sale.items?.length ? sale.items.map((item) => item.product?.name || 'Product').join(', ') : sale.product?.name || 'Product';
-                  return <div key={sale._id} className="grid gap-3 rounded-xl border border-slate-100 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center">
-                    <div className="min-w-0"><p className="truncate text-xs font-black text-slate-800">Invoice {sale.saleId || '—'} <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] uppercase text-slate-500">{sale.paymentType}</span></p><p className="mt-1 truncate text-xs text-slate-600">{productNames}</p><p className="mt-1 text-[10px] text-slate-400">{sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : '—'} · Qty {sale.quantity} · {money(sale.finalTotal ?? sale.totalWithMarkup)}</p></div>
-                    <select aria-label={`Book for invoice ${sale.saleId || ''}`} disabled={savingSaleId === sale._id} value={saleBookId} onChange={(event) => changeSaleBook(sale._id, event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 disabled:opacity-60"><option value="">Unassigned</option>{books.map((book) => <option key={book._id} value={book._id}>{book.name}</option>)}</select>
+                  return <div key={sale._id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select invoice ${sale.saleId || ''}`}
+                      checked={selectedSaleIds.includes(sale._id)}
+                      onChange={() => toggleSaleSelection(sale._id)}
+                      disabled={bulkSaving}
+                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-slate-800">Invoice {sale.saleId || '—'} <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] uppercase text-slate-500">{sale.paymentType}</span></p><p className="mt-1 truncate text-xs text-slate-600">{productNames}</p><p className="mt-1 text-[10px] text-slate-400">{sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : '—'} · Qty {sale.quantity} · {money(sale.finalTotal ?? sale.totalWithMarkup)} · Current book: {currentBookName}</p></div>
                   </div>;
                 })}
               </div>

@@ -113,6 +113,7 @@ const NewSale = () => {
 
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState('');
   const [printPopup, setPrintPopup] = useState(null);
+  const [nextReceiptPrintId, setNextReceiptPrintId] = useState(null);
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -131,6 +132,7 @@ const NewSale = () => {
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedBookId, setSelectedBookId] = useState('');
+  const [isNewSale, setIsNewSale] = useState(true);
   const [showNewCashCustomerForm, setShowNewCashCustomerForm] = useState(false);
   const [newCashCustomer, setNewCashCustomer] = useState({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill' });
   const [savingCashCustomer, setSavingCashCustomer] = useState(false);
@@ -383,7 +385,7 @@ const NewSale = () => {
   };
 
   const handleSelectProduct = (product) => {
-    if (isCashSale) {
+    if (isCashSale || isInstallmentSale) {
       const id = String(product?._id || product?.id);
       const price = Number(product?.salePrice ?? product?.sellingPrice ?? product?.price ?? 0) || 0;
       setCashItems((current) => {
@@ -398,6 +400,11 @@ const NewSale = () => {
       setShowProductDropdown(false);
       setUnitPrice('');
       setQuantity(1);
+      if (isInstallmentSale) {
+        setManualFinancedBalance(null);
+        setScheduleMode('auto');
+        setInstallmentSchedule([]);
+      }
       setErrorMsg('');
       requestAnimationFrame(() => {
         const input = productSearchInputRef.current;
@@ -498,29 +505,35 @@ const NewSale = () => {
     setScheduleMode('auto');
   };
 
+  const resetInstallmentScheduleForItemChange = () => {
+    if (!isInstallmentSale) return;
+    setManualFinancedBalance(null);
+    setScheduleMode('auto');
+  };
+
   /* =========================================================
      CORE SALE CALCULATIONS
   ========================================================= */
 
   const subtotal = useMemo(() => {
-    if (isCashSale) return cashItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
+    if (isCashSale || isInstallmentSale) return cashItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
     return Math.max(
       0,
       Number(quantity || 0) * Number(unitPrice || 0)
     );
-  }, [isCashSale, cashItems, quantity, unitPrice]);
+  }, [isCashSale, isInstallmentSale, cashItems, quantity, unitPrice]);
 
   const finalTotal = useMemo(() => {
-    const appliedDiscount = isCashSale
+    const appliedDiscount = isCashSale || isInstallmentSale
       ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
       : Number(discount || 0);
     return Math.max(
       0,
       subtotal - appliedDiscount
     );
-  }, [isCashSale, cashItems, subtotal, discount]);
+  }, [isCashSale, isInstallmentSale, cashItems, subtotal, discount]);
 
-  const appliedDiscount = isCashSale
+  const appliedDiscount = isCashSale || isInstallmentSale
     ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
     : Number(discount || 0);
 
@@ -739,7 +752,8 @@ const NewSale = () => {
 
   const buildInstallmentSchedule = (
     financedAmount,
-    count
+    count,
+    saleDateValue = cashSaleDate
   ) => {
     const total = roundMoney(
       financedAmount
@@ -765,7 +779,15 @@ const NewSale = () => {
 
     let distributed = 0;
 
-    const today = new Date();
+    // Use the selected sale date as the schedule anchor. Construct from the
+    // date parts so the browser timezone cannot shift the calendar day.
+    const [saleDatePart] = String(saleDateValue || '').split('T');
+    const [saleYear, saleMonth, saleDay] = saleDatePart
+      .split('-')
+      .map(Number);
+    const anchorDate = saleYear && saleMonth && saleDay
+      ? new Date(saleYear, saleMonth - 1, saleDay)
+      : new Date();
 
     for (
       let index = 0;
@@ -799,10 +821,17 @@ const NewSale = () => {
         distributed + amount
       );
 
-      const dueDate = new Date(today);
-
-      dueDate.setMonth(
-        dueDate.getMonth() + index + 1
+      // Clamp end-of-month dates (e.g. Jan 31 -> Feb 28/29) instead of
+      // allowing JavaScript to roll into the following month.
+      const monthOffset = index + (treatDownPaymentAsFirstInstallment ? 1 : 0);
+      const targetMonth = anchorDate.getMonth() + monthOffset;
+      const targetYear = anchorDate.getFullYear() + Math.floor(targetMonth / 12);
+      const normalizedMonth = targetMonth % 12;
+      const lastDayOfMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+      const dueDate = new Date(
+        targetYear,
+        normalizedMonth,
+        Math.min(anchorDate.getDate(), lastDayOfMonth)
       );
 
       schedule.push({
@@ -849,6 +878,7 @@ const NewSale = () => {
     installmentDuration,
     treatDownPaymentAsFirstInstallment,
     scheduleMode,
+    cashSaleDate,
   ]);
 
   /* =========================================================
@@ -977,7 +1007,8 @@ const NewSale = () => {
     const newSchedule =
       buildInstallmentSchedule(
         calculatedFinancedBalance,
-        count
+        count,
+        cashSaleDate
       );
 
     setInstallmentSchedule(
@@ -1004,7 +1035,8 @@ const NewSale = () => {
 
         return buildInstallmentSchedule(
           financedBalance,
-          count
+          count,
+          cashSaleDate
         );
       }
     );
@@ -1017,7 +1049,8 @@ const NewSale = () => {
     const newSchedule =
       buildInstallmentSchedule(
         calculatedFinancedBalance,
-        count
+        count,
+        cashSaleDate
       );
 
     setManualFinancedBalance(null);
@@ -1181,6 +1214,11 @@ const NewSale = () => {
 
     setErrorMsg('');
 
+    if (!isNewSale && !selectedBookId) {
+      setErrorMsg('Select a book for an audit sale, or keep New Sale checked.');
+      return;
+    }
+
     const saleDateIso = pakistanDateTimeToIso(cashSaleDate);
     if (!saleDateIso) {
       setErrorMsg('Please enter a valid sale date and time.');
@@ -1198,11 +1236,29 @@ const NewSale = () => {
       return;
     }
 
-    if (isCashSale ? cashItems.length === 0 : !selectedProduct) {
+    if ((isCashSale || isInstallmentSale) ? cashItems.length === 0 : !selectedProduct) {
       setErrorMsg(
         'Please select a product.'
       );
       return;
+    }
+
+    if (isCashSale || isInstallmentSale) {
+      const invalidItem = cashItems.find((item) => {
+        const itemQuantity = Number(item.quantity);
+        const itemUnitPrice = Number(item.unitPrice);
+        const itemDiscount = Number(item.discount || 0);
+        const itemStockAdjustment = Number(item.stockAdjustment || 0);
+        return !Number.isInteger(itemQuantity) || itemQuantity <= 0 ||
+          !Number.isFinite(itemUnitPrice) || itemUnitPrice < 0 ||
+          !Number.isFinite(itemDiscount) || itemDiscount < 0 ||
+          itemDiscount > itemQuantity * itemUnitPrice ||
+          !Number.isInteger(itemStockAdjustment);
+      });
+      if (invalidItem) {
+        setErrorMsg('Check each product quantity, price, discount, and stock change.');
+        return;
+      }
     }
 
     if (
@@ -1453,22 +1509,25 @@ if (invalidDate) {
       customer:
         selectedCustomer,
 
-      product: isCashSale ? cashItems[0]?.product : selectedProduct,
-      ...(isCashSale ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0), discount: Number(item.discount || 0), stockAdjustment: Math.trunc(Number(item.stockAdjustment || 0)) })) } : {}),
+      product: isCashSale || isInstallmentSale ? cashItems[0]?.product : selectedProduct,
+      ...((isCashSale || isInstallmentSale) ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0), discount: Number(item.discount || 0), stockAdjustment: Math.trunc(Number(item.stockAdjustment || 0)) })) } : {}),
 
-      quantity: isCashSale ? cashItems.reduce((sum, item) => sum + Number(item.quantity), 0) : Number(quantity),
+      quantity: isCashSale || isInstallmentSale ? cashItems.reduce((sum, item) => sum + Number(item.quantity), 0) : Number(quantity),
 
-      unitPrice: isCashSale ? 0 : Number(unitPrice),
+      unitPrice: isCashSale ? 0 : isInstallmentSale
+        ? cashItems.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0) /
+          Math.max(1, cashItems.reduce((sum, item) => sum + Number(item.quantity), 0))
+        : Number(unitPrice),
 
       discount: Number(appliedDiscount),
 
       paymentType:
         paymentType,
 
-      bookId: selectedBookId,
+      bookId: isNewSale ? undefined : selectedBookId,
 
       saleDate: saleDateIso,
-      ...(isInstallmentSale ? { purchasePriceAtSale: Number(purchasePriceAtSale), stockAdjustment: Math.trunc(Number(stockAdjustment || 0)) } : {}),
+      ...(isInstallmentSale ? { purchasePriceAtSale: Number(cashItems[0]?.purchasePriceAtSale ?? cashItems[0]?.product?.purchasePrice ?? 0) } : {}),
 
       paymentStatus: isCashSale ? cashPaymentStatus : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
 
@@ -1560,8 +1619,12 @@ if (invalidDate) {
 
       const createdSale = response.data?.data?.sale || response.data?.sale || response.data?.data || {};
       const createdSaleId = createdSale._id || createdSale.id;
+      const downPaymentReceiptId = response.data?.data?.paymentReceipt?._id;
+      setNextReceiptPrintId(downPaymentReceiptId || null);
       if (createdSaleId) {
         setPrintPopup({ kind: 'invoice', recordId: createdSaleId });
+      } else if (downPaymentReceiptId) {
+        setPrintPopup({ kind: 'payment', recordId: downPaymentReceiptId });
       } else {
         toast.error('Sale was saved, but the invoice preview could not be opened.');
       }
@@ -1798,17 +1861,30 @@ if (invalidDate) {
 
           <section className="premium-card p-4 sm:p-5 space-y-3">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Sale book <span className="font-semibold text-slate-400">(Optional)</span></h2>
-              <p className="mt-1 text-[10px] text-slate-400">Choose a book if you want to include this sale in a book-wise audit.</p>
+              <h2 className="text-sm font-black text-slate-900">Sale type</h2>
+              <p className="mt-1 text-[10px] text-slate-400">Keep New Sale checked for live Dashboard data. For a completed old record, untick it and choose a book for Book Wise Audit.</p>
             </div>
+            <label className="inline-flex items-center gap-2 text-xs font-black text-slate-800">
+              <input
+                type="checkbox"
+                checked={isNewSale}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setIsNewSale(checked);
+                  if (checked) setSelectedBookId('');
+                }}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              New Sale (Live Dashboard)
+            </label>
             {books.length > 0 ? (
-              <select value={selectedBookId} onChange={(event) => setSelectedBookId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-md">
-                <option value="">No book</option>
+              <select value={selectedBookId} disabled={isNewSale} required={!isNewSale} onChange={(event) => setSelectedBookId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-md">
+                <option value="">{isNewSale ? 'Book assignment disabled for new sale' : 'Select audit book'}</option>
                 {books.map((book) => <option key={book._id} value={book._id}>{book.name}</option>)}
               </select>
             ) : (
               <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                <span>No book selected. You can still save this sale normally.</span>
+                <span>{isNewSale ? 'Book assignment is disabled for new sales.' : 'Create a book to save this as an audit sale.'}</span>
                 <button type="button" onClick={() => navigate('/book-audit')} className="font-black text-indigo-700 underline underline-offset-2">Create a book</button>
               </div>
             )}
@@ -2043,14 +2119,14 @@ if (invalidDate) {
                 <div>
 
                   <h2 className="text-sm font-black text-slate-900">
-                    {isInstallmentSale ? 'Step 2 · Product and price' : 'Inventory Product'}{' '}
+                    {isInstallmentSale ? 'Step 2 · Products and prices' : 'Inventory Product'}{' '}
                     <span className="text-rose-500">
                       *
                     </span>
                   </h2>
 
                   <p className="text-[10px] text-slate-400">
-                    Select product item from shop warehouse
+                    {isInstallmentSale ? 'Add one or more products to this installment sale.' : 'Select product item from shop warehouse'}
                   </p>
 
                 </div>
@@ -2158,7 +2234,7 @@ if (invalidDate) {
                                   product?.title ||
                                   'Unnamed Item'}
                               </p>
-                              {isCashSale && cashItems.some((item) => String(item.product?._id || item.product?.id) === String(product?._id || product?.id)) && (
+                              {(isCashSale || isInstallmentSale) && cashItems.some((item) => String(item.product?._id || item.product?.id) === String(product?._id || product?.id)) && (
                                 <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">Selected · select again to add one</span>
                               )}
                               <p className="text-[10px] font-semibold text-slate-600 mt-0.5 truncate">
@@ -2258,7 +2334,7 @@ if (invalidDate) {
 
 
 
-            {isCashSale && cashItems.length > 0 && (
+            {(isCashSale || isInstallmentSale) && cashItems.length > 0 && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-xs font-black text-emerald-800">Selected products</h3>
@@ -2293,16 +2369,20 @@ if (invalidDate) {
                               : entry));
                           }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
                         </label>
-                        <label className="mt-2 block text-[10px] font-bold text-slate-600">Unit price ({settings?.currency || 'PKR'})
+                        <label className="mt-2 block text-[10px] font-bold text-slate-600">Selling price per unit ({settings?.currency || 'PKR'})
                           <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => {
+                            resetInstallmentScheduleForItemChange();
                             const unitPrice = event.target.value === '' ? '' : Math.max(0, Number(event.target.value));
                             setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
                               ? { ...entry, unitPrice, discount: Math.min(Number(entry.discount || 0), Number(entry.quantity || 0) * unitPrice) }
                               : entry));
                           }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
                         </label>
+                        <p className="mt-1 text-[10px] font-black text-emerald-700">
+                          Line total: {settings?.currency || 'PKR'} {formatMoney(Number(item.quantity || 0) * Number(item.unitPrice || 0))}
+                        </p>
                       </div>
-                      <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== String(item.product._id || item.product.id)))} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700" aria-label={`Remove ${item.product.name || item.product.productName}`} title="Remove product">
+                      <button type="button" onClick={() => { resetInstallmentScheduleForItemChange(); setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== String(item.product._id || item.product.id))); }} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700" aria-label={`Remove ${item.product.name || item.product.productName}`} title="Remove product">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
@@ -2312,7 +2392,7 @@ if (invalidDate) {
             )}
           </section>
 
-          {isCashSale && (
+          {(isCashSale || isInstallmentSale) && (
             <section className="premium-card min-w-0 p-4 sm:p-6 space-y-4 animate-[pageEnter_0.3s_ease-out]">
               <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Calculator className="h-4 w-4" /></div>
@@ -2325,9 +2405,9 @@ if (invalidDate) {
                     const maxQuantity = Math.max(1, Number(item.product.quantity || 0) + Number(item.stockAdjustment || 0));
                     const maxDiscount = Number(item.quantity || 0) * Number(item.unitPrice || 0);
                     return <div key={id} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:p-4">
-                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { const rawValue = event.target.value; const quantity = rawValue === '' ? '' : Math.max(1, Math.min(maxQuantity, Math.floor(Number(rawValue) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: rawValue === '' ? entry.discount : Math.min(Number(entry.discount || 0), Number(quantity) * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
-                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount ?? ''} onChange={(event) => { const rawValue = event.target.value; const value = rawValue === '' ? '' : Math.max(0, Math.min(maxDiscount, Number(rawValue))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
-                      <button type="button" onClick={() => setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id))} className="inline-flex h-10 items-center justify-center gap-1 rounded-xl px-3 text-xs font-bold text-rose-600 hover:bg-rose-50" aria-label="Remove product"><X className="h-4 w-4" /><span className="sm:hidden">Remove</span></button>
+                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { resetInstallmentScheduleForItemChange(); const rawValue = event.target.value; const quantity = rawValue === '' ? '' : Math.max(1, Math.min(maxQuantity, Math.floor(Number(rawValue) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: rawValue === '' ? entry.discount : Math.min(Number(entry.discount || 0), Number(quantity) * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
+                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount ?? ''} onChange={(event) => { resetInstallmentScheduleForItemChange(); const rawValue = event.target.value; const value = rawValue === '' ? '' : Math.max(0, Math.min(maxDiscount, Number(rawValue))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
+                      <button type="button" onClick={() => { resetInstallmentScheduleForItemChange(); setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id)); }} className="inline-flex h-10 items-center justify-center gap-1 rounded-xl px-3 text-xs font-bold text-rose-600 hover:bg-rose-50" aria-label="Remove product"><X className="h-4 w-4" /><span className="sm:hidden">Remove</span></button>
                     </div>;
                   })}
                   <div className="flex justify-between rounded-xl bg-rose-50 px-4 py-3 text-xs font-black"><span className="text-slate-700">Total discount</span><span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span></div>
@@ -2364,7 +2444,7 @@ if (invalidDate) {
               PRICING & QUANTITY
           ================================================== */}
 
-          {!isCashSale && <section className={`premium-card min-w-0 p-4 sm:p-6 shadow-sm space-y-4 ${isInstallmentSale ? 'overflow-hidden' : ''}`}>
+          {!isCashSale && selectedProduct && <section className={`premium-card min-w-0 p-4 sm:p-6 shadow-sm space-y-4 ${isInstallmentSale ? 'overflow-hidden' : ''}`}>
 
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
 
@@ -2984,7 +3064,7 @@ if (invalidDate) {
               <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                 <span className="text-slate-400">
-                  Subtotal ({quantity} × Price)
+                  {isCashSale || isInstallmentSale ? 'Products Subtotal' : `Subtotal (${quantity} × Price)`}
                 </span>
 
                 <span className={`font-bold text-white text-sm ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
@@ -2997,10 +3077,23 @@ if (invalidDate) {
 
               </div>
 
-              {isInstallmentSale && (
-                <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
-                  Formula: {quantity} x {ledgerCurrency} {formatMoney(unitPrice)} = {ledgerCurrency} {formatMoney(subtotal)}
-                </p>
+              {isInstallmentSale && cashItems.length > 0 && (
+                <div className="-mt-1 space-y-1 rounded-xl bg-white/[0.04] p-2.5">
+                  {cashItems.map((item) => {
+                    const itemId = String(item.product?._id || item.product?.id || item.product?.name);
+                    const itemLineTotal = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+                    return (
+                      <div key={itemId} className="flex min-w-0 justify-between gap-3 text-[9px] leading-relaxed text-slate-400">
+                        <span className="min-w-0 truncate">{item.product?.name || item.product?.productName || 'Product'} · {item.quantity} × {ledgerCurrency} {formatMoney(item.unitPrice)}</span>
+                        <span className="shrink-0 font-bold text-slate-200">{ledgerCurrency} {formatMoney(itemLineTotal)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between gap-3 border-t border-white/10 pt-1.5 text-[9px] font-black text-emerald-300">
+                    <span>Sum of product prices</span>
+                    <span>{ledgerCurrency} {formatMoney(subtotal)}</span>
+                  </div>
+                </div>
               )}
 
               <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
@@ -3222,6 +3315,11 @@ if (invalidDate) {
         kind={printPopup?.kind}
         recordId={printPopup?.recordId}
         onClose={() => {
+          if (printPopup?.kind === 'invoice' && nextReceiptPrintId) {
+            setNextReceiptPrintId(null);
+            setPrintPopup({ kind: 'payment', recordId: nextReceiptPrintId });
+            return;
+          }
           setPrintPopup(null);
           navigate(isInstallmentSale ? '/installments' : '/sales');
         }}

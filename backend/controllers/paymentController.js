@@ -5,6 +5,7 @@ const {
 } = require('../utils/pagination');
 const Installment = require('../models/Installment');
 const InstallmentPlan = require('../models/InstallmentPlan');
+const Sale = require('../models/Sale');
 const Settings = require('../models/Settings');
 
 
@@ -389,8 +390,14 @@ const deletePayment = async (req, res) => {
             0
           );
 
-        plan.remainingBalance =
-          Math.max(0, remainingInstallmentBalance);
+        plan.balanceReduction = Math.max(
+          0,
+          Number(plan.balanceReduction || 0) - Number(payment.balanceReductionAmount || 0)
+        );
+        plan.remainingBalance = Math.max(
+          0,
+          remainingInstallmentBalance - Number(plan.balanceReduction || 0)
+        );
 
         if (plan.remainingBalance <= 0) {
           plan.status = 'Completed';
@@ -403,9 +410,31 @@ const deletePayment = async (req, res) => {
           plan.status = hasOverdue
             ? 'Overdue'
             : 'Active';
+
+          // Reopen any installments that were marked Paid only because the
+          // plan had previously been fully settled by a balance reduction.
+          for (const installment of allInstallments) {
+            const installmentDoc = await Installment.findOne({
+              _id: installment._id,
+              shopId: req.shopId,
+            });
+            if (!installmentDoc) continue;
+            calculateInstallmentStatus(installmentDoc);
+            await installmentDoc.save();
+          }
         }
 
         await plan.save();
+
+        const sale = await Sale.findOne({
+          _id: payment.sale,
+          shopId: req.shopId,
+        });
+
+        if (sale) {
+          sale.remainingBalance = plan.remainingBalance;
+          await sale.save();
+        }
       }
     }
 

@@ -783,9 +783,19 @@ const SidebarMenuItem = ({
 const navItems = [
 
   {
+    name: 'Notepad',
+    path: '/notepad',
+    icon: FileText,
+  },
+
+  {
     name: 'Dashboard',
-    path: '/dashboard',
     icon: LayoutDashboard,
+    children: [
+      { name: 'Main Dashboard', path: '/dashboard?view=main', icon: LayoutDashboard },
+      { name: 'Cash Dashboard', path: '/dashboard?view=cash', icon: Banknote },
+      { name: 'Installment Dashboard', path: '/dashboard?view=installment', icon: Layers },
+    ],
   },
 
   {
@@ -989,6 +999,7 @@ const PAGE_TITLES = {
   '/payments': 'Payments',
   '/invoices': 'Invoices',
   '/expenses': 'Expenses',
+  '/notepad': 'Notepad',
   '/book-audit': 'Book-wise Audit',
   '/backup': 'Backup',
   '/reports': 'Reports',
@@ -998,6 +1009,12 @@ const PAGE_TITLES = {
 };
 
 const getPageTitle = (pathname, search) => {
+  if (pathname === '/dashboard') {
+    const view = new URLSearchParams(search).get('view');
+    if (view === 'cash') return 'Cash Dashboard';
+    if (view === 'installment') return 'Installment Dashboard';
+    return 'Main Dashboard';
+  }
   if (pathname === '/sales/new') {
     return search.includes('type=installment')
       ? 'New Installment Sale'
@@ -1037,7 +1054,7 @@ export const Layout = ({ children }) => {
     { name: 'Sales', path: '/sales', icon: ShoppingCart },
     { name: 'Customers', path: '/customers', icon: Users },
   ];
-  const desktopNavItems = navItems.slice(0, navItems.findIndex((item) => item.name === 'Expenses') + 1);
+  const desktopNavItems = navItems.slice(0, navItems.findIndex((item) => item.name === 'Invoices') + 1);
   const desktopMoreItems = navItems.slice(desktopNavItems.length);
 
   const [mobileOpen, setMobileOpen] =
@@ -2179,7 +2196,7 @@ export const Layout = ({ children }) => {
   className="relative hidden shrink-0 border-b border-slate-200/80 bg-white/90 shadow-lg lg:block"
 >
   <nav aria-label="Main navigation" className="h-[50px] min-w-0 overflow-x-auto">
-    <div className="flex w-max min-w-full items-center justify-start gap-6 px-4 py-1 2xl:justify-center">
+    <div className="flex w-max min-w-full items-center justify-start gap-5.5 px-4 py-1 2xl:justify-center">
       {desktopNavItems.map((item) => {
         const Icon = item.icon;
         const isOpen = desktopOpenMenu === item.name;
