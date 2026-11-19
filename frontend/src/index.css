@@ -6,6 +6,23 @@
   body * {
     overflow-wrap: normal !important;
     word-break: normal !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Remove the outer card/frame from every app print target while preserving
+     borders inside tables, product rows, and signature sections. */
+  #printable-thermal-invoice,
+  #printable-receipt-wrapper,
+  #printable-receipt-modal-container,
+  #printable-receipt-content,
+  .installment-print-slip,
+  .customer-print-slip,
+  #customer-ledger-print,
+  #index-record-print {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
   }
 }
 

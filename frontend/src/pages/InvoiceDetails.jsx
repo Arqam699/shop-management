@@ -157,8 +157,16 @@ const InvoiceDetails = () => {
         invoiceElement.style.removeProperty('--invoice-print-scale');
         invoiceElement.style.removeProperty('--invoice-print-width');
         invoiceElement.style.removeProperty('--invoice-print-min-height');
+        invoiceElement.style.removeProperty('border');
+        invoiceElement.style.removeProperty('outline');
+        invoiceElement.style.removeProperty('box-shadow');
         window.removeEventListener('beforeprint', fitInvoiceToPage);
       };
+      // Some installed-app WebViews keep the screen card frame when printing.
+      // Force-clear it inline before opening the native print dialog.
+      invoiceElement.style.setProperty('border', '0', 'important');
+      invoiceElement.style.setProperty('outline', '0', 'important');
+      invoiceElement.style.setProperty('box-shadow', 'none', 'important');
       fitInvoiceToPage();
       window.addEventListener('beforeprint', fitInvoiceToPage, { once: true });
       window.addEventListener('afterprint', clearInvoiceFit, { once: true });
@@ -374,7 +382,7 @@ const InvoiceDetails = () => {
       ====================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono font-bold text-slate-900"
+        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono font-bold text-slate-900 print:border-0 print:shadow-none"
       >
         {!isInstallmentInvoice && invoicePaymentStatus === 'PAID' && (
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
@@ -762,11 +770,23 @@ const InvoiceDetails = () => {
             padding-top: 0 !important;
             margin-top: 0 !important;
             border: none !important;
+            border-width: 0 !important;
+            border-style: none !important;
+            border-color: transparent !important;
+            outline: none !important;
             box-shadow: none !important;
             color: #000000 !important;
             font-size: 12pt !important;
             font-weight: 900 !important;
             line-height: 1.35 !important;
+          }
+
+          #printable-thermal-invoice::before,
+          #printable-thermal-invoice::after {
+            content: none !important;
+            border: 0 !important;
+            outline: 0 !important;
+            box-shadow: none !important;
           }
 
           img {
