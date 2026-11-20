@@ -78,6 +78,10 @@ const Sales = lazy(
   () => import('./pages/Sales')
 );
 
+const RemainingCash = lazy(
+  () => import('./pages/RemainingCash')
+);
+
 const NewSale = lazy(
   () => import('./pages/NewSale')
 );
@@ -527,6 +531,17 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Sales />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/sales/remaining-cash"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <RemainingCash />
                     </Layout>
                   </ProtectedRoute>
                 }

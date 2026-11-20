@@ -134,7 +134,7 @@ const NewSale = () => {
   const [selectedBookId, setSelectedBookId] = useState('');
   const [isNewSale, setIsNewSale] = useState(true);
   const [showNewCashCustomerForm, setShowNewCashCustomerForm] = useState(false);
-  const [newCashCustomer, setNewCashCustomer] = useState({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill' });
+  const [newCashCustomer, setNewCashCustomer] = useState({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill', referredBy: '' });
   const [savingCashCustomer, setSavingCashCustomer] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cashItems, setCashItems] = useState([]);
@@ -149,6 +149,7 @@ const NewSale = () => {
   const [stockAdjustment, setStockAdjustment] = useState('');
   const [discount, setDiscount] = useState('');
   const [cashPaymentStatus, setCashPaymentStatus] = useState('Paid');
+  const [cashDownPayment, setCashDownPayment] = useState('');
   const [cashSaleDate, setCashSaleDate] = useState(() => formatDateTimeLocal(new Date()));
 
   /* =========================================================
@@ -375,7 +376,7 @@ const NewSale = () => {
       setCustomers((current) => [createdCustomer, ...current.filter((item) => String(item._id || item.id) !== String(createdCustomer._id || createdCustomer.id))]);
       handleSelectCustomer(createdCustomer);
       setShowNewCashCustomerForm(false);
-      setNewCashCustomer({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill' });
+      setNewCashCustomer({ fullName: '', fatherName: '', mobileNumber: '', cnic: '', address: '', city: 'Sangla Hill', referredBy: '' });
       toast.success('Customer saved and selected for this sale.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Could not save the customer.');
@@ -484,6 +485,7 @@ const NewSale = () => {
         onSelect(item);
       }
     }
+
   };
 
   const clearCustomer = () => {
@@ -1261,6 +1263,14 @@ const NewSale = () => {
       }
     }
 
+    if (isCashSale && cashPaymentStatus === 'Partial') {
+      const partialAmount = Number(cashDownPayment);
+      if (!Number.isFinite(partialAmount) || partialAmount <= 0 || partialAmount > finalTotal) {
+        setErrorMsg('Down payment must be greater than zero and cannot exceed the cash sale total.');
+        return;
+      }
+    }
+
     if (
       Number(quantity || 0) <= 0
     ) {
@@ -1500,6 +1510,14 @@ if (invalidDate) {
        PAYLOAD
     ====================================================== */
 
+    const cashReceivedAmount = !isCashSale
+      ? 0
+      : cashPaymentStatus === 'Paid'
+        ? roundMoney(finalTotal)
+        : cashPaymentStatus === 'Partial'
+          ? roundMoney(cashDownPayment)
+          : 0;
+
     const payload = {
       manualInvoiceNumber:
         manualInvoiceNumber
@@ -1529,10 +1547,14 @@ if (invalidDate) {
       saleDate: saleDateIso,
       ...(isInstallmentSale ? { purchasePriceAtSale: Number(cashItems[0]?.purchasePriceAtSale ?? cashItems[0]?.product?.purchasePrice ?? 0) } : {}),
 
-      paymentStatus: isCashSale ? cashPaymentStatus : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
+      paymentStatus: isCashSale
+        ? cashReceivedAmount >= finalTotal ? 'Paid' : 'Unpaid'
+        : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
 
       downPayment:
-        isInstallmentSale
+        isCashSale
+          ? cashReceivedAmount
+          : isInstallmentSale
           ? roundMoney(
               effectiveDownPayment
             )
@@ -1937,8 +1959,9 @@ if (invalidDate) {
                     ['cnic', 'CNIC'],
                     ['address', 'Address'],
                     ['city', 'City'],
+                    ['referredBy', 'Customer reference / referred by'],
                   ].map(([key, label]) => (
-                    <label key={key} className={`block text-[10px] font-bold text-slate-600 ${key === 'address' ? 'sm:col-span-2' : ''}`}>{label}
+                    <label key={key} className={`block text-[10px] font-bold text-slate-600 ${key === 'address' || key === 'referredBy' ? 'sm:col-span-2' : ''}`}>{label}
                       <input type="text" inputMode={key === 'mobileNumber' || key === 'cnic' ? 'numeric' : undefined} maxLength={key === 'cnic' ? 15 : key === 'mobileNumber' ? 12 : undefined} placeholder={key === 'cnic' ? '12345-1234567-1' : key === 'mobileNumber' ? '0300-1234567' : ''} value={newCashCustomer[key]} onChange={(event) => setNewCashCustomer((current) => {
                         let value = event.target.value;
                         if (key === 'cnic') value = formatCnicSearchInput(value);
@@ -2427,16 +2450,31 @@ if (invalidDate) {
           {isCashSale && (
             <section className="premium-card p-4 sm:p-5 space-y-3">
               <div>
-                <h2 className="text-sm font-black text-slate-900">Payment Status</h2>
-                <p className="mt-1 text-xs text-slate-500">Choose whether this cash sale has been paid.</p>
+                <h2 className="text-sm font-black text-slate-900">Cash Payment</h2>
+                <p className="mt-1 text-xs text-slate-500">Record full payment, a down payment, or leave the sale fully unpaid.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {['Paid', 'Unpaid'].map((status) => (
-                  <button key={status} type="button" aria-pressed={cashPaymentStatus === status} onClick={() => setCashPaymentStatus(status)} className={`rounded-xl border px-4 py-3 text-sm font-black transition ${cashPaymentStatus === status ? status === 'Paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20' : 'border-rose-500 bg-rose-50 text-rose-700 ring-2 ring-rose-500/20' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-                    {status}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { value: 'Paid', label: 'Paid in Full' },
+                  { value: 'Partial', label: 'Down Payment' },
+                  { value: 'Unpaid', label: 'Unpaid' },
+                ].map(({ value, label }) => (
+                  <button key={value} type="button" aria-pressed={cashPaymentStatus === value} onClick={() => setCashPaymentStatus(value)} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${cashPaymentStatus === value ? value === 'Paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20' : value === 'Partial' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-500/20' : 'border-rose-500 bg-rose-50 text-rose-700 ring-2 ring-rose-500/20' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    {label}
                   </button>
                 ))}
               </div>
+              {cashPaymentStatus === 'Partial' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-bold text-slate-600">
+                    Down payment received now ({settings?.currency || 'PKR'})
+                    <input type="number" min="0.01" max={finalTotal} step="0.01" value={cashDownPayment} onChange={(event) => setCashDownPayment(event.target.value)} placeholder="Enter amount received" className="mt-1.5 h-11 w-full rounded-xl border border-indigo-200 bg-white px-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-500" />
+                  </label>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                    Remaining cash: {formatMoney(Math.max(0, finalTotal - Number(cashDownPayment || 0)))}. It will appear in Remaining Cash until collected.
+                  </div>
+                </div>
+              )}
             </section>
           )}
 

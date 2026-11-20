@@ -59,6 +59,10 @@ const InstallmentPlanDetails = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [showPlanRevision, setShowPlanRevision] = useState(false);
+  const [revisionDuration, setRevisionDuration] = useState('');
+  const [revisionMarkupInput, setRevisionMarkupInput] = useState('');
+  const [revisionLoading, setRevisionLoading] = useState(false);
 
   const currency = settings?.currency || 'PKR';
   const customerPhoto = getImageSource(plan?.customer?.liveImage || plan?.customer?.photo);
@@ -155,6 +159,7 @@ const InstallmentPlanDetails = () => {
 
     return payments
       .flatMap((payment) => {
+        if (Number(payment?.planRevision || 0) !== Number(installment?.revisionNumber || 0)) return [];
         const allocations = Array.isArray(payment?.allocations)
           ? payment.allocations
           : [];
@@ -412,6 +417,10 @@ const InstallmentPlanDetails = () => {
     markupPercent = 50;
   }
 
+  if (Number(plan?.revisionNumber || 0) > 0 && Number.isFinite(Number(sale?.markupPercentage))) {
+    markupPercent = Number(sale.markupPercentage);
+  }
+
   // =========================================================
   // FINANCING CALCULATION
   // =========================================================
@@ -452,6 +461,8 @@ const InstallmentPlanDetails = () => {
     plan?.totalAmount ??
       calculatedTotalPayable
   );
+  const previousPlanTotal = Number(plan?.revisions?.[plan.revisions.length - 1]?.totalAmount || 0);
+  const earlySettlementDiscount = Math.max(0, roundMoney(previousPlanTotal - totalPayable));
 
   // =========================================================
   // INSTALLMENT SCHEDULE TOTAL
@@ -543,6 +554,54 @@ const InstallmentPlanDetails = () => {
             totalPaidInInstallments +
             balanceReduction
         );
+
+  const commonShorterDurations = [3, 6, 12].filter((duration) => duration < displayDuration);
+  const defaultRevisionDuration = Math.max(1, Math.min(displayDuration - 1, commonShorterDurations[commonShorterDurations.length - 1] || displayDuration - 1));
+  const revisedDurationNumber = Number(revisionDuration || defaultRevisionDuration || 0);
+  const revisedMarkupBase = downPaymentAsFirstInstallment
+    ? Math.max(0, originalPrice - downPayment)
+    : originalPrice;
+  const currentMarkupForRevision = Number(sale.markupPercentage || 0) > 0
+    ? Number(sale.markupPercentage)
+    : revisedMarkupBase > 0
+      ? Math.max(0, (totalPayable - originalPrice) / revisedMarkupBase * 100)
+      : markupPercent;
+  const suggestedRevisionMarkup = displayDuration > 0
+    ? roundMoney(currentMarkupForRevision * revisedDurationNumber / displayDuration)
+    : 0;
+  const revisedMarkupPercent = Number(revisionMarkupInput === '' ? suggestedRevisionMarkup : revisionMarkupInput);
+  const revisedMarkupAmount = roundMoney(revisedMarkupBase * revisedMarkupPercent / 100);
+  const revisedTotalPayable = roundMoney(originalPrice + revisedMarkupAmount);
+  const revisedRemainingBalance = roundMoney(revisedTotalPayable - totalCustomerPaid);
+
+  const revisePlan = async () => {
+    if (!Number.isInteger(revisedDurationNumber) || revisedDurationNumber < 1 || revisedDurationNumber > 12) {
+      toast.error('Enter a whole number of months from 1 to 12.');
+      return;
+    }
+    if (revisedRemainingBalance < 0) {
+      toast.error('Payments already received exceed the revised plan total.');
+      return;
+    }
+    if (!Number.isFinite(revisedMarkupPercent) || revisedMarkupPercent < 0) {
+      toast.error('Enter a valid markup percentage of zero or more.');
+      return;
+    }
+    try {
+      setRevisionLoading(true);
+      const response = await api.put(`/api/installments/${id}/revise`, {
+        duration: revisedDurationNumber,
+        markupPercentage: revisedMarkupPercent,
+      });
+      toast.success(response.data?.message || 'Installment plan revised.');
+      setShowPlanRevision(false);
+      await fetchPlan();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not revise the installment plan.');
+    } finally {
+      setRevisionLoading(false);
+    }
+  };
 
   // =========================================================
   // ACTUAL INSTALLMENT REMAINING
@@ -1309,6 +1368,17 @@ Thank you - ${
 
             <div className="flex items-center gap-2.5 self-start sm:self-auto">
 
+              {plan.status !== 'Completed' && (
+                <button
+                  type="button"
+                  onClick={() => { setRevisionDuration(String(defaultRevisionDuration)); setRevisionMarkupInput(String(roundMoney(currentMarkupForRevision * defaultRevisionDuration / displayDuration))); setShowPlanRevision(true); }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-2.5 text-xs font-black text-amber-200 transition-all hover:bg-amber-400/20"
+                >
+                  <ArrowDownCircle className="h-4 w-4" />
+                  Revise Plan
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() =>
@@ -1351,6 +1421,38 @@ Thank you - ${
           </div>
         </div>
       </section>
+
+      {Array.isArray(plan.revisions) && plan.revisions.length > 0 && (
+        <section className="premium-card overflow-hidden no-print">
+          <div className="border-b border-slate-100 bg-amber-50 px-4 py-3">
+            <h2 className="text-sm font-black text-amber-900">Plan Revision Audit</h2>
+            <p className="mt-0.5 text-[11px] font-semibold text-amber-700">Earlier plan terms are kept here; payment receipts remain unchanged.</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {[...plan.revisions].reverse().map((revision, index) => (
+              <div key={`${revision.revisionNumber}-${revision.revisedAt || index}`} className="px-4 py-3">
+                <div className="grid gap-2 text-xs sm:grid-cols-4 sm:items-center">
+                  <span className="font-black text-slate-800">Previous plan: {revision.selectedDuration || revision.duration} months</span>
+                  <span className="font-bold text-slate-600">Old total: {formatMoney(revision.totalAmount)}</span>
+                  <span className="font-bold text-emerald-700">Revised total: {formatMoney(index === 0 ? plan.totalAmount : plan.revisions[plan.revisions.length - index]?.totalAmount)}</span>
+                  <span className="text-slate-500">{revision.revisedAt ? formatDate(revision.revisedAt) : ''}</span>
+                </div>
+                {Array.isArray(revision.installments) && revision.installments.length > 0 && (
+                  <details className="mt-2 rounded-lg border border-slate-100 bg-slate-50">
+                    <summary className="cursor-pointer px-3 py-2 text-[10px] font-black text-indigo-700">View previous {revision.installments.length}-installment schedule</summary>
+                    <div className="overflow-x-auto border-t border-slate-100">
+                      <table className="w-full min-w-[520px] text-left text-[10px]">
+                        <thead className="text-slate-400"><tr><th className="px-3 py-2">Month</th><th className="px-3 py-2">Due date</th><th className="px-3 py-2 text-right">Scheduled</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Remaining</th></tr></thead>
+                        <tbody>{revision.installments.map((item, itemIndex) => <tr key={`${item.installmentNumber}-${itemIndex}`} className="border-t border-slate-100"><td className="px-3 py-2 font-bold">#{item.installmentNumber}</td><td className="px-3 py-2">{item.dueDate ? formatDate(item.dueDate) : '—'}</td><td className="px-3 py-2 text-right">{formatMoney(item.amount)}</td><td className="px-3 py-2 text-right">{formatMoney(item.paidAmount)}</td><td className="px-3 py-2 text-right">{formatMoney(item.remainingAmount)}</td></tr>)}</tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* =====================================================
           CUSTOMER + SALE
@@ -1480,6 +1582,18 @@ Thank you - ${
                     </p>
                     <p className="text-xs font-bold text-slate-700 break-words">
                       Model: {item.product?.model || item.model || 'N/A'}
+                    </p>
+                    <p className="w-full text-xs font-bold text-slate-700">
+                      Purchase Price: {formatMoney(
+                        Number(item.purchasePriceAtSale ?? (index === 0 ? sale?.purchasePriceAtSale : undefined) ?? item.product?.purchasePrice ?? 0)
+                      )} per unit
+                      {Number(item.quantity || 0) > 1 && (
+                        <span className="ml-2 font-semibold text-slate-500">
+                          (Total: {formatMoney(
+                            Number(item.purchasePriceAtSale ?? (index === 0 ? sale?.purchasePriceAtSale : undefined) ?? item.product?.purchasePrice ?? 0) * Number(item.quantity || 0)
+                          )})
+                        </span>
+                      )}
                     </p>
                     {item.product?.imei && (
                       <p className="w-full break-all text-xs font-semibold text-slate-600">
@@ -2192,6 +2306,42 @@ Thank you - ${
         )}
       </section>
 
+      {showPlanRevision && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !revisionLoading) setShowPlanRevision(false); }}>
+          <section className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Shorten installment plan">
+            <header className="bg-slate-950 px-5 py-4 text-white">
+              <h2 className="text-base font-black">Shorten Installment Plan</h2>
+              <p className="mt-1 text-xs text-slate-300">Recalculate the full deal total using the shorter duration rate.</p>
+            </header>
+            <div className="space-y-4 p-5">
+              <label className="block text-xs font-black text-slate-600">Plan duration (months)
+                <input type="number" min="1" max="12" step="1" value={revisionDuration || defaultRevisionDuration} onChange={(event) => { const raw = event.target.value; setRevisionDuration(raw); const duration = Number(raw); if (Number.isInteger(duration) && duration >= 1 && duration <= 12) setRevisionMarkupInput(String(roundMoney(currentMarkupForRevision * duration / displayDuration))); }} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500" />
+                <span className="mt-1 block text-[10px] font-semibold text-slate-400">Enter a whole number from 1 to 12 months.</span>
+              </label>
+              <label className="block text-xs font-black text-slate-600">Markup for revised plan (%)
+                <input type="number" min="0" step="0.01" value={revisionMarkupInput === '' ? suggestedRevisionMarkup : revisionMarkupInput} onChange={(event) => setRevisionMarkupInput(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500" />
+                <span className="mt-1 block text-[10px] font-semibold text-slate-400">Enter the rate you want. Changing duration suggests a proportional rate, which you can edit.</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-500">Previous total</p><p className="mt-1 font-black text-slate-800">{formatMoney(totalPayable)}</p></div>
+                <div className="rounded-xl bg-indigo-50 p-3"><p className="font-bold text-indigo-600">Revised total</p><p className="mt-1 font-black text-indigo-900">{formatMoney(revisedTotalPayable)}</p></div>
+                <div className="rounded-xl bg-emerald-50 p-3"><p className="font-bold text-emerald-700">Early settlement discount</p><p className="mt-1 font-black text-emerald-900">{formatMoney(Math.max(0, totalPayable - revisedTotalPayable))}</p></div>
+                <div className="rounded-xl bg-amber-50 p-3"><p className="font-bold text-amber-700">Already received</p><p className="mt-1 font-black text-amber-900">{formatMoney(totalCustomerPaid)}</p></div>
+              </div>
+              <div className={`rounded-xl border p-3 text-xs font-bold ${revisedRemainingBalance < 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-white text-slate-700'}`}>
+                {revisedRemainingBalance < 0
+                  ? `Received payments exceed the revised total by ${formatMoney(Math.abs(revisedRemainingBalance))}. This revision cannot be applied.`
+                  : `Amount remaining after revision: ${formatMoney(revisedRemainingBalance)}. Existing receipts stay in history; the prior schedule is retained in the audit.`}
+              </div>
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+              <button type="button" disabled={revisionLoading} onClick={() => setShowPlanRevision(false)} className="h-10 rounded-lg border border-slate-200 px-4 text-xs font-black text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={revisionLoading || revisedRemainingBalance < 0} onClick={revisePlan} className="h-10 rounded-lg bg-indigo-600 px-4 text-xs font-black text-white hover:bg-indigo-700 disabled:opacity-50">{revisionLoading ? 'Updating plan...' : 'Confirm New Plan'}</button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {/* =====================================================
           PAYMENT MODAL
       ====================================================== */}
@@ -2663,6 +2813,7 @@ Thank you - ${
                     <div className="print-product-primary-fields">
                       <div><b>Model</b><span>{item.product?.model || item.model || 'N/A'}</span></div>
                       <div><b>Qty</b><span>{Number(item.quantity || 0)}</span></div>
+                      <div><b>Purchase Price</b><span>{formatMoney(Number(item.purchasePriceAtSale ?? (index === 0 ? sale?.purchasePriceAtSale : undefined) ?? item.product?.purchasePrice ?? 0))} / unit</span></div>
                     </div>
                     {item.product?.imei && <div><b>IMEI</b><span>{item.product.imei}</span></div>}
                     {item.product?.engineNumber && <div><b>Engine No</b><span>{item.product.engineNumber}</span></div>}
@@ -2677,6 +2828,12 @@ Thank you - ${
                 <span>Total Deal</span>
                 <b>{formatMoney(totalPayable)}</b>
               </div>
+              {earlySettlementDiscount > 0 && (
+                <div className="print-deal-total">
+                  <span>Early Settlement Discount</span>
+                  <b>-{formatMoney(earlySettlementDiscount)}</b>
+                </div>
+              )}
               <div className="print-deal-total">
                 <span>Down Payment</span>
                 <b>{formatMoney(downPayment)}</b>

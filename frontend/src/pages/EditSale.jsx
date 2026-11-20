@@ -178,12 +178,8 @@ const EditSale = () => {
     0
   );
   const cashFinalTotal = Math.max(0, cashSubtotal - cashDiscount);
-  const subtotal = formData.paymentType === 'Cash'
-    ? cashSubtotal
-    : Number(formData.quantity || 0) * Number(formData.unitPrice || 0);
-  const finalTotal = formData.paymentType === 'Cash'
-    ? cashFinalTotal
-    : Math.max(0, subtotal - Number(formData.discount || 0));
+  const subtotal = cashSubtotal;
+  const finalTotal = cashFinalTotal;
   const installmentMarkupBase = formData.treatDownPaymentAsFirstInstallment
     ? Math.max(0, finalTotal - Number(formData.downPayment || 0))
     : finalTotal;
@@ -202,13 +198,13 @@ const EditSale = () => {
     setErrorMsg('');
     setIsSaving(true);
 
-    if (formData.paymentType === 'Cash' && cashItems.length === 0) {
-      setErrorMsg('Add at least one product to this cash sale.');
+    if (cashItems.length === 0) {
+      setErrorMsg('Add at least one product to this sale.');
       setIsSaving(false);
       return;
     }
 
-    if (formData.paymentType === 'Cash' && cashItems.some((item) =>
+    if (cashItems.some((item) =>
       !item.product ||
       !Number.isInteger(Number(item.quantity)) ||
       Number(item.quantity) < 1 ||
@@ -220,12 +216,6 @@ const EditSale = () => {
       Number(item.discount) > Number(item.quantity) * Number(item.unitPrice)
     )) {
       setErrorMsg('Check each product, quantity, price, and discount before saving.');
-      setIsSaving(false);
-      return;
-    }
-
-    if (formData.paymentType !== 'Cash' && Number(formData.discount) > subtotal) {
-      setErrorMsg('Discount cannot be larger than subtotal.');
       setIsSaving(false);
       return;
     }
@@ -245,11 +235,18 @@ const EditSale = () => {
             })),
           }
         : {
-        product: formData.product,
-        quantity: Number(formData.quantity),
-        unitPrice: Number(formData.unitPrice),
-        purchasePriceAtSale: Number(formData.purchasePriceAtSale),
-        discount: Number(formData.discount),
+        product: cashItems[0].product,
+        quantity: Number(cashItems[0].quantity),
+        unitPrice: Number(cashItems[0].unitPrice),
+        purchasePriceAtSale: Number(cashItems[0].purchasePriceAtSale),
+        discount: cashDiscount,
+        items: cashItems.map((item) => ({
+          product: item.product,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unitPrice),
+          purchasePriceAtSale: Number(item.purchasePriceAtSale),
+          discount: Number(item.discount || 0),
+        })),
         paymentType: formData.paymentType,
         customer: formData.customerRef || null,
         saleDate: formData.saleDate ? new Date(`${formData.saleDate}T12:00:00`).toISOString() : null,
@@ -425,11 +422,11 @@ const EditSale = () => {
             </div>
             )}
 
-            {formData.paymentType === 'Cash' && (
+            {(formData.paymentType === 'Cash' || formData.paymentType === 'Installment') && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Products in this cash sale</label>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Products in this {formData.paymentType.toLowerCase()} sale</label>
                     <p className="mt-1 text-[11px] font-medium text-slate-400">Remove products or add another product to the invoice.</p>
                   </div>
                   <button type="button" onClick={() => setCashItems((current) => [...current, { product: '', quantity: 1, unitPrice: 0, purchasePriceAtSale: 0, discount: 0 }])} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-700">
@@ -458,80 +455,6 @@ const EditSale = () => {
                   </div>
                 ))}
               </div>
-            )}
-
-            {formData.paymentType !== 'Cash' && (
-              <>
-            {/* Select Stock Item */}
-            <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                Stock Item Product <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={formData.product}
-                  onChange={handleProductChange}
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
-                  required
-                >
-                  <option value="">Select Inventory Product...</option>
-                  {products.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.name} ({p.brand} {p.model}) — [Stock: {p.quantity} Available]
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Unit Price & Quantity */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Purchase Price ({settings?.currency || 'PKR'})
-                </label>
-                <input
-                  type="number"
-                  name="purchasePriceAtSale"
-                  value={formData.purchasePriceAtSale}
-                  onChange={handleChange}
-                  min="0"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Unit Price ({settings?.currency || 'PKR'}) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  name="unitPrice"
-                  value={formData.unitPrice}
-                  onChange={handleChange}
-                  min="0"
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Quantity <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  name="quantity"
-                  value={formData.quantity}
-                  onChange={handleChange}
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                  required
-                  min="1"
-                />
-              </div>
-            </div>
-
-              </>
             )}
 
             {/* Payment Method Selector */}
@@ -666,7 +589,7 @@ const EditSale = () => {
 
             <div className="space-y-3.5 text-xs font-semibold text-slate-300">
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">Subtotal ({formData.quantity} × Price)</span>
+                <span className="text-slate-400">Products subtotal</span>
                 <span className="font-bold text-white text-sm">
                   {settings?.currency || 'PKR'} {subtotal.toLocaleString()}
                 </span>
@@ -677,9 +600,8 @@ const EditSale = () => {
                 <input
                   type="number"
                   name="discount"
-                  value={formData.paymentType === 'Cash' ? cashDiscount : formData.discount}
-                  onChange={handleChange}
-                  readOnly={formData.paymentType === 'Cash'}
+                  value={cashDiscount}
+                  readOnly
                   placeholder="0"
                   className="w-28 h-9 bg-white/[0.06] border border-white/[0.1] rounded-xl px-2.5 text-right text-xs font-black text-rose-400 outline-none focus:border-blue-500 focus:bg-white/[0.1] transition-all"
                   min="0"

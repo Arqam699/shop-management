@@ -5,6 +5,8 @@ const router = express.Router();
 const {
   getSales,
   getSaleById,
+  receiveCashSalePayment,
+  updateCashSaleBalance,
   updateSaleBook,
   bulkUpdateSalesBook,
   createSale,
@@ -20,6 +22,8 @@ router.route('/')
 
 router.put('/bulk-book', protect, bulkUpdateSalesBook);
 router.put('/:id/book', protect, updateSaleBook);
+router.post('/:id/cash-payments', protect, receiveCashSalePayment);
+router.put('/:id/cash-balance', protect, updateCashSaleBalance);
 
 router.route('/:id')
   .get(protect, getSaleById)

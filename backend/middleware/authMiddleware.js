@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Shop = require('../models/Shop');
@@ -150,6 +151,36 @@ const protect = async (req, res, next) => {
         code: 'SHOP_NOT_FOUND',
         message:
           'Shop account was not found',
+      });
+    }
+
+    // JWT sessions are bound to the device entry. Login again after this
+    // security upgrade if the cookie predates device-bound session claims.
+    const requestDeviceId = String(req.get('X-Device-Id') || '').trim();
+    const authorizedDeviceId = decoded.deviceId || requestDeviceId;
+    const authorizedDevice = Array.isArray(shop.authorizedDevices)
+      ? shop.authorizedDevices.find((device) => device.deviceId === authorizedDeviceId)
+      : null;
+    const sessionIdHash = typeof decoded.sessionId === 'string'
+      ? crypto.createHash('sha256').update(decoded.sessionId).digest('hex')
+      : '';
+    const storedSessionHash = String(authorizedDevice?.sessionIdHash || '');
+    const hasValidSessionHash = /^[a-f0-9]{64}$/i.test(storedSessionHash) &&
+      /^[a-f0-9]{64}$/i.test(sessionIdHash) &&
+      crypto.timingSafeEqual(Buffer.from(storedSessionHash, 'hex'), Buffer.from(sessionIdHash, 'hex'));
+
+    if (
+      !decoded.sessionId ||
+      !authorizedDevice ||
+      !requestDeviceId ||
+      requestDeviceId !== authorizedDeviceId ||
+      !hasValidSessionHash
+    ) {
+      clearAuthCookie(res);
+      return res.status(401).json({
+        success: false,
+        code: 'DEVICE_SESSION_REVOKED',
+        message: 'Your device session has expired or been revoked. Please log in again.',
       });
     }
 

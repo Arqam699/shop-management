@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Return = require('../models/Return');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
@@ -83,9 +84,15 @@ const checkDeletionMode = async (shopId) => {
 // ============================================================
 const getReturns = async (req, res) => {
   try {
-    const returnsList = await Return.find({
+    const filter = {
       shopId: req.shopId,
-    })
+    };
+    const requestedCustomer = String(req.query.customer || '').trim();
+    if (requestedCustomer && mongoose.Types.ObjectId.isValid(requestedCustomer)) {
+      filter.customer = requestedCustomer;
+    }
+
+    const returnsList = await Return.find(filter)
       .populate(
         'customer',
         'fullName mobileNumber customerId'

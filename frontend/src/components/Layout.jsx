@@ -864,6 +864,12 @@ const navItems = [
       },
 
       {
+        name: 'Remaining Cash',
+        path: '/sales/remaining-cash',
+        icon: Wallet,
+      },
+
+      {
         name: 'New Cash Sale',
         path: '/sales/new?type=cash',
         icon: Banknote,
@@ -995,6 +1001,7 @@ const PAGE_TITLES = {
   '/customers/details': 'Customer Details',
   '/customers/ledger': 'Customer Ledger',
   '/sales': 'Sales History',
+  '/sales/remaining-cash': 'Remaining Cash',
   '/installments': 'Installment Sales',
   '/payments': 'Payments',
   '/invoices': 'Invoices',
@@ -2513,6 +2520,8 @@ export const Layout = ({ children }) => {
         <main
           className="
             relative
+            min-w-0
+            w-full
             min-h-0
             flex
             flex-1
@@ -2549,6 +2558,15 @@ export const Layout = ({ children }) => {
                       >
                         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Banknote className="h-4 w-4" /></span>
                         Cash Sale
+                      </Link>
+                      <Link
+                        role="menuitem"
+                        to="/sales/remaining-cash"
+                        onClick={() => setMobileSalesOpen(false)}
+                        className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Wallet className="h-4 w-4" /></span>
+                        Remaining Cash
                       </Link>
                       <Link
                         role="menuitem"

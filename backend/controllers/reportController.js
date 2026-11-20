@@ -1228,8 +1228,12 @@ const getIndexRecord = async (
 
     const planIds = plans.map((plan) => plan._id);
     const allInstallments = planIds.length
-      ? await Installment.find({ shopId, installmentPlan: { $in: planIds } })
-        .sort({ installmentNumber: 1, dueDate: 1 })
+      ? (await Installment.find({ shopId, installmentPlan: { $in: planIds } })
+        .sort({ installmentNumber: 1, dueDate: 1 }))
+        .filter((item) => {
+          const plan = plans.find((row) => String(row._id) === String(item.installmentPlan));
+          return plan && Number(item.revisionNumber || 0) === Number(plan.revisionNumber || 0) && item.isArchived !== true;
+        })
       : [];
     const byPlan = new Map();
     allInstallments.forEach((item) => {

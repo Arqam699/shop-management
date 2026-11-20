@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
@@ -259,18 +259,21 @@ const Installments = () => {
   const normalizedInvoiceSearch = searchTerm.trim().toLowerCase();
   const isInvoiceLookupTerm =
     /^\d{1,10}$/.test(searchDigits) || /^[a-z]+[-/]?\d+[a-z0-9-]*$/i.test(normalizedInvoiceSearch);
-  const hasInvoiceNumberMatch = !isInvoiceLookupTerm || plans.some((plan) => {
+  const hasInvoiceNumberMatch = useMemo(() => !isInvoiceLookupTerm || plans.some((plan) => {
     const invoiceNumber = String(plan.sale?.saleId || '').toLowerCase();
     return invoiceNumber.includes(normalizedInvoiceSearch) ||
       invoiceNumber.replace(/[^a-z0-9]/g, '').includes(normalizedInvoiceSearch.replace(/[^a-z0-9]/g, ''));
-  });
-  const hasExactInvoiceSearch = Boolean(searchDigits) && plans.some((plan) => {
+  }), [isInvoiceLookupTerm, plans, normalizedInvoiceSearch]);
+  const hasExactInvoiceSearch = useMemo(() => Boolean(searchDigits) && plans.some((plan) => {
     const invoiceDigits = String(plan.sale?.saleId || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
     return invoiceDigits === searchDigits;
-  });
+  }), [plans, searchDigits]);
 
-  const filteredPlans = plans.filter(
-    (p) => {
+  const filteredPlans = useMemo(() => {
+    const sTerm = searchTerm.trim().toLowerCase();
+    const normalizedSearchTerm = sTerm.replace(/[^a-z0-9]/g, '');
+    const searchDigits = sTerm.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    return plans.filter((p) => {
       const custName =
         p.customer?.fullName?.toLowerCase() ||
         '';
@@ -294,18 +297,13 @@ const Installments = () => {
         p.product?.name?.toLowerCase() ||
         '';
 
-      const sTerm =
-        searchTerm.trim().toLowerCase();
-      const normalizedSearchTerm = sTerm.replace(/[^a-z0-9]/g, '');
       const matchesInvoiceNumber = invoiceNumbers.some((invoiceNumber) =>
         invoiceNumber.includes(sTerm) ||
         invoiceNumber.replace(/[^a-z0-9]/g, '').includes(normalizedSearchTerm)
       );
-      const searchDigits = sTerm.replace(/\D/g, '');
       const matchesExactInvoiceNumber = Boolean(searchDigits) && invoiceNumbers.some((invoiceNumber) => {
         const invoiceDigits = invoiceNumber.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
-        const normalizedSearchDigits = searchDigits.replace(/^0+(?=\d)/, '');
-        return invoiceDigits === normalizedSearchDigits;
+        return invoiceDigits === searchDigits;
       });
 
       const matchesSearch = hasExactInvoiceSearch
@@ -335,25 +333,25 @@ const Installments = () => {
         matchesSearch &&
         matchesDate
       );
-    }
-  ).sort((a, b) =>
-    String(b.sale?.saleId || '').localeCompare(
-      String(a.sale?.saleId || ''),
-      undefined,
-      { numeric: true, sensitivity: 'base' }
-    )
-  );
+    }).sort((a, b) =>
+      String(b.sale?.saleId || '').localeCompare(
+        String(a.sale?.saleId || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      )
+    );
+  }, [plans, searchTerm, filterPreset, customStartDate, customEndDate, hasExactInvoiceSearch]);
 
   const pageCount = Math.max(1, Math.ceil(filteredPlans.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const pagePlans = filteredPlans.slice(
+  const pagePlans = useMemo(() => filteredPlans.slice(
     (safePage - 1) * PAGE_SIZE,
     safePage * PAGE_SIZE
-  );
+  ), [filteredPlans, safePage]);
   const firstVisiblePlan = filteredPlans.length ? (safePage - 1) * PAGE_SIZE + 1 : 0;
   const lastVisiblePlan = Math.min(safePage * PAGE_SIZE, filteredPlans.length);
 
-  const totalPurchaseCost = filteredPlans.reduce(
+  const totalPurchaseCost = useMemo(() => filteredPlans.reduce(
     (sum, plan) => {
       const saleItems = plan.sale?.items || [];
       const planCost = saleItems.length
@@ -362,11 +360,11 @@ const Installments = () => {
       return sum + planCost;
     },
     0
-  );
-  const totalSellingPrice = filteredPlans.reduce(
+  ), [filteredPlans]);
+  const totalSellingPrice = useMemo(() => filteredPlans.reduce(
     (sum, plan) => sum + Number(plan.sale?.finalTotal || 0),
     0
-  );
+  ), [filteredPlans]);
   const totalProfit = totalSellingPrice - totalPurchaseCost;
   const formatMoney = (amount) =>
     `${settings?.currency || 'PKR'} ${Number(amount || 0).toLocaleString('en-PK')}`;

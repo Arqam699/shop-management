@@ -582,6 +582,7 @@ const createSale = async (req, res) => {
       paymentType = 'Cash',
       paymentStatus = 'Paid',
       downPayment = 0,
+      paymentMethod = 'Cash',
       markupPercentage = 0,
       installmentDuration = 0,
       selectedInstallmentDuration = 0,
@@ -686,7 +687,6 @@ const createSale = async (req, res) => {
 
     if (paymentType === 'Cash') {
       const hasInstallmentData =
-        Number(dPayment) !== 0 ||
         Number(markup) !== 0 ||
         Number(installmentDuration) !== 0 ||
         Number(selectedInstallmentDuration) !== 0 ||
@@ -774,11 +774,13 @@ const createSale = async (req, res) => {
       const itemsDiscount = roundMoney(normalizedItems.reduce((sum, item) => sum + item.discount, 0));
       if (Math.abs(itemsDiscount - discountAmount) > 0.01) return res.status(400).json({ message: 'Sale discount must match the total of item discounts.' });
       const itemsFinalTotal = roundMoney(itemsSubtotal - itemsDiscount);
+      const cashReceived = dPayment > 0 || paymentStatus === 'Unpaid' ? dPayment : itemsFinalTotal;
+      if (cashReceived < 0 || cashReceived > itemsFinalTotal) return res.status(400).json({ message: 'Cash received must be between zero and the sale total.' });
       const saleId = await generateSaleID(shopId);
       const invoiceNumber = manualInvoiceNumber ? String(manualInvoiceNumber).trim() : saleId;
       if (await Sale.findOne({ shopId, saleId: invoiceNumber })) return res.status(400).json({ message: 'Invoice number already exists.' });
       const saleItems = normalizedItems.map(({ product: itemProduct, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, purchasePriceAtSale }) => ({ product: itemProduct._id, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, purchasePriceAtSale }));
-      const sale = await Sale.create({ shopId, saleId: invoiceNumber, book: selectedBook?._id, customer, product: saleItems[0].product, items: saleItems, quantity: saleItems.reduce((sum, item) => sum + item.quantity, 0), unitPrice: itemsSubtotal / saleItems.reduce((sum, item) => sum + item.quantity, 0), purchasePriceAtSale: normalizedItems[0].purchasePriceAtSale, discount: itemsDiscount, subtotal: itemsSubtotal, finalTotal: itemsFinalTotal, markupPercentage: 0, markupAmount: 0, totalWithMarkup: itemsFinalTotal, paymentType: 'Cash', paymentStatus, downPayment: paymentStatus === 'Unpaid' ? 0 : itemsFinalTotal, remainingBalance: paymentStatus === 'Unpaid' ? itemsFinalTotal : 0, installmentDuration: 0, selectedInstallmentDuration: 0, treatDownPaymentAsFirstInstallment: false, installmentScheduleSnapshot: [], saleDate: recordedSaleDate });
+      const sale = await Sale.create({ shopId, saleId: invoiceNumber, book: selectedBook?._id, customer, product: saleItems[0].product, items: saleItems, quantity: saleItems.reduce((sum, item) => sum + item.quantity, 0), unitPrice: itemsSubtotal / saleItems.reduce((sum, item) => sum + item.quantity, 0), purchasePriceAtSale: normalizedItems[0].purchasePriceAtSale, discount: itemsDiscount, subtotal: itemsSubtotal, finalTotal: itemsFinalTotal, markupPercentage: 0, markupAmount: 0, totalWithMarkup: itemsFinalTotal, paymentType: 'Cash', paymentStatus: cashReceived >= itemsFinalTotal ? 'Paid' : 'Unpaid', downPayment: cashReceived, cashPayments: cashReceived > 0 ? [{ amount: cashReceived, paymentDate: recordedSaleDate, paymentMethod: paymentMethod || 'Cash' }] : [], remainingBalance: roundMoney(itemsFinalTotal - cashReceived), installmentDuration: 0, selectedInstallmentDuration: 0, treatDownPaymentAsFirstInstallment: false, installmentScheduleSnapshot: [], saleDate: recordedSaleDate });
       for (const item of normalizedItems) {
         let previousQuantity = Number(item.product.quantity || 0);
         if (item.stockAdjustment !== 0) {
@@ -916,6 +918,10 @@ const createSale = async (req, res) => {
     // ========================================================
 
     if (paymentType === 'Cash') {
+      const cashReceived = dPayment > 0 || paymentStatus === 'Unpaid' ? dPayment : finalTotal;
+      if (cashReceived < 0 || cashReceived > finalTotal) {
+        return res.status(400).json({ message: 'Cash received must be between zero and the sale total.' });
+      }
       const saleId =
         await generateSaleID(shopId);
 
@@ -969,9 +975,10 @@ const createSale = async (req, res) => {
           markupAmount: 0,
           totalWithMarkup: finalTotal,
           paymentType: 'Cash',
-          paymentStatus,
-          downPayment: paymentStatus === 'Unpaid' ? 0 : finalTotal,
-          remainingBalance: paymentStatus === 'Unpaid' ? finalTotal : 0,
+          paymentStatus: cashReceived >= finalTotal ? 'Paid' : 'Unpaid',
+          downPayment: cashReceived,
+          cashPayments: cashReceived > 0 ? [{ amount: cashReceived, paymentDate: recordedSaleDate, paymentMethod: paymentMethod || 'Cash' }] : [],
+          remainingBalance: roundMoney(finalTotal - cashReceived),
           installmentDuration: 0,
           selectedInstallmentDuration: 0,
           treatDownPaymentAsFirstInstallment: false,
@@ -1699,6 +1706,11 @@ const getSales = async (req, res) => {
       shopId
     };
 
+    const requestedCustomer = String(req.query.customer || '').trim();
+    if (requestedCustomer && mongoose.Types.ObjectId.isValid(requestedCustomer)) {
+      filter.customer = requestedCustomer;
+    }
+
     if (
       requestedType === 'cash'
     ) {
@@ -1713,6 +1725,11 @@ const getSales = async (req, res) => {
         'Installment';
     }
 
+    const requestedStatus = String(req.query.status || '').trim().toLowerCase();
+    if (['paid', 'unpaid'].includes(requestedStatus)) {
+      filter.paymentStatus = requestedStatus === 'paid' ? 'Paid' : 'Unpaid';
+    }
+
     // --------------------------------------------------------
     // OPTIONAL PAGINATION (backward compatible)
     // ?page=1&limit=20 -> { data, pagination }
@@ -1723,7 +1740,12 @@ const getSales = async (req, res) => {
 
     let salesQuery =
       Sale.find(filter)
-        .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
+        .populate(
+          'customer',
+          requestedCustomer
+            ? 'fullName mobileNumber cnic customerId'
+            : 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt'
+        )
         .populate('product', 'name brand model')
         .populate('items.product', 'name brand model')
         .populate('book', 'name')
@@ -1827,7 +1849,12 @@ const getSaleById = async (req, res) => {
           shopId,
 
           installmentPlan:
-            plan._id
+            plan._id,
+          $or: [
+            { revisionNumber: Number(plan.revisionNumber || 0) },
+            ...(Number(plan.revisionNumber || 0) === 0 ? [{ revisionNumber: { $exists: false } }] : []),
+          ],
+          isArchived: { $ne: true },
         })
           .sort({
             installmentNumber: 1
@@ -1868,6 +1895,109 @@ const getSaleById = async (req, res) => {
       error:
         error.message
     });
+  }
+};
+
+const receiveCashSalePayment = async (req, res) => {
+  try {
+    const sale = await Sale.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+      paymentType: 'Cash',
+    });
+
+    if (!sale) {
+      return res.status(404).json({ message: 'Outstanding cash sale not found.' });
+    }
+
+    const amount = roundMoney(req.body.amount);
+    const remaining = Math.max(0, roundMoney(sale.remainingBalance));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Enter a payment amount greater than zero.' });
+    }
+    if (amount > remaining) {
+      return res.status(400).json({ message: `Payment cannot exceed remaining cash balance ${remaining}.` });
+    }
+
+    const paymentDate = req.body.paymentDate ? normalizeDate(req.body.paymentDate) : new Date();
+    if (!paymentDate) {
+      return res.status(400).json({ message: 'Payment date is invalid.' });
+    }
+
+    const updatedSale = await Sale.findOneAndUpdate(
+      {
+        _id: sale._id,
+        shopId: req.shopId,
+        paymentType: 'Cash',
+        remainingBalance: { $gte: amount },
+      },
+      {
+        $inc: { downPayment: amount, remainingBalance: -amount },
+        $push: {
+          cashPayments: {
+            amount,
+            paymentDate,
+            paymentMethod: String(req.body.paymentMethod || 'Cash').trim().slice(0, 80) || 'Cash',
+          },
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedSale) {
+      return res.status(409).json({ message: 'The remaining cash balance changed. Refresh and try again.' });
+    }
+
+    updatedSale.paymentStatus = Number(updatedSale.remainingBalance || 0) <= 0 ? 'Paid' : 'Unpaid';
+    await updatedSale.save();
+
+    return res.status(200).json({
+      success: true,
+      message: updatedSale.paymentStatus === 'Paid'
+        ? 'Remaining cash received. Sale is now fully paid and appears in Cash Sales.'
+        : 'Cash payment recorded. Remaining amount is still due.',
+      data: { sale: updatedSale },
+    });
+  } catch (error) {
+    console.error('RECEIVE CASH SALE PAYMENT ERROR:', error);
+    return res.status(500).json({ message: 'Failed to record cash payment.', error: error.message });
+  }
+};
+
+const updateCashSaleBalance = async (req, res) => {
+  try {
+    const sale = await Sale.findOne({
+      _id: req.params.id,
+      shopId: req.shopId,
+      paymentType: 'Cash',
+    });
+    if (!sale) {
+      return res.status(404).json({ message: 'Cash sale not found.' });
+    }
+
+    const newRemainingBalance = roundMoney(req.body.remainingBalance);
+    if (!Number.isFinite(newRemainingBalance) || newRemainingBalance < 0) {
+      return res.status(400).json({ message: 'Remaining balance must be a valid amount of zero or more.' });
+    }
+
+    const receivedAmount = roundMoney(sale.downPayment || 0);
+    sale.remainingBalance = newRemainingBalance;
+    sale.finalTotal = roundMoney(receivedAmount + newRemainingBalance);
+    sale.totalWithMarkup = sale.finalTotal;
+    sale.subtotal = roundMoney(sale.finalTotal + Number(sale.discount || 0));
+    sale.paymentStatus = newRemainingBalance === 0 ? 'Paid' : 'Unpaid';
+    await sale.save();
+
+    return res.status(200).json({
+      success: true,
+      message: newRemainingBalance === 0
+        ? 'Balance updated. This invoice is now fully paid.'
+        : 'Remaining cash balance updated.',
+      data: { sale },
+    });
+  } catch (error) {
+    console.error('UPDATE CASH SALE BALANCE ERROR:', error);
+    return res.status(500).json({ message: 'Failed to update remaining cash balance.', error: error.message });
   }
 };
 
@@ -2228,8 +2358,9 @@ const updateSale = async (req, res) => {
       sale.totalWithMarkup = finalTotal;
       sale.customer = customerDoc?._id || null;
       sale.saleDate = updatedSaleDate;
-      sale.downPayment = sale.paymentStatus === 'Unpaid' ? 0 : finalTotal;
-      sale.remainingBalance = sale.paymentStatus === 'Unpaid' ? finalTotal : 0;
+      sale.downPayment = Math.min(Number(sale.downPayment || 0), finalTotal);
+      sale.remainingBalance = Math.max(0, roundMoney(finalTotal - sale.downPayment));
+      sale.paymentStatus = sale.remainingBalance <= 0 ? 'Paid' : 'Unpaid';
       await sale.save();
 
       return res.json({
@@ -2266,16 +2397,16 @@ const updateSale = async (req, res) => {
       });
     }
 
-    const qty =
+    let qty =
       Number(quantity);
 
-    const price =
+    let price =
       roundMoney(unitPrice);
 
-    const purchasePrice =
+    let purchasePrice =
       roundMoney(purchasePriceAtSale);
 
-    const discountAmount =
+    let discountAmount =
       roundMoney(discount);
 
     const dPayment =
@@ -2328,18 +2459,67 @@ const updateSale = async (req, res) => {
       });
     }
 
-    const subtotal =
+    let subtotal =
       roundMoney(
         qty * price
       );
 
-    const finalTotal =
+    let finalTotal =
       roundMoney(
         Math.max(
           0,
           subtotal - discountAmount
         )
       );
+
+    let installmentItems = null;
+    let installmentProductById = null;
+    if (paymentType === 'Installment' && Array.isArray(requestedItems)) {
+      if (requestedItems.length === 0) {
+        return res.status(400).json({ message: 'An installment sale must contain at least one product.' });
+      }
+      const oldItems = Array.isArray(sale.items) && sale.items.length > 0
+        ? sale.items.map((item) => ({
+            product: String(item.product?._id || item.product || ''),
+            purchasePriceAtSale: item.purchasePriceAtSale,
+          }))
+        : [{ product: String(sale.product?._id || sale.product || ''), purchasePriceAtSale: sale.purchasePriceAtSale }];
+      const oldCostByProduct = new Map(oldItems.map((item) => [item.product, item.purchasePriceAtSale]));
+      const parsedItems = requestedItems.map((item) => ({
+        productId: String(item?.product?._id || item?.product?.id || item?.product || ''),
+        quantity: Number(item?.quantity),
+        unitPrice: roundMoney(item?.unitPrice),
+        purchasePriceAtSale: item?.purchasePriceAtSale === undefined ? undefined : roundMoney(item.purchasePriceAtSale),
+        discount: roundMoney(item?.discount || 0),
+      }));
+      if (parsedItems.some((item) =>
+        !mongoose.Types.ObjectId.isValid(item.productId) ||
+        !Number.isInteger(item.quantity) || item.quantity < 1 ||
+        !Number.isFinite(item.unitPrice) || item.unitPrice < 0 ||
+        !Number.isFinite(item.discount) || item.discount < 0 || item.discount > roundMoney(item.quantity * item.unitPrice) ||
+        (item.purchasePriceAtSale !== undefined && (!Number.isFinite(item.purchasePriceAtSale) || item.purchasePriceAtSale < 0))
+      )) {
+        return res.status(400).json({ message: 'Each product needs a valid selection, quantity, purchase price, selling price, and discount.' });
+      }
+      const productDocs = await Product.find({ _id: { $in: [...new Set(parsedItems.map((item) => item.productId))] }, shopId });
+      installmentProductById = new Map(productDocs.map((doc) => [String(doc._id), doc]));
+      if (parsedItems.some((item) => !installmentProductById.has(item.productId))) {
+        return res.status(404).json({ message: 'A selected product was not found in this shop.' });
+      }
+      installmentItems = parsedItems.map((item) => ({
+        product: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        purchasePriceAtSale: Number(item.purchasePriceAtSale ?? oldCostByProduct.get(item.productId) ?? installmentProductById.get(item.productId).purchasePrice ?? 0),
+      }));
+      qty = installmentItems.reduce((sum, item) => sum + item.quantity, 0);
+      subtotal = roundMoney(installmentItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
+      discountAmount = roundMoney(installmentItems.reduce((sum, item) => sum + item.discount, 0));
+      finalTotal = roundMoney(Math.max(0, subtotal - discountAmount));
+      price = qty > 0 ? roundMoney(subtotal / qty) : 0;
+      purchasePrice = installmentItems[0].purchasePriceAtSale;
+    }
 
     // ========================================================
     // CASH UPDATE
@@ -2348,14 +2528,10 @@ const updateSale = async (req, res) => {
     if (
       paymentType === 'Cash'
     ) {
-      if (
-        Number(dPayment) !==
-          Number(sale.finalTotal) &&
-        Number(dPayment) !== 0
-      ) {
+      if (dPayment < 0 || dPayment > finalTotal) {
         return res.status(400).json({
           message:
-            'Cash sale cannot contain installment down payment information.'
+            'Cash received cannot exceed the sale total.'
         });
       }
 
@@ -2578,11 +2754,9 @@ const updateSale = async (req, res) => {
       sale.paymentType =
         'Cash';
 
-      sale.downPayment =
-        finalTotal;
-
-      sale.remainingBalance =
-        0;
+      sale.downPayment = Math.min(Number(sale.downPayment || 0), finalTotal);
+      sale.remainingBalance = Math.max(0, roundMoney(finalTotal - sale.downPayment));
+      sale.paymentStatus = sale.remainingBalance <= 0 ? 'Paid' : 'Unpaid';
 
       sale.installmentDuration =
         0;
@@ -2778,6 +2952,47 @@ const updateSale = async (req, res) => {
     // STOCK
     // ========================================================
 
+    if (installmentItems) {
+      const oldItems = Array.isArray(sale.items) && sale.items.length > 0
+        ? sale.items.map((item) => ({ productId: String(item.product?._id || item.product || ''), quantity: Number(item.quantity || 0) }))
+        : [{ productId: String(sale.product?._id || sale.product || ''), quantity: Number(sale.quantity || 0) }];
+      const oldQuantityByProduct = new Map();
+      const requestedQuantityByProduct = new Map();
+      oldItems.forEach((item) => oldQuantityByProduct.set(item.productId, (oldQuantityByProduct.get(item.productId) || 0) + item.quantity));
+      installmentItems.forEach((item) => requestedQuantityByProduct.set(String(item.product), (requestedQuantityByProduct.get(String(item.product)) || 0) + item.quantity));
+      const allProductIds = [...new Set([...oldQuantityByProduct.keys(), ...requestedQuantityByProduct.keys()])];
+      const stockProducts = await Product.find({ _id: { $in: allProductIds }, shopId });
+      const stockProductById = new Map(stockProducts.map((doc) => [String(doc._id), doc]));
+      for (const productId of allProductIds) {
+        const productDoc = stockProductById.get(productId);
+        if (!productDoc) return res.status(404).json({ message: 'An original or selected product was not found in this shop.' });
+        const availableAfterRestore = Number(productDoc.quantity || 0) + Number(oldQuantityByProduct.get(productId) || 0);
+        const requestedQuantity = Number(requestedQuantityByProduct.get(productId) || 0);
+        if (requestedQuantity > availableAfterRestore) {
+          return res.status(400).json({ message: `Insufficient stock for ${productDoc.name}. Available quantity: ${availableAfterRestore}` });
+        }
+      }
+      await StockMovement.deleteMany({ shopId, reference: sale.saleId });
+      for (const productId of allProductIds) {
+        const productDoc = stockProductById.get(productId);
+        const previousQuantity = Number(productDoc.quantity || 0) + Number(oldQuantityByProduct.get(productId) || 0);
+        const soldQuantity = Number(requestedQuantityByProduct.get(productId) || 0);
+        productDoc.quantity = previousQuantity - soldQuantity;
+        await productDoc.save();
+        if (soldQuantity > 0) {
+          await StockMovement.create({
+            shopId,
+            product: productDoc._id,
+            type: 'Sale',
+            quantity: soldQuantity,
+            previousQuantity,
+            newQuantity: productDoc.quantity,
+            reason: `Updated Installment Sale ${sale.saleId}`,
+            reference: sale.saleId,
+          });
+        }
+      }
+    } else {
     const oldProduct =
       await Product.findOne({
         _id:
@@ -2919,6 +3134,8 @@ const updateSale = async (req, res) => {
       });
     }
 
+    }
+
     // ========================================================
     // REMOVE OLD PLAN
     // ========================================================
@@ -2954,8 +3171,16 @@ const updateSale = async (req, res) => {
     sale.customer =
       customer;
 
+    sale.items = installmentItems || [{
+      product,
+      quantity: qty,
+      unitPrice: price,
+      discount: discountAmount,
+      purchasePriceAtSale: purchasePrice,
+    }];
+
     sale.product =
-      product;
+      installmentItems ? installmentItems[0].product : product;
 
     sale.purchasePriceAtSale =
       purchasePrice;
@@ -4090,6 +4315,8 @@ const exchangeSaleProduct = async (
 module.exports = {
   getSales,
   getSaleById,
+  receiveCashSalePayment,
+  updateCashSaleBalance,
   updateSaleBook,
   bulkUpdateSalesBook,
   createSale,

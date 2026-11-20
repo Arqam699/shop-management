@@ -231,16 +231,7 @@ export default function AiAssistant() {
 
   const fetchAiUsage = async () => {
     try {
-      const token = localStorage.getItem('token');
-
-      const response = await api.get(
-        '/api/ai/usage',
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await api.get('/api/ai/usage');
 
       const data = response.data;
 
@@ -269,13 +260,7 @@ export default function AiAssistant() {
         setHistoryLoading(true);
       }
 
-      const token = localStorage.getItem('token');
-
-      const response = await api.get('/api/ai/history', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.get('/api/ai/history');
 
       const data = response.data;
 
@@ -449,18 +434,10 @@ export default function AiAssistant() {
     setLoading(true);
 
     try {
-      const token =
-        localStorage.getItem('token');
-
       const response = await api.post(
         '/api/ai/chat',
         {
           message: query,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       );
 
@@ -568,9 +545,6 @@ export default function AiAssistant() {
     setLoading(true);
 
     try {
-      const token =
-        localStorage.getItem('token');
-
       const response = await api.post(
         '/api/ai/chat',
         {
@@ -581,11 +555,6 @@ export default function AiAssistant() {
               message.pendingAction.action.args,
             summary:
               message.pendingAction.summary,
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
           },
         }
       );

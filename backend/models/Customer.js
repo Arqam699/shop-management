@@ -63,6 +63,12 @@ const customerSchema = new mongoose.Schema(
       lowercase: true,
     },
 
+    referredBy: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     notes: {
       type: String,
       trim: true,

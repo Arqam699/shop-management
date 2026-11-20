@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Payment = require('../models/Payment');
 const {
   getPaginationParams,
@@ -112,10 +113,17 @@ const getPayments = async (req, res) => {
       isArchived: { $ne: true },
     };
 
+    const requestedCustomer = String(req.query.customer || '').trim();
+    if (requestedCustomer && mongoose.Types.ObjectId.isValid(requestedCustomer)) {
+      paymentsFilter.customer = requestedCustomer;
+    }
+
     let paymentsQuery = Payment.find(paymentsFilter)
       .populate(
         'customer',
-        'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt'
+        requestedCustomer
+          ? 'fullName mobileNumber cnic customerId'
+          : 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt'
       )
       .populate({
         path: 'sale',
@@ -311,6 +319,17 @@ const deletePayment = async (req, res) => {
       });
     }
 
+    const paymentPlanId = payment.installmentPlan?._id || payment.installmentPlan;
+    const planForRevisionCheck = paymentPlanId
+      ? await InstallmentPlan.findOne({ _id: paymentPlanId, shopId: req.shopId })
+      : null;
+    if (planForRevisionCheck && Number(payment.planRevision || 0) < Number(planForRevisionCheck.revisionNumber || 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This receipt belongs to an earlier plan revision and cannot be deleted. Preserve it for the audit trail.',
+      });
+    }
+
     // ----------------------------------------------------------
     // REVERSE PAYMENT ALLOCATIONS
     //
@@ -375,6 +394,8 @@ const deletePayment = async (req, res) => {
         const allInstallments = await Installment.find({
           shopId: req.shopId,
           installmentPlan: plan._id,
+          revisionNumber: Number(plan.revisionNumber || 0),
+          isArchived: { $ne: true },
         }).lean();
 
         const remainingInstallmentBalance =
@@ -417,6 +438,8 @@ const deletePayment = async (req, res) => {
             const installmentDoc = await Installment.findOne({
               _id: installment._id,
               shopId: req.shopId,
+              revisionNumber: Number(plan.revisionNumber || 0),
+              isArchived: { $ne: true },
             });
             if (!installmentDoc) continue;
             calculateInstallmentStatus(installmentDoc);

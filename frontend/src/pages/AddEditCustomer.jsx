@@ -59,6 +59,7 @@ const AddEditCustomer = () => {
     address: '',
     city: 'Sangla Hill',
     email: '',
+    referredBy: '',
     notes: '',
 
     // CUSTOMER FINGERPRINT
@@ -198,6 +199,7 @@ const AddEditCustomer = () => {
           address: data.address || '',
           city: data.city || 'Sangla Hill',
           email: data.email || '',
+          referredBy: data.referredBy || '',
           notes: data.notes || '',
           fingerprintFmd: data.fingerprintFmd || '',
           fingerprintImage: data.fingerprintImage || '',
@@ -1124,6 +1126,20 @@ const AddEditCustomer = () => {
                 placeholder="Street / Mohalla / Village complete details..."
                 className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                 required
+              />
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Customer Reference / Referred By
+              </label>
+              <input
+                type="text"
+                name="referredBy"
+                value={formData.referredBy}
+                onChange={handleChange}
+                placeholder="Name or contact of the person who referred this customer"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
               />
             </div>
           </div>

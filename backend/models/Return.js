@@ -57,5 +57,6 @@ const returnSchema = new mongoose.Schema(
 );
 
 returnSchema.index({ shopId: 1, returnId: 1 }, { unique: true });
+returnSchema.index({ shopId: 1, customer: 1, createdAt: 1 });
 
 module.exports = mongoose.model('Return', returnSchema);

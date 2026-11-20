@@ -166,9 +166,10 @@ const calculatePaymentScore = async ({
       if (planIds.length > 0) {
         customerInstallments = await Installment.find({
           shopId,
-          installmentPlan: {
-            $in: planIds,
-          },
+          $or: customerPlans.flatMap((plan) => [
+            { installmentPlan: plan._id, revisionNumber: Number(plan.revisionNumber || 0), isArchived: { $ne: true } },
+            ...(Number(plan.revisionNumber || 0) === 0 ? [{ installmentPlan: plan._id, revisionNumber: { $exists: false }, isArchived: { $ne: true } }] : []),
+          ]),
         })
           .sort({
             dueDate: 1,
@@ -1037,7 +1038,7 @@ const getCustomers = async (req, res) => {
 
     const customerListSelect = req.query.includeMedia === 'true'
       ? CUSTOMER_MEDIA_SELECT
-      : 'customerId fullName fatherName mobileNumber cnic city createdAt';
+      : 'customerId fullName fatherName mobileNumber cnic city referredBy createdAt';
 
     let customersQuery =
       Customer
@@ -1086,7 +1087,7 @@ const getCustomers = async (req, res) => {
             shopId: req.shopId,
             customer: { $in: customerIds },
           })
-            .select('_id customer remainingBalance')
+            .select('_id customer remainingBalance revisionNumber')
             .sort({ createdAt: 1 })
             .lean(),
           Payment.find({
@@ -1113,9 +1114,12 @@ const getCustomers = async (req, res) => {
     const installments = customerPlans.length
       ? await Installment.find({
           shopId: req.shopId,
-          installmentPlan: { $in: customerPlans.map((plan) => plan._id) },
+          $or: customerPlans.flatMap((plan) => [
+            { installmentPlan: plan._id, revisionNumber: Number(plan.revisionNumber || 0), isArchived: { $ne: true } },
+            ...(Number(plan.revisionNumber || 0) === 0 ? [{ installmentPlan: plan._id, revisionNumber: { $exists: false }, isArchived: { $ne: true } }] : []),
+          ]),
         })
-          .select('installmentPlan installmentNumber amount originalAmount paidAmount remainingAmount dueDate status paidDate settledDate')
+          .select('installmentPlan installmentNumber amount originalAmount paidAmount remainingAmount dueDate status paidDate settledDate revisionNumber')
           .sort({ dueDate: 1, installmentNumber: 1 })
           .lean()
       : [];

@@ -26,6 +26,15 @@ const saleInstallmentSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const cashSalePaymentSchema = new mongoose.Schema(
+  {
+    amount: { type: Number, required: true, min: 0 },
+    paymentDate: { type: Date, default: Date.now },
+    paymentMethod: { type: String, trim: true, default: 'Cash' },
+  },
+  { _id: true }
+);
+
 
 // ============================================================
 // SALE SCHEMA
@@ -206,6 +215,13 @@ const saleSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Cash received so far for a cash sale. Partial collections stay on the
+    // original sale and invoice until the remaining balance is paid.
+    cashPayments: {
+      type: [cashSalePaymentSchema],
+      default: [],
+    },
+
 
     // --------------------------------------------------------
     // CURRENT REMAINING BALANCE
@@ -285,6 +301,7 @@ saleSchema.index(
 saleSchema.index({ shopId: 1, saleDate: -1 });
 saleSchema.index({ shopId: 1, paymentType: 1, createdAt: -1 });
 saleSchema.index({ shopId: 1, createdAt: -1 });
+saleSchema.index({ shopId: 1, customer: 1, createdAt: -1 });
 
 
 // ============================================================
@@ -305,8 +322,17 @@ saleSchema.pre('validate', function () {
     this.markupAmount = 0;
     this.totalWithMarkup = this.finalTotal;
 
-    this.downPayment = this.paymentStatus === 'Unpaid' ? 0 : this.finalTotal;
-    this.remainingBalance = this.paymentStatus === 'Unpaid' ? this.finalTotal : 0;
+    const cashTotal = Math.max(0, Number(this.finalTotal || 0));
+    let receivedAmount = Math.max(0, Number(this.downPayment || 0));
+
+    // Keep existing historical Paid sales paid when they are next saved.
+    if (receivedAmount === 0 && this.paymentStatus === 'Paid' && cashTotal > 0) {
+      receivedAmount = cashTotal;
+    }
+
+    this.downPayment = Math.min(cashTotal, receivedAmount);
+    this.remainingBalance = Math.max(0, cashTotal - this.downPayment);
+    this.paymentStatus = this.remainingBalance <= 0 ? 'Paid' : 'Unpaid';
 
     this.installmentDuration = 0;
     this.selectedInstallmentDuration = 0;

@@ -221,6 +221,13 @@ const shopSchema = new mongoose.Schema(
             required: true,
           },
 
+          // Hash of the current JWT session for this device. Removing or
+          // replacing this device entry immediately revokes that session.
+          sessionIdHash: {
+            type: String,
+            default: '',
+          },
+
           firstSeenAt: {
             type: Date,
             default: Date.now,

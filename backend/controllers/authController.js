@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const Admin = require('../models/Admin');
 const Shop = require('../models/Shop');
 
@@ -256,6 +257,11 @@ const loginAdmin = async (req, res) => {
       });
     }
 
+    const sessionId = crypto.randomBytes(32).toString('base64url');
+    const currentDeviceIndex = deviceIndex >= 0 ? deviceIndex : shop.authorizedDevices.length - 1;
+    shop.authorizedDevices[currentDeviceIndex].sessionIdHash =
+      crypto.createHash('sha256').update(sessionId).digest('hex');
+
     // ====================================================
     // LOGIN IP
     // ====================================================
@@ -314,7 +320,9 @@ const loginAdmin = async (req, res) => {
       Number(
         shop.authVersion
       ) || 0,
-      Number(admin.sessionVersion) || 0
+      Number(admin.sessionVersion) || 0,
+      deviceId,
+      sessionId
     );
 
     // ====================================================
@@ -520,6 +528,21 @@ const changeAdminPassword = async (
         ? 'Admin Changed'
         : 'First Login';
 
+    const deviceId = String(req.get('X-Device-Id') || '').trim();
+    const authorizedDevice = shop.authorizedDevices.find(
+      (device) => device.deviceId === deviceId
+    );
+    if (!authorizedDevice) {
+      return res.status(401).json({
+        success: false,
+        code: 'DEVICE_SESSION_REVOKED',
+        message: 'This device session has been revoked. Please log in again.',
+      });
+    }
+    const sessionId = crypto.randomBytes(32).toString('base64url');
+    authorizedDevice.sessionIdHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+    await shop.save();
+
     // ====================================================
     // CHANGE PASSWORD
     //
@@ -542,7 +565,9 @@ const changeAdminPassword = async (
       admin._id,
       admin.shopId,
       Number(shop.authVersion) || 0,
-      Number(admin.sessionVersion) || 0
+      Number(admin.sessionVersion) || 0,
+      deviceId,
+      sessionId
     );
 
     // ====================================================

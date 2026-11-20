@@ -231,7 +231,7 @@ const Invoices = () => {
   );
 
   const totalInvoicedVal = filteredInvoices.reduce(
-    (sum, inv) => sum + Number(inv.finalTotal || inv.totalAmount || 0),
+    (sum, inv) => sum + Number(inv.paymentType === 'Installment' ? inv.totalWithMarkup || inv.finalTotal || inv.totalAmount || 0 : inv.finalTotal || inv.totalAmount || 0),
     0
   );
 
@@ -371,33 +371,43 @@ const Invoices = () => {
         'px-5 py-3.5 text-right font-black text-slate-900',
       render: (inv) =>
         formatMoney(
-          inv.finalTotal || inv.totalAmount || 0
+          inv.paymentType === 'Installment'
+            ? inv.totalWithMarkup || inv.finalTotal || inv.totalAmount || 0
+            : inv.finalTotal || inv.totalAmount || 0
         ),
     },
     {
       key: 'downPayment',
-      header: 'Down Payment',
+      header: 'Down Payment / Received',
       headerClassName: 'px-5 py-4 text-right',
       className:
         'px-5 py-3.5 text-right font-black text-emerald-600',
       render: (inv) => (
-        <>+{formatMoney(inv.paymentType === 'Installment' ? inv.downPayment || 0 : 0)}</>
+        <div className="whitespace-nowrap">
+          <p>+{formatMoney(inv.downPayment || 0)}</p>
+          {inv.paymentType === 'Cash' && Number(inv.remainingBalance || 0) > 0 && (
+            <p className="mt-1 text-[9px] font-black uppercase text-amber-600">Partially Paid</p>
+          )}
+        </div>
       ),
     },
     {
       key: 'remainingBalance',
-      header: 'Original Financing Dues',
+      header: 'Remaining Balance / Financing Dues',
       headerClassName:
         'px-5 py-4 text-right text-rose-600 font-black',
       className:
         'px-5 py-3.5 text-right font-black text-rose-600 text-sm',
       render: (inv) => (
         <div className="whitespace-nowrap">
-          <p>{formatMoney(getFixedFinancingDues(inv))}</p>
+          <p>{formatMoney(inv.paymentType === 'Cash' ? inv.remainingBalance || 0 : getFixedFinancingDues(inv))}</p>
           {inv.paymentType === 'Installment' && (
             <p className="mt-1 text-[9px] font-semibold text-slate-400">
               Outstanding now: {formatMoney(inv.remainingBalance || 0)}
             </p>
+          )}
+          {inv.paymentType === 'Cash' && Number(inv.remainingBalance || 0) <= 0 && (
+            <p className="mt-1 text-[9px] font-black uppercase text-emerald-600">Fully Paid</p>
           )}
         </div>
       ),

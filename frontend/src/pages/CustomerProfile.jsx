@@ -877,6 +877,12 @@ const IdentityCard = ({
                   />
 
                   <DetailItem
+                    icon={User}
+                    label="Referred By"
+                    value={person?.referredBy}
+                  />
+
+                  <DetailItem
                     icon={MapPin}
                     label="Residential Address"
                     value={person?.address}
@@ -1326,6 +1332,11 @@ const CustomerProfile = () => {
                   <p className="mb-1 text-[10px] font-semibold text-slate-400">
                     Added at: {formatAddedAt(customer.createdAt)}
                   </p>
+                  {customer.referredBy && (
+                    <p className="mb-1 text-[10px] font-semibold text-slate-300">
+                      Referred by: {customer.referredBy}
+                    </p>
+                  )}
 
                   <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white">
                     {customer.fullName ||
@@ -1840,6 +1851,13 @@ const CustomerProfile = () => {
                 <span>Email Address</span>
                 <strong>
                   {customer.email || 'N/A'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Referred By</span>
+                <strong>
+                  {customer.referredBy || 'N/A'}
                 </strong>
               </div>
 

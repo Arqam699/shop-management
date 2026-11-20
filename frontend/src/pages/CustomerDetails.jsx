@@ -251,6 +251,7 @@ const getPaymentScore = (customer) => {
         getCNIC(customer),
         getAddress(customer),
         getCity(customer),
+        customer?.referredBy,
       ];
 
       return (
@@ -427,6 +428,7 @@ const getPaymentScore = (customer) => {
               const cnic = getCNIC(customer);
               const address = getAddress(customer);
               const city = getCity(customer);
+              const referredBy = customer?.referredBy || '';
               const photo = getPhoto(customer);
               const paymentScore = getPaymentScore(customer);
               const addedAt = formatAddedAt(customer.createdAt);
@@ -533,6 +535,19 @@ const getPaymentScore = (customer) => {
                             <p className="text-slate-800 font-bold truncate">{city || '—'}</p>
                           </div>
                         </div>
+
+                        {/* Referral source */}
+                        {referredBy && (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                              <Users className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">Referred By</p>
+                              <p className="text-slate-800 font-bold truncate">{referredBy}</p>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Address */}
                         <div className="flex items-center gap-2 min-w-0 sm:col-span-2 lg:col-span-3 xl:col-span-4">

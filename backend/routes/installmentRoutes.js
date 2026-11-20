@@ -6,7 +6,8 @@ const {
   getInstallmentPlans,
   getInstallmentPlanById,
   payInstallment,
-  getDueInstallments
+  getDueInstallments,
+  reviseInstallmentPlan,
 } = require('../controllers/installmentController');
 
 const { protect } = require('../middleware/authMiddleware');
@@ -28,6 +29,7 @@ router.get('/due', protect, getDueInstallments);
 // GET SINGLE INSTALLMENT PLAN
 // ======================================================
 router.get('/:id', protect, getInstallmentPlanById);
+router.put('/:id/revise', protect, reviseInstallmentPlan);
 
 // ======================================================
 // PAY INSTALLMENT

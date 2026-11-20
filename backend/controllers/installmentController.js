@@ -45,6 +45,13 @@ const roundMoney = (value) => {
   ) / 100;
 };
 
+const revisionFilter = (revisionNumber) => ({
+  $or: [
+    { revisionNumber },
+    ...(Number(revisionNumber) === 0 ? [{ revisionNumber: { $exists: false } }] : []),
+  ],
+});
+
 // ============================================================
 // BOOLEAN HELPER
 // ============================================================
@@ -157,7 +164,9 @@ const refreshPlanFinancials = async (
   const installments =
     await Installment.find({
       shopId,
-      installmentPlan: plan._id
+      installmentPlan: plan._id,
+      ...revisionFilter(Number(plan.revisionNumber || 0)),
+      isArchived: { $ne: true },
     }).lean();
 
   const totals =
@@ -269,7 +278,9 @@ const getInstallmentPlans = async (
 
     const buildPlansQuery = () =>
       InstallmentPlan.find(plansFilter)
-        .populate('customer', 'fullName mobileNumber cnic +liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
+        // The list view only needs searchable customer fields. Avoid sending
+        // profile/fingerprint images for every plan in the table response.
+        .populate('customer', 'fullName mobileNumber cnic')
         .populate('product', 'name brand model')
         .populate({
           path: 'sale',
@@ -295,14 +306,46 @@ const getInstallmentPlans = async (
     const plans =
       await applyPaging(buildPlansQuery());
 
-    await Promise.all(
-      plans.map((plan) =>
-        updateOverdueStatus(
-          plan._id,
-          shopId
-        )
-      )
-    );
+    // Refresh overdue state in batches. The previous implementation ran
+    // several database operations per plan, which made opening this page
+    // increasingly slow as the shop accumulated installment plans.
+    const planIds = plans.map((plan) => plan._id);
+    if (planIds.length) {
+      const now = new Date();
+      await Installment.updateMany(
+        {
+          shopId,
+          installmentPlan: { $in: planIds },
+          status: { $in: ['Pending', 'Partially Paid'] },
+          dueDate: { $lt: now },
+          remainingAmount: { $gt: 0 },
+        },
+        { $set: { status: 'Overdue' } }
+      );
+
+      const overduePlanIds = await Installment.distinct('installmentPlan', {
+        shopId,
+        installmentPlan: { $in: planIds },
+        status: 'Overdue',
+        remainingAmount: { $gt: 0 },
+      });
+      const overduePlanIdSet = new Set(overduePlanIds.map(String));
+      const planStatusUpdates = plans
+        .filter((plan) => plan.status !== 'Completed')
+        .map((plan) => ({
+          updateOne: {
+            filter: { _id: plan._id, shopId, status: { $ne: 'Completed' } },
+            update: {
+              $set: {
+                status: overduePlanIdSet.has(String(plan._id)) ? 'Overdue' : 'Active',
+              },
+            },
+          },
+        }));
+      if (planStatusUpdates.length) {
+        await InstallmentPlan.bulkWrite(planStatusUpdates, { ordered: false });
+      }
+    }
 
     const refreshedPlans =
       await applyPaging(buildPlansQuery())
@@ -328,15 +371,30 @@ const getInstallmentPlans = async (
     // CORRECT PLAN FINANCIALS
     // ========================================================
 
+    const activeInstallmentFilters = refreshedPlans.map((plan) => ({
+      installmentPlan: plan._id,
+      ...revisionFilter(Number(plan.revisionNumber || 0)),
+    }));
+    const allPlanInstallments = activeInstallmentFilters.length
+      ? await Installment.find({
+          shopId,
+          isArchived: { $ne: true },
+          $or: activeInstallmentFilters,
+        }).lean()
+      : [];
+    const installmentsByPlan = new Map();
+    for (const installment of allPlanInstallments) {
+      const key = String(installment.installmentPlan);
+      const rows = installmentsByPlan.get(key);
+      if (rows) rows.push(installment);
+      else installmentsByPlan.set(key, [installment]);
+    }
+
     for (const plan of refreshedPlans) {
       plan.returns = returnsBySale.get(String(plan.sale?._id)) || [];
       plan.completedByReturn = plan.status === 'Completed' && plan.returns.length > 0;
 
-      const installments =
-        await Installment.find({
-          shopId,
-          installmentPlan: plan._id
-        }).lean();
+      const installments = installmentsByPlan.get(String(plan._id)) || [];
 
       const totals =
         calculateInstallmentTotals(
@@ -718,7 +776,9 @@ const getInstallmentPlanById = async (
     const installments =
       await Installment.find({
         shopId,
-        installmentPlan: id
+        installmentPlan: id,
+        ...revisionFilter(Number(refreshedPlan.revisionNumber || 0)),
+        isArchived: { $ne: true },
       })
         .sort({
           installmentNumber: 1
@@ -874,7 +934,8 @@ const payInstallment = async (
     const currentInstallment =
       await Installment.findOne({
         _id: installmentId,
-        shopId
+        shopId,
+        isArchived: { $ne: true },
       });
 
     if (!currentInstallment) {
@@ -931,7 +992,9 @@ const payInstallment = async (
       await Installment.find({
         shopId,
         installmentPlan:
-          plan._id
+          plan._id,
+        ...revisionFilter(Number(plan.revisionNumber || 0)),
+        isArchived: { $ne: true },
       });
 
     const totalsBefore =
@@ -989,6 +1052,8 @@ const payInstallment = async (
         shopId,
         installmentPlan:
           plan._id,
+        ...revisionFilter(Number(plan.revisionNumber || 0)),
+        isArchived: { $ne: true },
         installmentNumber: {
           $gte:
             currentInstallment.installmentNumber
@@ -1186,7 +1251,9 @@ const payInstallment = async (
       await Installment.find({
         shopId,
         installmentPlan:
-          plan._id
+          plan._id,
+        ...revisionFilter(Number(plan.revisionNumber || 0)),
+        isArchived: { $ne: true },
       });
 
     const totalsAfter =
@@ -1366,6 +1433,9 @@ const payInstallment = async (
         installmentPlan:
           plan._id,
 
+        planRevision:
+          Number(plan.revisionNumber || 0),
+
         installment:
           firstAffectedInstallment._id,
 
@@ -1417,7 +1487,9 @@ const payInstallment = async (
       await Installment.find({
         shopId,
         installmentPlan:
-          plan._id
+          plan._id,
+        ...revisionFilter(Number(updatedPlan.revisionNumber || 0)),
+        isArchived: { $ne: true },
       })
         .sort({
           installmentNumber: 1
@@ -1546,6 +1618,231 @@ const payInstallment = async (
   }
 };
 
+const getMarkupPercentageForDuration = (duration) => {
+  if (duration <= 3) return 15;
+  if (duration <= 6) return 25;
+  return 50;
+};
+
+const reviseInstallmentPlan = async (req, res) => {
+  try {
+    const shopId = req.shopId;
+    const plan = await InstallmentPlan.findOne({ _id: req.params.id, shopId });
+    if (!plan) return res.status(404).json({ message: 'Installment plan not found.' });
+    if (plan.status === 'Completed' || Number(plan.remainingBalance || 0) <= 0) {
+      return res.status(400).json({ message: 'A completed installment plan cannot be revised.' });
+    }
+
+    const newDuration = Number(req.body.duration);
+    const oldDuration = Number(plan.selectedDuration || plan.duration || 0);
+    if (!Number.isInteger(newDuration) || newDuration < 1 || newDuration > 12) {
+      return res.status(400).json({ message: 'Plan duration must be a whole number from 1 to 12 months.' });
+    }
+
+    const sale = await Sale.findOne({ _id: plan.sale, shopId, paymentType: 'Installment' });
+    if (!sale) return res.status(404).json({ message: 'Related installment sale was not found.' });
+
+    const currentRevision = Number(plan.revisionNumber || 0);
+    const oldInstallments = await Installment.find({
+      shopId,
+      installmentPlan: plan._id,
+      ...revisionFilter(currentRevision),
+      isArchived: { $ne: true },
+    }).sort({ installmentNumber: 1 });
+    const oldTotals = calculateInstallmentTotals(oldInstallments);
+    const downPayment = roundMoney(plan.downPayment || 0);
+    const downPaymentFirst = plan.treatDownPaymentAsFirstInstallment === true && downPayment > 0;
+    const oldBalanceReduction = roundMoney(plan.balanceReduction || 0);
+    const collectedTotal = roundMoney(
+      (downPaymentFirst ? 0 : downPayment) + oldTotals.totalPaid + oldBalanceReduction
+    );
+
+    const priceBeforeMarkup = roundMoney(sale.finalTotal || 0);
+    const markupBase = downPaymentFirst
+      ? Math.max(0, priceBeforeMarkup - downPayment)
+      : priceBeforeMarkup;
+    const savedMarkupPercentage = Number(sale.markupPercentage || 0);
+    const currentMarkupPercentage = savedMarkupPercentage > 0
+      ? savedMarkupPercentage
+      : markupBase > 0
+        ? Math.max(0, (Number(plan.totalAmount || priceBeforeMarkup) - priceBeforeMarkup) / markupBase * 100)
+        : getMarkupPercentageForDuration(oldDuration);
+    const requestedMarkupPercentage = req.body.markupPercentage === undefined
+      ? currentMarkupPercentage * newDuration / oldDuration
+      : Number(req.body.markupPercentage);
+    if (!Number.isFinite(requestedMarkupPercentage) || requestedMarkupPercentage < 0) {
+      return res.status(400).json({ message: 'Markup percentage must be a valid amount of zero or more.' });
+    }
+    const markupPercentage = roundMoney(requestedMarkupPercentage);
+    const markupAmount = roundMoney(markupBase * markupPercentage / 100);
+    const newTotalAmount = roundMoney(priceBeforeMarkup + markupAmount);
+    if (collectedTotal > newTotalAmount) {
+      return res.status(400).json({
+        message: `Payments already received (${collectedTotal}) exceed the revised total (${newTotalAmount}).`,
+        collectedTotal,
+        newTotalAmount,
+      });
+    }
+
+    const nextRevision = currentRevision + 1;
+    const now = new Date();
+    const oldMonthlyInstallment = oldInstallments.find((item) => !downPaymentFirst || Number(item.installmentNumber) > 1);
+    const firstMonthlyDueDate = oldMonthlyInstallment?.dueDate || plan.firstDueDate || sale.saleDate || now;
+    const includeDownPaymentRow = downPaymentFirst && newDuration > 1;
+    const monthlyCount = Math.max(1, newDuration - (includeDownPaymentRow ? 1 : 0));
+    const schedulePrincipal = includeDownPaymentRow
+      ? roundMoney(newTotalAmount - downPayment)
+      : downPaymentFirst
+        ? newTotalAmount
+        : roundMoney(newTotalAmount - downPayment);
+    const monthlyAmount = roundMoney(schedulePrincipal / monthlyCount);
+    const schedule = [];
+
+    if (includeDownPaymentRow) {
+      schedule.push({
+        installmentNumber: 1,
+        amount: downPayment,
+        dueDate: sale.saleDate || oldInstallments[0]?.dueDate || now,
+        paidAmount: downPayment,
+      });
+    }
+
+    let allocated = 0;
+    for (let index = 0; index < monthlyCount; index += 1) {
+      const amount = index === monthlyCount - 1
+        ? roundMoney(schedulePrincipal - allocated)
+        : monthlyAmount;
+      allocated = roundMoney(allocated + amount);
+      const dueDate = new Date(firstMonthlyDueDate);
+      dueDate.setMonth(dueDate.getMonth() + index);
+      schedule.push({
+        installmentNumber: schedule.length + 1,
+        amount,
+        dueDate,
+        paidAmount: 0,
+      });
+    }
+
+    // Carry existing receipts into the revised schedule without changing
+    // the receipt records themselves.
+    let paidToAllocate = roundMoney(oldTotals.totalPaid + oldBalanceReduction - (includeDownPaymentRow ? downPayment : 0));
+    for (const installment of schedule) {
+      const alreadyPaid = Number(installment.paidAmount || 0);
+      if (alreadyPaid > 0) continue;
+      const paidAmount = roundMoney(Math.min(installment.amount, Math.max(0, paidToAllocate)));
+      installment.paidAmount = paidAmount;
+      paidToAllocate = roundMoney(Math.max(0, paidToAllocate - paidAmount));
+    }
+
+    const newScheduleTotal = roundMoney(schedule.reduce((sum, installment) => sum + installment.amount, 0));
+    const expectedScheduleTotal = includeDownPaymentRow || downPaymentFirst
+      ? newTotalAmount
+      : roundMoney(newTotalAmount - downPayment);
+    if (Math.abs(newScheduleTotal - expectedScheduleTotal) > 0.01) {
+      return res.status(500).json({ message: 'Could not calculate a balanced revised schedule.' });
+    }
+
+    const newRemainingBalance = roundMoney(newTotalAmount - collectedTotal);
+    const priorRevision = {
+      revisionNumber: currentRevision,
+      selectedDuration: plan.selectedDuration,
+      duration: plan.duration,
+      totalAmount: plan.totalAmount,
+      downPayment: plan.downPayment,
+      remainingBalance: plan.remainingBalance,
+      markupPercentage: sale.markupPercentage,
+      markupAmount: sale.markupAmount,
+      firstDueDate: plan.firstDueDate,
+      invoiceSnapshot: plan.invoiceSnapshot?.toObject?.() || plan.invoiceSnapshot,
+      installments: oldInstallments.map((installment) => ({
+        installmentNumber: installment.installmentNumber,
+        amount: installment.amount,
+        paidAmount: installment.paidAmount,
+        remainingAmount: installment.remainingAmount,
+        dueDate: installment.dueDate,
+        status: installment.status,
+      })),
+      revisedAt: now,
+    };
+
+    const newInstallments = schedule.map((installment) => {
+      const remainingAmount = roundMoney(Math.max(0, installment.amount - installment.paidAmount));
+      return {
+        shopId,
+        installmentPlan: plan._id,
+        installmentNumber: installment.installmentNumber,
+        revisionNumber: nextRevision,
+        amount: installment.amount,
+        originalAmount: installment.amount,
+        paidAmount: installment.paidAmount,
+        remainingAmount,
+        dueDate: installment.dueDate,
+        status: remainingAmount <= 0 ? 'Paid' : installment.paidAmount > 0 ? 'Partially Paid' : 'Pending',
+        paidDate: installment.installmentNumber === 1 && includeDownPaymentRow && installment.paidAmount > 0
+          ? (sale.saleDate || now)
+          : undefined,
+      };
+    });
+    await Installment.deleteMany({ shopId, installmentPlan: plan._id, revisionNumber: nextRevision });
+    await Installment.insertMany(newInstallments);
+
+    plan.revisions.push(priorRevision);
+    plan.revisionNumber = nextRevision;
+    plan.selectedDuration = newDuration;
+    plan.duration = monthlyCount;
+    plan.totalAmount = newTotalAmount;
+    plan.remainingBalance = newRemainingBalance;
+    plan.balanceReduction = 0;
+    plan.status = newRemainingBalance <= 0 ? 'Completed' : 'Active';
+    plan.firstDueDate = firstMonthlyDueDate;
+    plan.invoiceSnapshot = {
+      selectedDuration: newDuration,
+      duration: monthlyCount,
+      downPayment,
+      treatDownPaymentAsFirstInstallment: plan.treatDownPaymentAsFirstInstallment,
+      financedAmount: roundMoney(newTotalAmount - downPayment),
+      installments: schedule.map(({ installmentNumber, amount, dueDate }) => ({ installmentNumber, amount, dueDate })),
+      createdAt: now,
+    };
+    await plan.save();
+
+    sale.markupPercentage = markupPercentage;
+    sale.markupAmount = markupAmount;
+    sale.totalWithMarkup = newTotalAmount;
+    sale.installmentDuration = monthlyCount;
+    sale.selectedInstallmentDuration = newDuration;
+    sale.remainingBalance = newRemainingBalance;
+    sale.paymentStatus = newRemainingBalance <= 0 ? 'Paid' : 'Unpaid';
+    sale.installmentScheduleSnapshot = schedule.map(({ installmentNumber, amount, dueDate }) => ({ installmentNumber, amount, dueDate }));
+    await sale.save();
+
+    await Installment.updateMany(
+      { shopId, installmentPlan: plan._id, ...revisionFilter(currentRevision), isArchived: { $ne: true } },
+      { $set: { isArchived: true, status: 'Settled', remainingAmount: 0 } }
+    );
+
+    const updatedPlan = await InstallmentPlan.findOne({ _id: plan._id, shopId })
+      .populate('customer', '+liveImage +fingerprintImage +liveImageCapturedAt +fingerprintCapturedAt')
+      .populate('product')
+      .populate({ path: 'sale', populate: { path: 'items.product' } });
+    const updatedInstallments = await Installment.find({
+      shopId,
+      installmentPlan: plan._id,
+      revisionNumber: nextRevision,
+      isArchived: { $ne: true },
+    }).sort({ installmentNumber: 1 });
+
+    return res.status(200).json({
+      success: true,
+      message: `Plan revised to ${newDuration} months. Previous payments were preserved, and the revised invoice total is ${newTotalAmount}.`,
+      data: { plan: updatedPlan, installments: updatedInstallments },
+    });
+  } catch (error) {
+    console.error('REVISE INSTALLMENT PLAN ERROR:', error);
+    return res.status(500).json({ message: 'Failed to revise installment plan.', error: error.message });
+  }
+};
+
 // ============================================================
 // EXPORTS
 // ============================================================
@@ -1554,5 +1851,6 @@ module.exports = {
   getInstallmentPlans,
   getInstallmentPlanById,
   getDueInstallments,
-  payInstallment
+  payInstallment,
+  reviseInstallmentPlan,
 };

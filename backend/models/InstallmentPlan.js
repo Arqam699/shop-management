@@ -79,6 +79,18 @@ const installmentPlanSchema = new mongoose.Schema(
       default: 0,
     },
 
+    revisionNumber: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Keep prior contract terms and schedules for audit when the plan is revised.
+    revisions: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+
     treatDownPaymentAsFirstInstallment: {
       type: Boolean,
       default: false,

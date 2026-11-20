@@ -65,6 +65,12 @@ const paymentSchema = new mongoose.Schema(
       required: true,
     },
 
+    planRevision: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     /*
       Kept for backwards compatibility.
       This points to the first installment affected

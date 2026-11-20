@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import {
@@ -64,6 +64,7 @@ const Customers = () => {
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerSelectorSearch, setCustomerSelectorSearch] = useState('');
+  const deferredCustomerSelectorSearch = useDeferredValue(customerSelectorSearch);
 
   // =====================================================
   // COMPLETE PROFILE / LEDGER MODAL
@@ -180,7 +181,7 @@ const Customers = () => {
   // CUSTOMER SELECTOR
   // =====================================================
   const selectorCustomers = useMemo(() => {
-    const term = customerSelectorSearch.trim().toLowerCase();
+    const term = deferredCustomerSelectorSearch.trim().toLowerCase();
 
     if (!term) {
       return customers;
@@ -190,17 +191,19 @@ const Customers = () => {
       const name = String(customer?.fullName || '').toLowerCase();
       const id = String(customer?.customerId || '').toLowerCase();
       const phone = String(customer?.mobileNumber || '').toLowerCase();
+      const referredBy = String(customer?.referredBy || '').toLowerCase();
       const cnic = customer?.cnic || customer?.CNIC || '';
 
       return (
         name.includes(term) ||
+        referredBy.includes(term) ||
         id.includes(term) ||
         phone.includes(term) ||
         matchesMobileSearch(phone, term) ||
         matchesCnicSearch(cnic, term)
       );
     });
-  }, [customers, customerSelectorSearch]);
+  }, [customers, deferredCustomerSelectorSearch]);
 
   const selectedCustomer = useMemo(
     () =>
@@ -232,7 +235,14 @@ const Customers = () => {
       setCustomerProfile(null);
       setProfileModalOpen(true);
 
-      const customerResponse = await api.get(`/customers/${customerId}`);
+      const [customerResult, paymentsResult, returnsResult] = await Promise.allSettled([
+        api.get(`/customers/${customerId}`),
+        api.get(`/payments?customer=${encodeURIComponent(customerId)}`),
+        api.get(`/returns?customer=${encodeURIComponent(customerId)}`),
+      ]);
+
+      if (customerResult.status === 'rejected') throw customerResult.reason;
+      const customerResponse = customerResult.value;
 
       if (!customerResponse.data?.success) {
         throw new Error(
@@ -242,18 +252,12 @@ const Customers = () => {
 
       const customerData = customerResponse.data.data;
 
-      let allPayments = [];
-      try {
-        const paymentsResponse = await api.get('/payments');
-        if (
-          paymentsResponse.data?.success &&
-          Array.isArray(paymentsResponse.data.data)
-        ) {
-          allPayments = paymentsResponse.data.data;
-        }
-      } catch (error) {
-        console.error('Failed to load payments:', error);
-      }
+      const allPayments = paymentsResult.status === 'fulfilled' &&
+        paymentsResult.value.data?.success &&
+        Array.isArray(paymentsResult.value.data.data)
+        ? paymentsResult.value.data.data
+        : [];
+      if (paymentsResult.status === 'rejected') console.error('Failed to load payments:', paymentsResult.reason);
 
       const customerPayments = allPayments.filter((payment) => {
         const paymentCustomer = payment.customer;
@@ -264,18 +268,12 @@ const Customers = () => {
         return String(paymentCustomerId) === String(customerId);
       });
 
-      let allReturns = [];
-      try {
-        const returnsResponse = await api.get('/returns');
-        if (
-          returnsResponse.data?.success &&
-          Array.isArray(returnsResponse.data.data)
-        ) {
-          allReturns = returnsResponse.data.data;
-        }
-      } catch (error) {
-        console.error('Failed to load returns:', error);
-      }
+      const allReturns = returnsResult.status === 'fulfilled' &&
+        returnsResult.value.data?.success &&
+        Array.isArray(returnsResult.value.data.data)
+        ? returnsResult.value.data.data
+        : [];
+      if (returnsResult.status === 'rejected') console.error('Failed to load returns:', returnsResult.reason);
 
       const customerReturns = allReturns.filter((returnItem) => {
         const returnCustomer = returnItem.customer;
@@ -618,6 +616,7 @@ const Customers = () => {
                 <p className="text-xs text-slate-400 font-semibold mt-0.5">
                   Customer ID: <span className="text-blue-400 font-black">{customer?.customerId || '-'}</span> • Mobile: {customer?.mobileNumber || '-'}
                 </p>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">Referred by: <span className="text-white font-black">{customer?.referredBy || '-'}</span></p>
               </div>
             </div>
 
@@ -809,6 +808,7 @@ const Customers = () => {
                     <InfoBox label="Alternate Mobile" value={customer.alternateMobileNumber} />
                     <InfoBox label="City" value={customer.city} />
                     <InfoBox label="Email" value={customer.email} />
+                    <InfoBox label="Referred By" value={customer.referredBy} />
                     <div className="sm:col-span-2 lg:col-span-4">
                       <InfoBox label="Residential Address" value={customer.address} />
                     </div>
@@ -1151,7 +1151,7 @@ const Customers = () => {
           <option value="">Select from registered customers...</option>
           {selectorCustomers.map((customer) => (
             <option key={customer._id} value={customer._id}>
-              {customer.customerId || '-'} — {customer.fullName || '-'} — {customer.mobileNumber || '-'}
+              {customer.customerId || '-'} — {customer.fullName || '-'} — {customer.mobileNumber || '-'}{customer.referredBy ? ` | Referred by: ${customer.referredBy}` : ''}
             </option>
           ))}
         </select>
@@ -1174,6 +1174,7 @@ const Customers = () => {
             <p className="text-xs text-slate-500 font-semibold">
               Customer ID: <span className="font-bold text-slate-800">{selectedCustomer.customerId || '-'}</span> • Mobile: {selectedCustomer.mobileNumber || '-'} • City: {selectedCustomer.city || '-'}
             </p>
+            <p className="text-xs text-slate-500 font-semibold">Referred by: <span className="font-bold text-slate-800">{selectedCustomer.referredBy || '-'}</span></p>
           </div>
 
           <button
@@ -1226,9 +1227,16 @@ const Customers = () => {
       className: 'px-6 py-4',
       render: (customer) => (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-          <span className="font-black text-slate-900">
-            {customer.fullName}
-          </span>
+          <div className="min-w-0">
+            <span className="block font-black text-slate-900">
+              {customer.fullName}
+            </span>
+            {customer.referredBy && (
+              <span className="mt-0.5 block text-[10px] font-semibold text-slate-500">
+                Referred by: {customer.referredBy}
+              </span>
+            )}
+          </div>
           <PaymentScoreBadge
             paymentScore={customer.paymentScore}
           />

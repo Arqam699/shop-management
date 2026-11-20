@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Customers from './Customers';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -311,6 +311,7 @@ const CustomerLedger = () => {
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -958,7 +959,7 @@ const getPaymentScore = (customer) => {
   const loadCustomers = async () => {
     try {
       setLoadingCustomers(true);
-      const response = await api.get('/customers?includeScores=true&includeMedia=true');
+      const response = await api.get('/customers?includeScores=true');
       if (!response.data?.success) {
         throw new Error(
           response.data?.message || 'Failed to load customers.'
@@ -987,13 +988,14 @@ const getPaymentScore = (customer) => {
   }, []);
 
   const filteredCustomers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     if (!query) return customers;
 
     return customers.filter((customer) => {
       const values = [
         customer?.customerId,
         customer?.name,
+        customer?.referredBy,
         customer?.fatherName,
         customer?.mobile,
         customer?.phone,
@@ -1012,7 +1014,7 @@ const getPaymentScore = (customer) => {
         matchesCnicSearch(getCNIC(customer), query)
       );
     });
-  }, [customers, search]);
+  }, [customers, deferredSearch]);
 
   // =========================================================
   // LOAD COMPLETE LEDGER
@@ -1030,32 +1032,27 @@ const getPaymentScore = (customer) => {
       setLedgerLoading(true);
       setLedger(null);
 
-      // 1. CUSTOMER
+      // These independent requests run together to reduce ledger load time.
+      const [customerResult, salesResult, paymentsResult, returnsResult] = await Promise.allSettled([
+        api.get(`/customers/${customerId}`),
+        api.get(`/sales?customer=${encodeURIComponent(customerId)}`),
+        api.get(`/payments?customer=${encodeURIComponent(customerId)}`),
+        api.get(`/returns?customer=${encodeURIComponent(customerId)}`),
+      ]);
+
       let customerData = { ...customer };
-      try {
-        const customerResponse = await api.get(`/customers/${customerId}`);
-        if (customerResponse.data?.success) {
-          const detail =
-            customerResponse.data.data?.customer ||
-            customerResponse.data.data?.data ||
-            customerResponse.data.data ||
-            {};
-          customerData = { ...customer, ...detail };
-        }
-      } catch (err) {
-        console.warn('Detailed customer fetch warning:', err);
+      if (customerResult.status === 'fulfilled' && customerResult.value.data?.success) {
+        const detail = customerResult.value.data.data?.customer ||
+          customerResult.value.data.data?.data || customerResult.value.data.data || {};
+        customerData = { ...customer, ...detail };
+      } else if (customerResult.status === 'rejected') {
+        console.warn('Detailed customer fetch warning:', customerResult.reason);
       }
 
-      // 2. SALES
-      let allSales = [];
-      try {
-        const response = await api.get('/sales');
-        if (response.data?.success && Array.isArray(response.data.data)) {
-          allSales = response.data.data;
-        }
-      } catch (error) {
-        console.error('Failed to load sales:', error);
-      }
+      const allSales = salesResult.status === 'fulfilled' && salesResult.value.data?.success && Array.isArray(salesResult.value.data.data)
+        ? salesResult.value.data.data
+        : [];
+      if (salesResult.status === 'rejected') console.error('Failed to load sales:', salesResult.reason);
 
       const customerSales = allSales.filter(
         (sale) =>
@@ -1064,16 +1061,10 @@ const getPaymentScore = (customer) => {
           isSameCustomer(sale.customer?._id, customerId)
       );
 
-      // 3. PAYMENTS
-      let allPayments = [];
-      try {
-        const response = await api.get('/payments');
-        if (response.data?.success && Array.isArray(response.data.data)) {
-          allPayments = response.data.data;
-        }
-      } catch (error) {
-        console.error('Failed to load payments:', error);
-      }
+      const allPayments = paymentsResult.status === 'fulfilled' && paymentsResult.value.data?.success && Array.isArray(paymentsResult.value.data.data)
+        ? paymentsResult.value.data.data
+        : [];
+      if (paymentsResult.status === 'rejected') console.error('Failed to load payments:', paymentsResult.reason);
 
       const customerPayments = allPayments.filter(
         (payment) =>
@@ -1082,16 +1073,10 @@ const getPaymentScore = (customer) => {
           isSameCustomer(payment.customer?._id, customerId)
       );
 
-      // 4. RETURNS
-      let allReturns = [];
-      try {
-        const response = await api.get('/returns');
-        if (response.data?.success && Array.isArray(response.data.data)) {
-          allReturns = response.data.data;
-        }
-      } catch (error) {
-        console.error('Failed to load returns:', error);
-      }
+      const allReturns = returnsResult.status === 'fulfilled' && returnsResult.value.data?.success && Array.isArray(returnsResult.value.data.data)
+        ? returnsResult.value.data.data
+        : [];
+      if (returnsResult.status === 'rejected') console.error('Failed to load returns:', returnsResult.reason);
 
       const customerReturns = allReturns.filter(
         (returnItem) =>
@@ -1506,6 +1491,17 @@ const getPaymentScore = (customer) => {
                     {!isGuarantor && (
                       <div>
                         <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                          Referred By
+                        </span>
+                        <p className="font-bold text-slate-700 mt-0.5 truncate">
+                          {safePerson.referredBy || '—'}
+                        </p>
+                      </div>
+                    )}
+
+                    {!isGuarantor && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                           Customer Added At
                         </span>
                         <p className="font-bold text-slate-700 mt-0.5">
@@ -1777,6 +1773,7 @@ const getPaymentScore = (customer) => {
 </span>
                           <span>Mobile: <strong className="text-slate-700 font-bold">{getMobile(customer) || '—'}</strong></span>
                           <span>Father: <strong className="text-slate-700 font-bold">{getFatherName(customer) || '—'}</strong></span>
+                          {customer.referredBy && <span>Referred by: <strong className="text-indigo-700 font-bold">{customer.referredBy}</strong></span>}
                           
                           <span>CNIC: <strong className="text-slate-700 font-bold">{getCNIC(customer) || '—'}</strong></span>
                         </div>
@@ -1848,6 +1845,7 @@ const getPaymentScore = (customer) => {
             <div className="ledger-print-customer-meta text-[8.5px] font-bold text-slate-800">
                 <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
                 <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
+                <p>Referred By: <strong>{ledger.customer?.referredBy || '?'}</strong></p>
                 <p>Added At: {formatDateTime(ledger.customer?.createdAt)}</p>
                 <p>Statement Date: {formatDateTime(new Date())}</p>
             </div>

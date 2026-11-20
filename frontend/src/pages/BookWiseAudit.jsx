@@ -57,6 +57,21 @@ const BookWiseAudit = () => {
     return String(sale.saleId || '').toLowerCase().includes(term) || productNames.includes(term);
   }).sort((a, b) => String(a.saleId || '').localeCompare(String(b.saleId || ''), undefined, { numeric: true, sensitivity: 'base' }));
   const unassignedSalesCount = sales.filter((sale) => !sale.book?._id && !sale.book).length;
+  const salesGroupedByBook = useMemo(() => {
+    const groups = new Map();
+    for (const sale of filteredSales) {
+      const bookId = String(sale.book?._id || sale.book || '');
+      const book = books.find((entry) => String(entry._id) === bookId);
+      const key = bookId || '__unassigned__';
+      if (!groups.has(key)) groups.set(key, { key, name: book?.name || 'Unassigned', sales: [] });
+      groups.get(key).sales.push(sale);
+    }
+    return [...groups.values()].sort((left, right) => {
+      if (left.key === '__unassigned__') return -1;
+      if (right.key === '__unassigned__') return 1;
+      return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [filteredSales, books]);
   const productGroups = useMemo(() => {
     if (!selectedBook) return [];
     const groups = new Map();
@@ -298,23 +313,45 @@ const BookWiseAudit = () => {
                 </button>
                 {selectedSaleIds.length > 0 && <button type="button" onClick={() => setSelectedSaleIds([])} disabled={bulkSaving} className="h-10 rounded-lg px-3 text-xs font-bold text-slate-500 hover:bg-white disabled:opacity-50">Clear</button>}
               </div>
-              <div className="max-h-[520px] space-y-2 overflow-y-auto">
-                {filteredSales.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No sales found.</p> : filteredSales.map((sale) => {
-                  const saleBookId = sale.book?._id || sale.book || '';
-                  const currentBookName = books.find((book) => String(book._id) === String(saleBookId))?.name || 'Unassigned';
-                  const productNames = sale.items?.length ? sale.items.map((item) => item.product?.name || 'Product').join(', ') : sale.product?.name || 'Product';
-                  return <div key={sale._id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select invoice ${sale.saleId || ''}`}
-                      checked={selectedSaleIds.includes(sale._id)}
-                      onChange={() => toggleSaleSelection(sale._id)}
-                      disabled={bulkSaving}
-                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-slate-800">Invoice {sale.saleId || '—'} <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] uppercase text-slate-500">{sale.paymentType}</span></p><p className="mt-1 truncate text-xs text-slate-600">{productNames}</p><p className="mt-1 text-[10px] text-slate-400">{sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : '—'} · Qty {sale.quantity} · {money(sale.finalTotal ?? sale.totalWithMarkup)} · Current book: {currentBookName}</p></div>
-                  </div>;
-                })}
+              <div className="max-h-[520px] space-y-4 overflow-y-auto">
+                {salesGroupedByBook.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No sales found.</p> : salesGroupedByBook.map((group) => (
+                  <section key={group.key} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
+                    <header className={`sticky top-0 z-10 flex items-center justify-between gap-3 border-b px-3 py-2.5 ${group.key === '__unassigned__' ? 'border-amber-200 bg-amber-50' : 'border-indigo-100 bg-indigo-50'}`}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <BookOpen className={`h-4 w-4 shrink-0 ${group.key === '__unassigned__' ? 'text-amber-700' : 'text-indigo-700'}`} />
+                        <span className={`truncate text-xs font-black uppercase tracking-wide ${group.key === '__unassigned__' ? 'text-amber-800' : 'text-indigo-800'}`}>{group.name}</span>
+                        {group.key === '__unassigned__' && <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-black uppercase text-amber-900">Assign first</span>}
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-black text-slate-600">{group.sales.length} invoices</span>
+                    </header>
+                    <div className="space-y-2 p-2">
+                      {group.sales.map((sale) => {
+                        const productNames = sale.items?.length ? sale.items.map((item) => item.product?.name || 'Product').join(', ') : sale.product?.name || 'Product';
+                        return <div key={sale._id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select invoice ${sale.saleId || ''}`}
+                            checked={selectedSaleIds.includes(sale._id)}
+                            onChange={() => toggleSaleSelection(sale._id)}
+                            disabled={bulkSaving}
+                            className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-xs font-black text-slate-800">Invoice {sale.saleId || '-'}</p>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-500">{sale.paymentType}</span>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black ${group.key === '__unassigned__' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                                <BookOpen className="h-3 w-3" /> Current book: {group.name}
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-xs text-slate-600">{productNames}</p>
+                            <p className="mt-1 text-[10px] text-slate-400">{sale.saleDate ? new Date(sale.saleDate).toLocaleDateString() : '-'} | Qty {sale.quantity} | {money(sale.finalTotal ?? sale.totalWithMarkup)}</p>
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             </div>
           </details>

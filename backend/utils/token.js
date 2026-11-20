@@ -5,7 +5,9 @@ const generateToken = (
   userId,
   shopId,
   authVersion = 0,
-  sessionVersion = 0
+  sessionVersion = 0,
+  deviceId = '',
+  sessionId = ''
 ) => {
   const token = jwt.sign(
     {
@@ -15,6 +17,8 @@ const generateToken = (
         Number(authVersion) || 0,
       sessionVersion:
         Number(sessionVersion) || 0,
+      deviceId,
+      sessionId,
     },
     process.env.JWT_SECRET,
     {

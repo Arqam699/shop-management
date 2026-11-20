@@ -320,6 +320,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
   // Overall installment register rows are loaded from the report endpoint.
     const indexRecordRows = indexRecordData?.rows || [];
+  const indexRecordPages = Array.from(
+    { length: Math.ceil(indexRecordRows.length / 12) },
+    (_, pageIndex) => indexRecordRows.slice(pageIndex * 12, (pageIndex + 1) * 12)
+  );
   const indexRecordPrintedDate = PAKISTAN_DATE_FORMATTER.format(new Date());
   const indexMoney = (value) => Number(value || 0).toLocaleString('en-PK');
 
@@ -1001,6 +1005,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         .index-print-header {
           display: none;
         }
+        .index-record-page { display: contents; }
         .index-record-table th { white-space: normal; }
         .index-record-table td { vertical-align: middle; }
         .index-record-table td small { display: block; margin-top: 2px; font-size: 9px; color: #64748b; }
@@ -1070,6 +1075,17 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             text-align: center !important;
           }
 
+          .index-record-page {
+            display: block !important;
+            break-after: page !important;
+            page-break-after: always !important;
+          }
+
+          .index-record-page:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+
           .index-print-title {
             display: block !important;
             margin: 0 !important;
@@ -1111,7 +1127,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             max-width: 100% !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
-            font-size: 6.3pt !important;
+            font-size: 7pt !important;
             margin: 0 !important;
             visibility: visible !important;
           }
@@ -1140,21 +1156,22 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color: #000000 !important;
-            padding: 1.6mm 1mm !important;
+            padding: 2mm 1mm !important;
             font-weight: 900 !important;
             text-align: center !important;
-            font-size: 6.3pt !important;
+            font-size: 7pt !important;
             visibility: visible !important;
           }
 
           .index-record-table td {
             display: table-cell !important;
             border: 1px solid #000000 !important;
-            padding: 1.2mm .8mm !important;
+            padding: 1.7mm .8mm !important;
             color: #000000 !important;
             background: #ffffff !important;
-            font-size: 6.3pt !important;
-            line-height: 1.2 !important;
+            font-size: 7pt !important;
+            line-height: 1.15 !important;
+            height: 10mm !important;
             text-align: center !important;
             white-space: normal !important;
             overflow-wrap: anywhere !important;
@@ -1174,22 +1191,17 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           .index-record-table td:nth-child(11),
           .index-record-table td:nth-child(12),
           .index-record-table td:nth-child(14) {
-            min-width: 16mm !important;
-            height: 9mm !important;
+            min-width: 14mm !important;
+            height: 10mm !important;
           }
 
           .index-record-table td small {
             color: #000 !important;
-            font-size: 6pt !important;
+            font-size: 6.5pt !important;
             font-weight: 700 !important;
           }
 
-          .print-footer {
-            display: block !important;
-            visibility: visible !important;
-            margin-top: 6px !important;
-            color: #000000 !important;
-          }
+          .print-footer { display: none !important; }
         }
       `}</style>
 
@@ -1350,12 +1362,6 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             id="index-record-print"
             className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden animate-[pageEnter_0.35s_cubic-bezier(0.16,1,0.3,1)]"
           >
-            {/* PRINT ONLY HEADER */}
-            <div className="index-print-header px-4 py-3">
-              <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">INDEX SHEET INSTALLMENT PLAN</h1>
-              <p className="index-print-company text-xs font-bold text-slate-700 mt-0.5"><span>{settings?.shopName || 'Electronics Shop'}</span><span>{indexRecordPrintedDate}</span></p>
-            </div>
-
             {/* ON-SCREEN CONTROLS HEADER */}
             <div className="px-5 py-4.5 border-b border-slate-100 index-print-controls bg-slate-900 text-white">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1447,38 +1453,51 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   </p>
                 </div>
               ) : (
-                <table className="index-record-table w-full min-w-[1500px] text-left">
-                  <colgroup>
-                    {[3, 7, 10, 6, 7, 8, 9, 7, 7, 8, 7, 8, 7, 6].map((width, index) => (
-                      <col key={index} style={{ width: `${width}%` }} />
-                    ))}
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>S.N.</th><th>Date of<br />Material Purchase</th><th>Name of Customer</th><th>Invoice No.</th><th>Total Amount</th><th>Total Remaining Amount</th><th>Installment Amount<br />+ Remaining</th><th>Installment Plan<br />&amp; No.</th><th>Received Amount</th><th>Remain Amount</th><th>Receiver Sign</th><th>Installment Received Date</th><th>Phone No.</th><th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {indexRecordRows.map((row, index) => (
-                      <tr key={row.id}>
-                        <td>{index + 1}</td>
-                        <td>{formatDate(row.purchaseDate)}</td>
-                        <td className="index-customer-cell">{row.customerName}</td>
-                        <td>{row.invoiceNumber}</td>
-                        <td>{indexMoney(row.totalAmount)}</td>
-                        <td>{indexMoney(row.totalRemainingAmount)}</td>
-                        <td>{indexMoney(row.installmentAmount)}</td>
-                        <td>{row.installmentPlan}</td>
-                        <td className="index-write-cell">&nbsp;</td>
-                        <td>{indexMoney(row.remainingAmount)}</td>
-                        <td className="index-write-cell">&nbsp;</td>
-                        <td className="index-write-cell">&nbsp;</td>
-                        <td>{fullDigits(row.mobile)}</td>
-                        <td className="index-write-cell">&nbsp;</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="index-record-pages">
+                  {indexRecordPages.map((pageRows, pageIndex) => (
+                    <div className="index-record-page" key={`index-page-${pageIndex}`}>
+                      <div className="index-print-header px-4 py-3">
+                        <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">INDEX SHEET INSTALLMENT PLAN</h1>
+                        <p className="index-print-company text-xs font-bold text-slate-700 mt-0.5"><span>{settings?.shopName || 'Electronics Shop'}</span><span>{indexRecordPrintedDate}</span></p>
+                      </div>
+                      <table className="index-record-table w-full min-w-[1500px] text-left">
+                        <colgroup>
+                          {[3, 7, 14, 6, 7, 8, 9, 7, 7, 7, 5, 8, 7, 5].map((width, index) => (
+                            <col key={index} style={{ width: `${width}%` }} />
+                          ))}
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th>S.N.</th><th>Date of<br />Material Purchase</th><th>Name of Customer</th><th>Invoice No.</th><th>Total Amount</th><th>Total Remaining Amount</th><th>Installment Amount<br />+ Remaining</th><th>Installment Plan<br />&amp; No.</th><th>Received Amount</th><th>Remain Amount</th><th>Receiver Sign</th><th>Installment Received Date</th><th>Phone No.</th><th>Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pageRows.map((row, rowIndex) => {
+                            const index = pageIndex * 12 + rowIndex;
+                            return (
+                              <tr key={row.id}>
+                                <td>{index + 1}</td>
+                                <td>{formatDate(row.purchaseDate)}</td>
+                                <td className="index-customer-cell">{row.customerName}</td>
+                                <td>{row.invoiceNumber}</td>
+                                <td>{indexMoney(row.totalAmount)}</td>
+                                <td>{indexMoney(row.totalRemainingAmount)}</td>
+                                <td>{indexMoney(row.installmentAmount)}</td>
+                                <td>{row.installmentPlan}</td>
+                                <td className="index-write-cell">&nbsp;</td>
+                                <td>{indexMoney(row.remainingAmount)}</td>
+                                <td className="index-write-cell">&nbsp;</td>
+                                <td className="index-write-cell">&nbsp;</td>
+                                <td>{fullDigits(row.mobile)}</td>
+                                <td className="index-write-cell">&nbsp;</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

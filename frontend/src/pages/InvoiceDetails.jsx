@@ -276,11 +276,11 @@ const InvoiceDetails = () => {
       saleObj.totalAmount ??
       0
   );
-  // A cash invoice is paid in full at checkout. Only an installment
-  // invoice has a down payment and financing balance.
-  const displayedPaymentAmount = isInstallmentInvoice
-    ? downPaymentPaid
-    : invoicePaymentStatus === 'UNPAID' ? 0 : totalAmount;
+  const previousPlanTotal = Number(invoice.plan?.revisions?.[invoice.plan.revisions.length - 1]?.totalAmount || 0);
+  const earlySettlementDiscount = Math.max(0, previousPlanTotal - totalAmount);
+  // For cash sales this field stores cumulative cash received so far; for
+  // installment sales it remains the original sale down payment.
+  const displayedPaymentAmount = downPaymentPaid;
   const remainingAmount = isInstallmentInvoice
     ? Math.max(
         Number(
@@ -291,7 +291,10 @@ const InvoiceDetails = () => {
         ),
         0
       )
-      : invoicePaymentStatus === 'UNPAID' ? totalAmount : 0;
+      : Math.max(
+          0,
+          Number(saleObj.remainingBalance ?? totalAmount - downPaymentPaid)
+        );
   const invoiceQuantity = saleObj.quantity || 0;
   const invoiceItems = Array.isArray(saleObj.items) && saleObj.items.length
     ? saleObj.items
@@ -573,6 +576,13 @@ const InvoiceDetails = () => {
             </span>
           </div>
 
+          {earlySettlementDiscount > 0 && (
+            <div className="flex justify-between text-emerald-700 font-black">
+              <span>Early Settlement Discount:</span>
+              <span>-{settings?.currency || 'PKR'} {earlySettlementDiscount.toLocaleString()}</span>
+            </div>
+          )}
+
           <div className="flex justify-between text-emerald-600">
             <span>
               {isInstallmentInvoice
@@ -587,6 +597,17 @@ const InvoiceDetails = () => {
             <p className="text-right text-[10px] font-black text-indigo-700">
               Down Payment as First Installment
             </p>
+          )}
+
+          {!isInstallmentInvoice && Array.isArray(saleObj.cashPayments) && saleObj.cashPayments.length > 0 && (
+            <div className="space-y-0.5 border-t border-dotted border-slate-200 pt-1 text-[9px] font-bold text-slate-600">
+              {saleObj.cashPayments.map((payment, index) => (
+                <p key={payment._id || `${payment.paymentDate}-${index}`} className="flex justify-between gap-2">
+                  <span>{new Date(payment.paymentDate).toLocaleDateString('en-PK')} · {payment.paymentMethod || 'Cash'}</span>
+                  <span>{settings?.currency || 'PKR'} {Number(payment.amount || 0).toLocaleString()}</span>
+                </p>
+              ))}
+            </div>
           )}
 
           {(isInstallmentInvoice || invoicePaymentStatus === 'UNPAID') && (

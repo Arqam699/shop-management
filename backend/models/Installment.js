@@ -21,6 +21,18 @@ const installmentSchema = new mongoose.Schema(
       required: true,
     },
 
+    revisionNumber: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
     // Original scheduled amount.
     // Payment hone ke baad ye value change NAHI hogi.
     amount: {
@@ -94,5 +106,11 @@ installmentSchema.index({
 });
 
 installmentSchema.index({ shopId: 1, dueDate: 1, status: 1 });
+installmentSchema.index({
+  shopId: 1,
+  installmentPlan: 1,
+  revisionNumber: 1,
+  isArchived: 1,
+});
 
 module.exports = mongoose.model('Installment', installmentSchema);
