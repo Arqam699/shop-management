@@ -1880,6 +1880,33 @@ const getSaleById = async (req, res) => {
           .sort({
             installmentNumber: 1
           });
+
+      // Repair revised invoices created before the frozen balance/count
+      // snapshot was persisted reliably. Do this once so later collections
+      // do not keep changing the invoice's printed balance or Urdu count.
+      if (Number(plan.revisionNumber || 0) > 0 && Number(plan.balanceDiscount || 0) > 0) {
+        const snapshot = plan.invoiceSnapshot?.toObject?.() || plan.invoiceSnapshot || {};
+        let snapshotChanged = false;
+        if (Number(snapshot.financedAmount || 0) <= 0 && Number(plan.remainingBalance || 0) > 0) {
+          snapshot.financedAmount = Number(plan.remainingBalance || 0);
+          snapshotChanged = true;
+        }
+        if (snapshot.remainingInstallmentCountFrozen !== true) {
+          snapshot.remainingInstallmentCount = installments.filter((installment) => {
+            const unpaid = Number(installment.remainingAmount || 0) > 0.005 && !['Paid', 'Settled'].includes(installment.status);
+            const clearedByDiscount = Number(installment.balanceDiscountAmount || 0) > 0.005 ||
+              Number(installment.originalAmount || 0) > Number(installment.amount || 0) + 0.005;
+            return unpaid || clearedByDiscount;
+          }).length;
+          snapshot.remainingInstallmentCountFrozen = true;
+          snapshotChanged = true;
+        }
+        if (snapshotChanged) {
+          plan.invoiceSnapshot = snapshot;
+          plan.markModified('invoiceSnapshot');
+          await plan.save();
+        }
+      }
     }
 
     return res.status(200).json({

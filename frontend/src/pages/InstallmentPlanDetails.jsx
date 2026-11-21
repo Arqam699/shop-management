@@ -63,6 +63,8 @@ const InstallmentPlanDetails = () => {
   const [revisionDuration, setRevisionDuration] = useState('');
   const [revisionMarkupInput, setRevisionMarkupInput] = useState('');
   const [revisionLoading, setRevisionLoading] = useState(false);
+  const [balanceDiscountInput, setBalanceDiscountInput] = useState('');
+  const [discountLoading, setDiscountLoading] = useState(false);
 
   const currency = settings?.currency || 'PKR';
   const customerPhoto = getImageSource(plan?.customer?.liveImage || plan?.customer?.photo);
@@ -562,7 +564,7 @@ const InstallmentPlanDetails = () => {
   const suggestedRevisionMarkup = displayDuration > 0
     ? roundMoney(currentMarkupForRevision * revisedDurationNumber / displayDuration)
     : 0;
-  const revisedMarkupPercent = Number(revisionMarkupInput === '' ? suggestedRevisionMarkup : revisionMarkupInput);
+  const revisedMarkupPercent = Number(revisionMarkupInput === '' ? 0 : revisionMarkupInput);
   const revisedMarkupAmount = roundMoney(revisedMarkupBase * revisedMarkupPercent / 100);
   const revisedTotalPayable = roundMoney(originalPrice + revisedMarkupAmount);
   const revisedRemainingBalance = roundMoney(revisedTotalPayable - totalCustomerPaid);
@@ -593,6 +595,30 @@ const InstallmentPlanDetails = () => {
       toast.error(err.response?.data?.message || 'Could not revise the installment plan.');
     } finally {
       setRevisionLoading(false);
+    }
+  };
+
+  const applyBalanceDiscount = async () => {
+    const amount = roundMoney(balanceDiscountInput);
+    const currentBalance = roundMoney(plan?.remainingBalance || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a discount amount greater than zero.');
+      return;
+    }
+    if (amount > currentBalance) {
+      toast.error(`Discount cannot exceed the remaining balance (${formatMoney(currentBalance)}).`);
+      return;
+    }
+    try {
+      setDiscountLoading(true);
+      const response = await api.post(`/api/installments/${id}/discount`, { discountAmount: amount });
+      toast.success(response.data?.message || 'Discount applied to remaining balance.');
+      setBalanceDiscountInput('');
+      await fetchPlan();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not apply the balance discount.');
+    } finally {
+      setDiscountLoading(false);
     }
   };
 
@@ -634,7 +660,8 @@ const InstallmentPlanDetails = () => {
           0,
           roundMoney(
             totalPayable -
-              totalCustomerPaid
+              totalCustomerPaid -
+              Number(plan?.balanceDiscount || 0)
           )
         );
 
@@ -647,7 +674,9 @@ const InstallmentPlanDetails = () => {
   // =========================================================
 
   const paymentProgress =
-    totalPayable > 0
+    remainingBalance <= 0.005
+      ? 100
+      : totalPayable > 0
       ? Math.min(
           100,
           Math.max(
@@ -1358,17 +1387,42 @@ Thank you - ${
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 self-start sm:self-auto">
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
 
               {plan.status !== 'Completed' && (
-                <button
-                  type="button"
-                  onClick={() => { setRevisionDuration(String(defaultRevisionDuration)); setRevisionMarkupInput(String(roundMoney(currentMarkupForRevision * defaultRevisionDuration / displayDuration))); setShowPlanRevision(true); }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-2.5 text-xs font-black text-amber-200 transition-all hover:bg-amber-400/20"
-                >
-                  <ArrowDownCircle className="h-4 w-4" />
-                  Revise Plan
-                </button>
+                <>
+                  {Number(plan.revisionNumber || 0) > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-1">
+                      <input
+                        type="number"
+                        min="0.01"
+                        max={Number(plan.remainingBalance || 0)}
+                        step="0.01"
+                        value={balanceDiscountInput}
+                        onChange={(event) => setBalanceDiscountInput(event.target.value)}
+                        placeholder="Discount"
+                        aria-label="Discount from remaining balance"
+                        className="h-8 w-24 rounded-lg border border-white/10 bg-slate-950/40 px-2 text-xs font-bold text-white outline-none placeholder:text-slate-400 focus:border-emerald-300/60"
+                      />
+                      <button
+                        type="button"
+                        onClick={applyBalanceDiscount}
+                        disabled={discountLoading || !balanceDiscountInput || Number(balanceDiscountInput) <= 0 || Number(balanceDiscountInput) > Number(plan.remainingBalance || 0)}
+                        className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-500 px-2.5 text-[10px] font-black text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {discountLoading ? 'Applying…' : 'Apply Discount'}
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setRevisionDuration(String(defaultRevisionDuration)); setRevisionMarkupInput(String(roundMoney(currentMarkupForRevision * defaultRevisionDuration / displayDuration))); setShowPlanRevision(true); }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-2.5 text-xs font-black text-amber-200 transition-all hover:bg-amber-400/20"
+                  >
+                    <ArrowDownCircle className="h-4 w-4" />
+                    Revise Plan
+                  </button>
+                </>
               )}
 
               <button
@@ -2182,6 +2236,18 @@ Thank you - ${
           </span>
         </div>
 
+        {Number(plan?.balanceDiscount || 0) > 0 && (
+          <div className="mx-4 mt-4 sm:mx-5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black text-amber-800">Discount applied to remaining balance</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-amber-700">Total discount given on this plan</p>
+            </div>
+            <p className="shrink-0 text-sm font-black text-amber-900">
+              {formatMoney(plan.balanceDiscount)}
+            </p>
+          </div>
+        )}
+
         {paymentHistory.length === 0 ? (
           <div className="p-10 text-center text-xs font-semibold text-slate-400">
             No payment receipt has been recorded for this plan yet.
@@ -2311,7 +2377,7 @@ Thank you - ${
                 <span className="mt-1 block text-[10px] font-semibold text-slate-400">Enter a whole number from 1 to 12 months.</span>
               </label>
               <label className="block text-xs font-black text-slate-600">Markup for revised plan (%)
-                <input type="number" min="0" step="0.01" value={revisionMarkupInput === '' ? suggestedRevisionMarkup : revisionMarkupInput} onChange={(event) => setRevisionMarkupInput(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500" />
+                <input type="number" min="0" step="0.01" value={revisionMarkupInput || '0'} onChange={(event) => setRevisionMarkupInput(event.target.value === '' ? '0' : event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500" />
                 <span className="mt-1 block text-[10px] font-semibold text-slate-400">Enter the rate you want. Changing duration suggests a proportional rate, which you can edit.</span>
               </label>
               <div className="grid grid-cols-2 gap-2 text-xs">

@@ -59,6 +59,13 @@ const installmentPlanSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Contract discount applied against the unpaid balance; not a received payment.
+    balanceDiscount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     /*
       This is the number of actual remaining scheduled
       installments shown to the user.
@@ -168,6 +175,17 @@ const installmentPlanSchema = new mongoose.Schema(
       financedAmount: {
         type: Number,
         default: 0,
+      },
+
+      remainingInstallmentCount: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+
+      remainingInstallmentCountFrozen: {
+        type: Boolean,
+        default: false,
       },
 
       installments: [

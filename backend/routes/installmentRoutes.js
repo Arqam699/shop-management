@@ -8,6 +8,7 @@ const {
   payInstallment,
   getDueInstallments,
   reviseInstallmentPlan,
+  applyInstallmentBalanceDiscount,
 } = require('../controllers/installmentController');
 
 const { protect } = require('../middleware/authMiddleware');
@@ -30,6 +31,7 @@ router.get('/due', protect, getDueInstallments);
 // ======================================================
 router.get('/:id', protect, getInstallmentPlanById);
 router.put('/:id/revise', protect, reviseInstallmentPlan);
+router.post('/:id/discount', protect, applyInstallmentBalanceDiscount);
 
 // ======================================================
 // PAY INSTALLMENT

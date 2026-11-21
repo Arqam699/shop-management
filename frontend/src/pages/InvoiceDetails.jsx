@@ -273,6 +273,8 @@ const InvoiceDetails = () => {
       saleObj.totalAmount ??
       0
   );
+  const balanceDiscount = isInstallmentInvoice ? Number(invoice.plan?.balanceDiscount || 0) : 0;
+  const invoiceDealAmount = Math.max(0, totalAmount - balanceDiscount);
   const grossDealAmount = Number(saleObj.subtotal ?? (Number(saleObj.finalTotal || 0) + Number(saleObj.discount || 0)));
   const overallDiscount = Number(saleObj.discount || 0);
   const netDealAmount = Number(saleObj.finalTotal ?? Math.max(0, grossDealAmount - overallDiscount));
@@ -285,8 +287,15 @@ const InvoiceDetails = () => {
   // For cash sales this field stores cumulative cash received so far; for
   // installment sales it remains the original sale down payment.
   const displayedPaymentAmount = isFirstInstallmentInitialPayment ? firstInstallmentPaid : downPaymentPaid;
+  const advancePaymentAmount = downPaymentPaid + firstInstallmentPaid;
+  const installmentPlanCompleted = isInstallmentInvoice && (
+    invoice.plan?.status === 'Completed' ||
+    (Number(saleObj.remainingBalance || 0) <= 0.005 && invoicePaymentStatus === 'PAID')
+  );
   const remainingAmount = isInstallmentInvoice
-    ? Math.max(
+    ? installmentPlanCompleted
+      ? 0
+      : Math.max(
         Number(
           invoiceSnapshot.financedAmount ??
             saleObj.remainingBalance ??
@@ -344,15 +353,26 @@ const InvoiceDetails = () => {
       invoice.plan?.months ||
       0
   );
-  const remainingInstallmentCount = Number(
-    invoiceSnapshot.duration ??
-      saleObj.installmentDuration ??
-      invoice.plan?.duration ??
-      0
+  const activePlanInstallments = Array.isArray(invoice.installments) ? invoice.installments : [];
+  const unpaidActiveInstallments = activePlanInstallments.filter((item) =>
+    Number(item.remainingAmount ?? item.amount ?? 0) > 0.005 &&
+    !['Paid', 'Settled'].includes(String(item.status || '').trim())
   );
-  const firstScheduledInstallment = installmentSchedule.find(
-    (item) => Number(item.installmentNumber) === ((downPaymentCountsAsFirstInstallment || initialPaymentCountsAsFirstInstallment) ? 2 : 1)
-  ) || installmentSchedule[0];
+  const remainingInstallmentCount = Number(
+    isRevisedInstallmentPlan && invoiceSnapshot.remainingInstallmentCount !== undefined && invoiceSnapshot.remainingInstallmentCount !== null
+      ? invoiceSnapshot.remainingInstallmentCount
+      : isRevisedInstallmentPlan && activePlanInstallments.length
+        ? unpaidActiveInstallments.length
+      : invoiceSnapshot.duration ??
+          saleObj.installmentDuration ??
+          invoice.plan?.duration ??
+          0
+  );
+  const firstScheduledInstallment = isRevisedInstallmentPlan && activePlanInstallments.length
+    ? unpaidActiveInstallments[0]
+    : installmentSchedule.find(
+        (item) => Number(item.installmentNumber) === ((downPaymentCountsAsFirstInstallment || initialPaymentCountsAsFirstInstallment) ? 2 : 1)
+      ) || installmentSchedule[0];
   const installmentAmount = Number(firstScheduledInstallment?.remainingAmount ?? firstScheduledInstallment?.amount ?? 0);
   const installmentDueDay = 5;
 
@@ -515,7 +535,7 @@ const InvoiceDetails = () => {
             </div>
             {!isInstallmentInvoice && <span className="border-l border-slate-400 pl-1 text-right">Unit Price</span>}
             <span className="border-l border-slate-400 pl-1 text-right">Qty</span>
-            <span className="border-l border-slate-400 pl-1 text-right">{isInstallmentInvoice ? 'Deal After Markup' : 'Deal'}</span>
+            <span className="border-l border-slate-400 pl-1 text-right">Deal</span>
           </div>
           <div className="divide-y divide-slate-300">
             {invoiceItems.map((item, index) => {
@@ -523,8 +543,8 @@ const InvoiceDetails = () => {
               const itemQty = Number(item.quantity || 0);
               const itemDealPrice = itemQty * Number(item.unitPrice || 0);
               const installmentItemDealPrice = grossDealAmount > 0
-                ? totalAmount * (itemDealPrice / grossDealAmount)
-                : totalAmount / Math.max(1, invoiceItems.length);
+                ? invoiceDealAmount * (itemDealPrice / grossDealAmount)
+                : invoiceDealAmount / Math.max(1, invoiceItems.length);
               return <div key={String(item._id || itemProduct._id || index)} className="py-1.5">
                 <div className={`invoice-item-grid ${isInstallmentInvoice ? 'invoice-item-grid-installment grid-cols-[minmax(0,1fr)_20px_68px]' : 'invoice-item-grid-cash grid-cols-[minmax(0,1fr)_58px_20px_68px]'} grid items-start gap-1`}>
                   <div className="min-w-0 flex-1">
@@ -575,7 +595,7 @@ const InvoiceDetails = () => {
           {isInstallmentInvoice ? (
             <>
               {overallDiscount > 0 && <div className="flex justify-between text-rose-600 font-black"><span>Overall Discount:</span><span>-{settings?.currency || 'PKR'} {overallDiscount.toLocaleString()}</span></div>}
-              <div className="flex justify-between text-slate-900 font-black"><span>Total Deal Amount:</span><span>{settings?.currency || 'PKR'} {totalAmount.toLocaleString()}</span></div>
+              <div className="flex justify-between text-slate-900 font-black"><span>Total Deal Amount:</span><span>{settings?.currency || 'PKR'} {invoiceDealAmount.toLocaleString()}</span></div>
             </>
           ) : (
             <>
@@ -592,18 +612,13 @@ const InvoiceDetails = () => {
             </div>
           )}
 
-          {isInstallmentInvoice && isFirstInstallmentInitialPayment ? (
-            <>
-              {downPaymentPaid > 0 && <div className="flex justify-between text-emerald-600"><span>Down Payment Paid:</span><span>{settings?.currency || 'PKR'} {downPaymentPaid.toLocaleString()}</span></div>}
-              {firstInstallmentPaid > 0 && <div className="flex justify-between text-emerald-600"><span>{downPaymentPaid > 0 ? 'Installment #2 Paid:' : '1st Installment Paid:'}</span><span>{settings?.currency || 'PKR'} {displayedPaymentAmount.toLocaleString()}</span></div>}
-            </>
+          {isInstallmentInvoice ? (
+            <div className="flex justify-between text-emerald-600">
+              <span>Advance Payment:</span>
+              <span>{settings?.currency || 'PKR'} {advancePaymentAmount.toLocaleString()}</span>
+            </div>
           ) : (
-            isInstallmentInvoice ? (
-              <div className="flex justify-between text-emerald-600">
-                <span>Down Payment Paid:</span>
-                <span>{settings?.currency || 'PKR'} {displayedPaymentAmount.toLocaleString()}</span>
-              </div>
-            ) : Number(saleObj.remainingBalance || 0) > 0 && displayedPaymentAmount > 0 ? (
+            Number(saleObj.remainingBalance || 0) > 0 && displayedPaymentAmount > 0 ? (
               <div className="flex justify-between text-emerald-600">
                 <span>Amount Received:</span>
                 <span>{settings?.currency || 'PKR'} {displayedPaymentAmount.toLocaleString()}</span>
@@ -617,6 +632,11 @@ const InvoiceDetails = () => {
               <span>
                 {settings?.currency || 'PKR'} {remainingAmount.toLocaleString()}
               </span>
+            </div>
+          )}
+          {installmentPlanCompleted && (
+            <div className="pt-1 text-center text-emerald-700 font-black text-sm">
+              This plan is fully completed
             </div>
           )}
         </div>

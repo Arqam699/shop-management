@@ -48,6 +48,12 @@ const installmentSchema = new mongoose.Schema(
       min: 0,
     },
 
+    balanceDiscountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // Actual amount paid against this installment.
     paidAmount: {
       type: Number,

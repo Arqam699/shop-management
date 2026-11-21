@@ -1629,6 +1629,120 @@ const getMarkupPercentageForDuration = (duration) => {
   return 50;
 };
 
+const applyInstallmentBalanceDiscount = async (req, res) => {
+  try {
+    const shopId = req.shopId;
+    const plan = await InstallmentPlan.findOne({ _id: req.params.id, shopId });
+    if (!plan) return res.status(404).json({ message: 'Installment plan not found.' });
+    if (Number(plan.revisionNumber || 0) <= 0) {
+      return res.status(400).json({ message: 'Balance discount is available only after the plan has been revised.' });
+    }
+
+    const discountAmount = roundMoney(req.body.discountAmount);
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      return res.status(400).json({ message: 'Enter a discount amount greater than zero.' });
+    }
+
+    const currentFinancials = await refreshPlanFinancials(plan, shopId);
+    const currentBalance = roundMoney(currentFinancials.remainingBalance);
+    if (discountAmount > currentBalance + 0.005) {
+      return res.status(400).json({ message: `Discount cannot exceed the remaining balance (${currentBalance}).` });
+    }
+
+    const activeScheduleInstallments = await Installment.find({
+      shopId,
+      installmentPlan: plan._id,
+      ...revisionFilter(Number(plan.revisionNumber || 0)),
+      isArchived: { $ne: true },
+    }).sort({ installmentNumber: 1 });
+    const unpaidInstallments = activeScheduleInstallments.filter((installment) =>
+      Number(installment.remainingAmount || 0) > 0.005 && !['Paid', 'Settled'].includes(installment.status)
+    );
+    if (!unpaidInstallments.length) {
+      return res.status(409).json({ message: 'No unpaid installments are available for this balance discount.' });
+    }
+    const hasFrozenInvoiceCount = plan.invoiceSnapshot?.remainingInstallmentCountFrozen === true;
+    const hadPriorBalanceDiscount = Number(plan.balanceDiscount || 0) > 0;
+    const invoiceRemainingInstallmentCount = hasFrozenInvoiceCount
+      ? Number(plan.invoiceSnapshot.remainingInstallmentCount ?? unpaidInstallments.length)
+      : !hadPriorBalanceDiscount
+        ? unpaidInstallments.length
+        : activeScheduleInstallments.filter((installment) => {
+          const remaining = Number(installment.remainingAmount || 0);
+          const status = String(installment.status || '');
+          const discountClearedIt = Number(installment.balanceDiscountAmount || 0) > 0.005 ||
+            Number(installment.originalAmount || 0) > Number(installment.amount || 0) + 0.005;
+          return (remaining > 0.005 && !['Paid', 'Settled'].includes(status)) || discountClearedIt;
+        }).length;
+
+    // Spread discount cents over unpaid installments, preserving every
+    // amount already collected and ensuring the schedule total matches the balance.
+    let discountCentsLeft = Math.round(discountAmount * 100);
+    let activeInstallments = unpaidInstallments;
+    while (discountCentsLeft > 0 && activeInstallments.length) {
+      const shareCents = Math.max(1, Math.floor(discountCentsLeft / activeInstallments.length));
+      let appliedThisRound = 0;
+      for (const installment of activeInstallments) {
+        if (discountCentsLeft <= 0) break;
+        const remainingCents = Math.max(0, Math.round(Number(installment.remainingAmount || 0) * 100));
+        const appliedCents = Math.min(remainingCents, shareCents, discountCentsLeft);
+        if (appliedCents <= 0) continue;
+        installment.remainingAmount = roundMoney((remainingCents - appliedCents) / 100);
+        installment.amount = roundMoney(Number(installment.paidAmount || 0) + installment.remainingAmount);
+        installment.balanceDiscountAmount = roundMoney(Number(installment.balanceDiscountAmount || 0) + appliedCents / 100);
+        installment.status = installment.remainingAmount <= 0.005
+          ? 'Paid'
+          : Number(installment.paidAmount || 0) > 0 ? 'Partially Paid' : 'Pending';
+        await installment.save();
+        discountCentsLeft -= appliedCents;
+        appliedThisRound += appliedCents;
+      }
+      activeInstallments = activeInstallments.filter((item) => Number(item.remainingAmount || 0) > 0.005);
+      if (appliedThisRound === 0) break;
+    }
+
+    if (discountCentsLeft > 0) {
+      return res.status(409).json({ message: 'Could not apply the full discount to the unpaid schedule.' });
+    }
+
+    const updatedDiscountTotal = roundMoney(Number(plan.balanceDiscount || 0) + discountAmount);
+    const newRemainingBalance = roundMoney(Math.max(0, currentBalance - discountAmount));
+    plan.balanceDiscount = updatedDiscountTotal;
+    plan.remainingBalance = newRemainingBalance;
+    plan.status = newRemainingBalance <= 0.005 ? 'Completed' : 'Active';
+    const invoiceSnapshot = plan.invoiceSnapshot?.toObject?.() || plan.invoiceSnapshot || {};
+    plan.invoiceSnapshot = {
+      ...invoiceSnapshot,
+      financedAmount: newRemainingBalance,
+      remainingInstallmentCount: invoiceRemainingInstallmentCount,
+      remainingInstallmentCountFrozen: true,
+    };
+    plan.markModified('invoiceSnapshot');
+    await plan.save();
+
+    const sale = await Sale.findOne({ _id: plan.sale, shopId });
+    if (sale) {
+      sale.remainingBalance = newRemainingBalance;
+      sale.paymentStatus = newRemainingBalance <= 0.005 ? 'Paid' : 'Unpaid';
+      await sale.save();
+    }
+
+    await Payment.updateMany(
+      { shopId, installmentPlan: plan._id },
+      { $set: { planRemainingBalanceAfterPayment: newRemainingBalance } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `${discountAmount} discount applied to the remaining balance.`,
+      data: { discountAmount, balanceDiscount: updatedDiscountTotal, remainingBalance: newRemainingBalance },
+    });
+  } catch (error) {
+    console.error('APPLY INSTALLMENT BALANCE DISCOUNT ERROR:', error);
+    return res.status(500).json({ message: 'Failed to apply balance discount.', error: error.message });
+  }
+};
+
 const reviseInstallmentPlan = async (req, res) => {
   try {
     const shopId = req.shopId;
@@ -1681,9 +1795,10 @@ const reviseInstallmentPlan = async (req, res) => {
     const markupPercentage = roundMoney(requestedMarkupPercentage);
     const markupAmount = roundMoney(markupBase * markupPercentage / 100);
     const newTotalAmount = roundMoney(priceBeforeMarkup + markupAmount);
-    if (collectedTotal > newTotalAmount) {
+    const balanceDiscount = roundMoney(plan.balanceDiscount || 0);
+    if (collectedTotal + balanceDiscount > newTotalAmount) {
       return res.status(400).json({
-        message: `Payments already received (${collectedTotal}) exceed the revised total (${newTotalAmount}).`,
+        message: `Payments and balance discount (${roundMoney(collectedTotal + balanceDiscount)}) exceed the revised total (${newTotalAmount}).`,
         collectedTotal,
         newTotalAmount,
       });
@@ -1694,13 +1809,11 @@ const reviseInstallmentPlan = async (req, res) => {
     const oldMonthlyInstallment = oldInstallments.find((item) => !downPaymentFirst || Number(item.installmentNumber) > 1);
     const firstMonthlyDueDate = oldMonthlyInstallment?.dueDate || plan.firstDueDate || sale.saleDate || now;
     const includeDownPaymentRow = downPaymentFirst && newDuration > 1;
-    const monthlyCount = Math.max(1, newDuration - (includeDownPaymentRow ? 1 : 0));
-    const schedulePrincipal = includeDownPaymentRow
-      ? roundMoney(newTotalAmount - downPayment)
-      : downPaymentFirst
-        ? newTotalAmount
-        : roundMoney(newTotalAmount - downPayment);
-    const monthlyAmount = roundMoney(schedulePrincipal / monthlyCount);
+    const newRemainingBalance = roundMoney(newTotalAmount - collectedTotal - balanceDiscount);
+    const paidInstallmentCredit = roundMoney(Math.max(
+      0,
+      oldTotals.totalPaid + oldBalanceReduction - (downPaymentFirst ? downPayment : 0)
+    ));
     const schedule = [];
 
     if (includeDownPaymentRow) {
@@ -1712,14 +1825,31 @@ const reviseInstallmentPlan = async (req, res) => {
       });
     }
 
+    if (paidInstallmentCredit > 0.005) {
+      schedule.push({
+        installmentNumber: schedule.length + 1,
+        amount: paidInstallmentCredit,
+        dueDate: firstMonthlyDueDate,
+        paidAmount: paidInstallmentCredit,
+      });
+    }
+
+    // Keep prior payments as a fully paid credit row. Divide only the
+    // remaining amount across the new unpaid installments so none starts
+    // partially paid after a revision.
+    let monthlyCount = Math.max(0, newDuration - schedule.length);
+    if (newRemainingBalance > 0.005 && monthlyCount === 0) monthlyCount = 1;
+    const monthlyAmount = monthlyCount > 0
+      ? roundMoney(newRemainingBalance / monthlyCount)
+      : 0;
     let allocated = 0;
     for (let index = 0; index < monthlyCount; index += 1) {
       const amount = index === monthlyCount - 1
-        ? roundMoney(schedulePrincipal - allocated)
+        ? roundMoney(newRemainingBalance - allocated)
         : monthlyAmount;
       allocated = roundMoney(allocated + amount);
       const dueDate = new Date(firstMonthlyDueDate);
-      dueDate.setMonth(dueDate.getMonth() + index);
+      dueDate.setMonth(dueDate.getMonth() + index + (paidInstallmentCredit > 0.005 ? 1 : 0));
       schedule.push({
         installmentNumber: schedule.length + 1,
         amount,
@@ -1728,26 +1858,14 @@ const reviseInstallmentPlan = async (req, res) => {
       });
     }
 
-    // Carry existing receipts into the revised schedule without changing
-    // the receipt records themselves.
-    let paidToAllocate = roundMoney(oldTotals.totalPaid + oldBalanceReduction - (includeDownPaymentRow ? downPayment : 0));
-    for (const installment of schedule) {
-      const alreadyPaid = Number(installment.paidAmount || 0);
-      if (alreadyPaid > 0) continue;
-      const paidAmount = roundMoney(Math.min(installment.amount, Math.max(0, paidToAllocate)));
-      installment.paidAmount = paidAmount;
-      paidToAllocate = roundMoney(Math.max(0, paidToAllocate - paidAmount));
-    }
-
     const newScheduleTotal = roundMoney(schedule.reduce((sum, installment) => sum + installment.amount, 0));
-    const expectedScheduleTotal = includeDownPaymentRow || downPaymentFirst
-      ? newTotalAmount
-      : roundMoney(newTotalAmount - downPayment);
+    const expectedScheduleTotal = includeDownPaymentRow
+      ? roundMoney(newTotalAmount - balanceDiscount)
+      : roundMoney(newTotalAmount - downPayment - balanceDiscount);
     if (Math.abs(newScheduleTotal - expectedScheduleTotal) > 0.01) {
       return res.status(500).json({ message: 'Could not calculate a balanced revised schedule.' });
     }
 
-    const newRemainingBalance = roundMoney(newTotalAmount - collectedTotal);
     const priorRevision = {
       revisionNumber: currentRevision,
       selectedDuration: plan.selectedDuration,
@@ -1755,6 +1873,7 @@ const reviseInstallmentPlan = async (req, res) => {
       totalAmount: plan.totalAmount,
       downPayment: plan.downPayment,
       remainingBalance: plan.remainingBalance,
+      balanceDiscount: plan.balanceDiscount,
       markupPercentage: sale.markupPercentage,
       markupAmount: sale.markupAmount,
       firstDueDate: plan.firstDueDate,
@@ -1788,13 +1907,16 @@ const reviseInstallmentPlan = async (req, res) => {
           : undefined,
       };
     });
+    const revisedInvoiceRemainingInstallmentCount = newInstallments.filter((installment) =>
+      Number(installment.remainingAmount || 0) > 0.005 && !['Paid', 'Settled'].includes(installment.status)
+    ).length;
     await Installment.deleteMany({ shopId, installmentPlan: plan._id, revisionNumber: nextRevision });
     await Installment.insertMany(newInstallments);
 
     plan.revisions.push(priorRevision);
     plan.revisionNumber = nextRevision;
     plan.selectedDuration = newDuration;
-    plan.duration = monthlyCount;
+    plan.duration = schedule.length;
     plan.totalAmount = newTotalAmount;
     plan.remainingBalance = newRemainingBalance;
     plan.balanceReduction = 0;
@@ -1802,19 +1924,31 @@ const reviseInstallmentPlan = async (req, res) => {
     plan.firstDueDate = firstMonthlyDueDate;
     plan.invoiceSnapshot = {
       selectedDuration: newDuration,
-      duration: monthlyCount,
+      duration: schedule.length,
+      remainingInstallmentCount: revisedInvoiceRemainingInstallmentCount,
+      remainingInstallmentCountFrozen: true,
       downPayment,
       treatDownPaymentAsFirstInstallment: plan.treatDownPaymentAsFirstInstallment,
-      financedAmount: roundMoney(newTotalAmount - downPayment),
+      // Invoice shows the current balance after this revision, while the
+      // original down payment and first-payment figures remain immutable.
+      financedAmount: newRemainingBalance,
+      initialPaymentType: plan.invoiceSnapshot?.initialPaymentType || plan.initialPaymentType || 'None',
+      initialInstallmentPaidAmount: Number(
+        plan.invoiceSnapshot?.initialInstallmentPaidAmount ?? plan.initialInstallmentPaidAmount ?? 0
+      ),
+      initialPaymentCountsAsFirstInstallment: Boolean(
+        plan.invoiceSnapshot?.initialPaymentCountsAsFirstInstallment ?? plan.initialPaymentCountsAsFirstInstallment
+      ),
       installments: schedule.map(({ installmentNumber, amount, dueDate }) => ({ installmentNumber, amount, dueDate })),
       createdAt: now,
     };
+    plan.markModified('invoiceSnapshot');
     await plan.save();
 
     sale.markupPercentage = markupPercentage;
     sale.markupAmount = markupAmount;
     sale.totalWithMarkup = newTotalAmount;
-    sale.installmentDuration = monthlyCount;
+    sale.installmentDuration = schedule.length;
     sale.selectedInstallmentDuration = newDuration;
     sale.remainingBalance = newRemainingBalance;
     sale.paymentStatus = newRemainingBalance <= 0 ? 'Paid' : 'Unpaid';
@@ -1866,4 +2000,5 @@ module.exports = {
   getDueInstallments,
   payInstallment,
   reviseInstallmentPlan,
+  applyInstallmentBalanceDiscount,
 };
