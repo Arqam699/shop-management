@@ -495,52 +495,21 @@ const calculateInstallmentSale = ({
   let remainingBeforeMarkup;
   let actualInstallmentCount;
 
-  if (treatDownPayment) {
-    remainingBeforeMarkup = roundMoney(
-      Math.max(
-        0,
-        saleTotal - dPayment
-      )
-    );
+  remainingBeforeMarkup = roundMoney(
+    Math.max(0, saleTotal - dPayment)
+  );
 
-    markupAmount = roundMoney(
-      remainingBeforeMarkup *
-      (markup / 100)
-    );
+  markupAmount = roundMoney(
+    remainingBeforeMarkup * (markup / 100)
+  );
 
-    financedAmount = roundMoney(
-      remainingBeforeMarkup +
-      markupAmount
-    );
+  financedAmount = roundMoney(
+    remainingBeforeMarkup + markupAmount
+  );
 
-    actualInstallmentCount = Math.max(
-      0,
-      selected - 1
-    );
-  } else {
-    const totalWithMarkupBeforeDP =
-      roundMoney(
-        saleTotal *
-        (1 + markup / 100)
-      );
-
-    markupAmount = roundMoney(
-      totalWithMarkupBeforeDP -
-      saleTotal
-    );
-
-    financedAmount = roundMoney(
-      Math.max(
-        0,
-        totalWithMarkupBeforeDP -
-        dPayment
-      )
-    );
-
-    actualInstallmentCount = selected;
-
-    remainingBeforeMarkup = saleTotal;
-  }
+  actualInstallmentCount = treatDownPayment
+    ? Math.max(0, selected - 1)
+    : selected;
 
   return {
     saleTotal,
@@ -587,6 +556,8 @@ const createSale = async (req, res) => {
       installmentDuration = 0,
       selectedInstallmentDuration = 0,
       treatDownPaymentAsFirstInstallment = false,
+      initialPaymentType,
+      initialInstallmentPaidAmount = 0,
       installmentSchedule = [],
       installments = []
     } = req.body;
@@ -622,6 +593,12 @@ const createSale = async (req, res) => {
     const discountAmount = roundMoney(discount);
     const dPayment = roundMoney(downPayment);
     const markup = roundMoney(markupPercentage);
+    const normalizedInitialPaymentType = ['DownPayment', 'FirstInstallment'].includes(initialPaymentType)
+      ? initialPaymentType
+      : (toBoolean(treatDownPaymentAsFirstInstallment) && dPayment > 0 ? 'DownPayment' : 'None');
+    const initialInstallmentPayment = normalizedInitialPaymentType === 'FirstInstallment'
+      ? roundMoney(initialInstallmentPaidAmount)
+      : 0;
 
     if (
       !Number.isInteger(qty) ||
@@ -749,9 +726,8 @@ const createSale = async (req, res) => {
         const itemProductId = item?.product?._id || item?.product?.id || item?.product;
         const itemQty = Number(item?.quantity);
         const itemPrice = roundMoney(item?.unitPrice);
-        const itemDiscount = roundMoney(item?.discount || 0);
         const stockAdjustment = Number(item?.stockAdjustment || 0);
-        if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isFinite(itemDiscount) || itemDiscount < 0 || itemDiscount > roundMoney(itemQty * itemPrice) || !Number.isInteger(stockAdjustment)) {
+        if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isInteger(stockAdjustment)) {
           return res.status(400).json({ message: 'Each sale item needs a valid product, quantity, and price.' });
         }
         const productDoc = await Product.findOne({ _id: itemProductId, shopId });
@@ -768,12 +744,12 @@ const createSale = async (req, res) => {
         if (availableAfterAdjustment < 0 || availableAfterAdjustment < itemQty + alreadyRequested) {
           return res.status(400).json({ message: `Insufficient stock for ${productDoc.name}. Current quantity: ${productDoc.quantity}. Adjust stock before selling.` });
         }
-        normalizedItems.push({ product: productDoc, quantity: itemQty, unitPrice: itemPrice, discount: itemDiscount, stockAdjustment, purchasePriceAtSale: itemPurchasePrice });
+        normalizedItems.push({ product: productDoc, quantity: itemQty, unitPrice: itemPrice, discount: 0, stockAdjustment, purchasePriceAtSale: itemPurchasePrice });
       }
       const itemsSubtotal = roundMoney(normalizedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
-      const itemsDiscount = roundMoney(normalizedItems.reduce((sum, item) => sum + item.discount, 0));
-      if (Math.abs(itemsDiscount - discountAmount) > 0.01) return res.status(400).json({ message: 'Sale discount must match the total of item discounts.' });
-      const itemsFinalTotal = roundMoney(itemsSubtotal - itemsDiscount);
+      if (discountAmount > itemsSubtotal) return res.status(400).json({ message: 'Overall discount cannot be greater than the sale subtotal.' });
+      const itemsDiscount = discountAmount;
+      const itemsFinalTotal = roundMoney(itemsSubtotal - discountAmount);
       const cashReceived = dPayment > 0 || paymentStatus === 'Unpaid' ? dPayment : itemsFinalTotal;
       if (cashReceived < 0 || cashReceived > itemsFinalTotal) return res.status(400).json({ message: 'Cash received must be between zero and the sale total.' });
       const saleId = await generateSaleID(shopId);
@@ -817,7 +793,7 @@ const createSale = async (req, res) => {
         const itemProductId = item?.product?._id || item?.product?.id || item?.product;
         const itemQty = Number(item?.quantity);
         const itemPrice = roundMoney(item?.unitPrice);
-        const itemDiscount = roundMoney(item?.discount || 0);
+        const itemDiscount = 0;
         const itemStockAdjustment = Number(item?.stockAdjustment || 0);
         if (!itemProductId || !Number.isInteger(itemQty) || itemQty <= 0 || !Number.isFinite(itemPrice) || itemPrice < 0 || !Number.isFinite(itemDiscount) || itemDiscount < 0 || itemDiscount > roundMoney(itemQty * itemPrice) || !Number.isInteger(itemStockAdjustment)) {
           return res.status(400).json({ message: 'Each installment sale item needs a valid product, quantity, price, discount, and stock change.' });
@@ -841,12 +817,8 @@ const createSale = async (req, res) => {
       }
 
       const requestedQuantity = normalizedInstallmentItems.reduce((sum, item) => sum + item.quantity, 0);
-      const itemDiscountTotal = roundMoney(normalizedInstallmentItems.reduce((sum, item) => sum + item.discount, 0));
       if (requestedQuantity !== qty) {
         return res.status(400).json({ message: 'Sale quantity must match the total quantity of its products.' });
-      }
-      if (Math.abs(itemDiscountTotal - discountAmount) > 0.01) {
-        return res.status(400).json({ message: 'Sale discount must match the total of item discounts.' });
       }
 
       const stockByProduct = new Map();
@@ -904,6 +876,10 @@ const createSale = async (req, res) => {
     const subtotal = normalizedInstallmentItems
       ? roundMoney(normalizedInstallmentItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))
       : roundMoney(qty * price);
+
+    if (discountAmount > subtotal) {
+      return res.status(400).json({ message: 'Overall discount cannot be greater than the sale subtotal.' });
+    }
 
     const finalTotal =
       roundMoney(
@@ -1030,10 +1006,7 @@ const createSale = async (req, res) => {
       });
     }
 
-    const treatDownPayment =
-      toBoolean(
-        treatDownPaymentAsFirstInstallment
-      );
+    const treatDownPayment = dPayment > 0;
 
     if (dPayment < 0) {
       return res.status(400).json({
@@ -1047,6 +1020,10 @@ const createSale = async (req, res) => {
         message:
           'Down payment cannot be greater than sale total.'
       });
+    }
+
+    if (initialInstallmentPayment < 0 || (normalizedInitialPaymentType === 'FirstInstallment' && initialInstallmentPayment > finalTotal)) {
+      return res.status(400).json({ message: 'First-installment payment must be between zero and the total sale amount.' });
     }
 
     // ========================================================
@@ -1070,6 +1047,10 @@ const createSale = async (req, res) => {
       financedAmount,
       actualInstallmentCount
     } = calculation;
+
+    if (initialInstallmentPayment > financedAmount) {
+      return res.status(400).json({ message: 'First-installment payment cannot be greater than the financed balance.' });
+    }
 
     if (
       actualInstallmentCount === 0 &&
@@ -1158,6 +1139,38 @@ const createSale = async (req, res) => {
     invoiceSchedule.push(
       ...futureSchedule
     );
+
+    const initialInstallmentNumber = treatDownPayment ? 2 : 1;
+    const firstScheduledAmount = Number(futureSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber)?.amount || 0);
+    const initialPaidByInstallment = new Map();
+    if (normalizedInitialPaymentType === 'FirstInstallment' && futureSchedule.length > 0) {
+      const firstPaid = Math.min(firstScheduledAmount, initialInstallmentPayment);
+      initialPaidByInstallment.set(initialInstallmentNumber, firstPaid);
+      let extra = Math.max(0, roundMoney(initialInstallmentPayment - firstPaid));
+      let targets = futureSchedule
+        .filter((item) => Number(item.installmentNumber) > initialInstallmentNumber)
+        .map((item) => ({ number: Number(item.installmentNumber), remaining: Number(item.amount || 0) }));
+      while (extra > 0.005 && targets.length > 0) {
+        const share = extra / targets.length;
+        let roundTotal = 0;
+        targets = targets.filter((target) => {
+          const allocation = Math.min(target.remaining, share);
+          target.remaining = roundMoney(target.remaining - allocation);
+          initialPaidByInstallment.set(target.number, roundMoney((initialPaidByInstallment.get(target.number) || 0) + allocation));
+          roundTotal = roundMoney(roundTotal + allocation);
+          return target.remaining > 0.005;
+        });
+        if (roundTotal <= 0) break;
+        extra = roundMoney(extra - roundTotal);
+      }
+    }
+    const initialPaymentCountsAsFirstInstallment = treatDownPayment || (
+      normalizedInitialPaymentType === 'FirstInstallment' && firstScheduledAmount > 0 && (initialPaidByInstallment.get(initialInstallmentNumber) || 0) >= firstScheduledAmount
+    );
+    const remainingInstallmentCount = treatDownPayment
+      ? futureSchedule.length
+      : futureSchedule.filter((item) => Number(item.amount || 0) - (initialPaidByInstallment.get(Number(item.installmentNumber)) || 0) > 0.005).length;
+    const remainingAfterInitialPayment = Math.max(0, roundMoney(financedAmount - initialInstallmentPayment));
 
     // ========================================================
     // INVOICE
@@ -1316,13 +1329,13 @@ const createSale = async (req, res) => {
         paymentType:
           'Installment',
 
-        paymentStatus: dPayment >= totalWithMarkup ? 'Paid' : 'Unpaid',
+        paymentStatus: roundMoney(dPayment + initialInstallmentPayment) >= totalWithMarkup ? 'Paid' : 'Unpaid',
 
         downPayment:
           dPayment,
 
         remainingBalance:
-          financedAmount,
+          remainingAfterInitialPayment,
 
         installmentDuration:
           actualInstallmentCount,
@@ -1333,6 +1346,9 @@ const createSale = async (req, res) => {
         treatDownPaymentAsFirstInstallment:
           treatDownPayment,
 
+        initialPaymentType: normalizedInitialPaymentType,
+        initialInstallmentPaidAmount: initialInstallmentPayment,
+
         installmentScheduleSnapshot:
           invoiceSchedule.map(
             (item) => ({
@@ -1341,6 +1357,12 @@ const createSale = async (req, res) => {
 
               amount:
                 item.amount,
+
+              remainingAmount: Math.max(0, roundMoney(Number(item.amount || 0) - (
+                treatDownPayment && Number(item.installmentNumber) === 1
+                  ? dPayment
+                  : (initialPaidByInstallment.get(Number(item.installmentNumber)) || 0)
+              ))),
 
               dueDate:
                 item.dueDate
@@ -1399,10 +1421,10 @@ const createSale = async (req, res) => {
           dPayment,
 
         remainingBalance:
-          financedAmount,
+          remainingAfterInitialPayment,
 
         duration:
-          actualInstallmentCount,
+          remainingInstallmentCount,
 
         selectedDuration:
           selectedDuration,
@@ -1410,8 +1432,12 @@ const createSale = async (req, res) => {
         treatDownPaymentAsFirstInstallment:
           treatDownPayment,
 
+        initialPaymentType: normalizedInitialPaymentType,
+        initialInstallmentPaidAmount: initialInstallmentPayment,
+        initialPaymentCountsAsFirstInstallment,
+
         status:
-          financedAmount > 0
+          remainingAfterInitialPayment > 0
             ? 'Active'
             : 'Completed',
 
@@ -1422,7 +1448,7 @@ const createSale = async (req, res) => {
             selectedDuration,
 
           duration:
-            actualInstallmentCount,
+            remainingInstallmentCount,
 
           downPayment:
             dPayment,
@@ -1430,7 +1456,11 @@ const createSale = async (req, res) => {
           treatDownPaymentAsFirstInstallment:
             treatDownPayment,
 
-          financedAmount,
+          initialPaymentType: normalizedInitialPaymentType,
+          initialInstallmentPaidAmount: initialInstallmentPayment,
+          initialPaymentCountsAsFirstInstallment,
+
+          financedAmount: remainingAfterInitialPayment,
 
           installments:
             invoiceSchedule.map(
@@ -1440,6 +1470,12 @@ const createSale = async (req, res) => {
 
                 amount:
                   item.amount,
+
+                remainingAmount: Math.max(0, roundMoney(Number(item.amount || 0) - (
+                  treatDownPayment && Number(item.installmentNumber) === 1
+                    ? dPayment
+                    : (initialPaidByInstallment.get(Number(item.installmentNumber)) || 0)
+                ))),
 
                 dueDate:
                   item.dueDate
@@ -1505,8 +1541,13 @@ const createSale = async (req, res) => {
 
     if (futureSchedule.length > 0) {
       installmentDocuments.push(
-        ...futureSchedule.map(
-          (item) => ({
+        ...futureSchedule.map((item) => {
+          const number = Number(item.installmentNumber);
+          const paidAmount = normalizedInitialPaymentType === 'FirstInstallment'
+            ? (initialPaidByInstallment.get(number) || 0)
+            : 0;
+          const remainingAmount = Math.max(0, roundMoney(Number(item.amount || 0) - paidAmount));
+          return {
             shopId,
 
             installmentPlan:
@@ -1521,19 +1562,17 @@ const createSale = async (req, res) => {
             originalAmount:
               item.amount,
 
-            paidAmount:
-              0,
+            paidAmount,
 
-            remainingAmount:
-              item.amount,
+            remainingAmount,
 
             dueDate:
               item.dueDate,
 
-            status:
-              'Pending'
-          })
-        )
+            status: remainingAmount <= 0.005 ? 'Paid' : paidAmount > 0 ? 'Partially Paid' : 'Pending',
+            ...(paidAmount > 0 ? { paidDate: recordedSaleDate } : {})
+          };
+        })
       );
     }
 
@@ -1546,44 +1585,6 @@ const createSale = async (req, res) => {
     }
 
     // ========================================================
-    let initialDownPaymentReceipt = null;
-
-    // Create a receipt record for the down payment. The installment remains
-    // the source of truth for balances; this payment only records the receipt
-    // and its allocation to installment #1.
-    if (treatDownPayment && dPayment > 0) {
-      const firstInstallment = await Installment.findOne({
-        shopId,
-        installmentPlan: plan._id,
-        installmentNumber: 1,
-      });
-
-      if (firstInstallment) {
-        const paymentId = await generatePaymentID(shopId);
-
-        initialDownPaymentReceipt = await Payment.create({
-          shopId,
-          paymentId,
-          customer,
-          sale: sale._id,
-          installmentPlan: plan._id,
-          installment: firstInstallment._id,
-          amount: dPayment,
-          paymentDate: recordedSaleDate,
-          originalInstallmentAmount: dPayment,
-          carryForwardAmount: 0,
-          allocations: [{
-            installment: firstInstallment._id,
-            installmentNumber: 1,
-            amount: dPayment,
-            previousRemaining: dPayment,
-            remainingAfterPayment: 0,
-          }],
-          notes: 'Down payment received at sale and counted as installment #1.',
-        });
-      }
-    }
-
     // ========================================================
     // RESPONSE
     // ========================================================
@@ -1634,8 +1635,7 @@ const createSale = async (req, res) => {
         installments:
           createdInstallments,
 
-        paymentReceipt:
-          initialDownPaymentReceipt,
+        paymentReceipt: null,
 
         calculation: {
           saleTotal:
@@ -1767,6 +1767,27 @@ const getSales = async (req, res) => {
 
     const sales =
       await salesQuery;
+
+    // Attach the current installment-plan revision state for admin list views.
+    // Keep this as response-only metadata so invoice/receipt print data stays unchanged.
+    const installmentSales = sales.filter((sale) => sale.paymentType === 'Installment');
+    const installmentSaleIds = installmentSales.map((sale) => sale._id);
+    if (installmentSaleIds.length) {
+      const installmentPlans = await InstallmentPlan.find({
+        shopId,
+        sale: { $in: installmentSaleIds },
+      })
+        .select('sale revisionNumber')
+        .lean();
+      const revisionBySale = new Map(
+        installmentPlans.map((plan) => [String(plan.sale), Number(plan.revisionNumber || 0)])
+      );
+      for (const sale of installmentSales) {
+        const revisionNumber = revisionBySale.get(String(sale._id)) || 0;
+        sale.isInstallmentPlanRevised = revisionNumber > 0;
+        sale.installmentPlanRevisionNumber = revisionNumber;
+      }
+    }
 
     if (pagination) {
       return paginatedResponse(
@@ -1951,12 +1972,24 @@ const receiveCashSalePayment = async (req, res) => {
     updatedSale.paymentStatus = Number(updatedSale.remainingBalance || 0) <= 0 ? 'Paid' : 'Unpaid';
     await updatedSale.save();
 
+    const cashReceipt = await Payment.create({
+      shopId: req.shopId,
+      paymentId: await generatePaymentID(req.shopId),
+      customer: updatedSale.customer || undefined,
+      sale: updatedSale._id,
+      amount,
+      paymentMethod: String(req.body.paymentMethod || 'Cash').trim().slice(0, 80) || 'Cash',
+      paymentDate,
+      cashSalePayment: true,
+      cashRemainingBalanceAfterPayment: Math.max(0, roundMoney(updatedSale.remainingBalance)),
+    });
+
     return res.status(200).json({
       success: true,
       message: updatedSale.paymentStatus === 'Paid'
         ? 'Remaining cash received. Sale is now fully paid and appears in Cash Sales.'
         : 'Cash payment recorded. Remaining amount is still due.',
-      data: { sale: updatedSale },
+      data: { sale: updatedSale, payment: cashReceipt },
     });
   } catch (error) {
     console.error('RECEIVE CASH SALE PAYMENT ERROR:', error);
@@ -2104,6 +2137,14 @@ const updateSale = async (req, res) => {
         sale:
           sale._id
       });
+
+    const existingReturn = await Return.exists({ shopId, sale: sale._id });
+
+    if (existingReturn) {
+      return res.status(400).json({
+        message: 'This sale already has a processed return. It cannot be edited until the return is reversed.',
+      });
+    }
 
     if (existingPayment) {
       return res.status(400).json({
@@ -2346,6 +2387,16 @@ const updateSale = async (req, res) => {
       ));
       const itemQuantity = normalizedItems.reduce((sum, item) => sum + item.quantity, 0);
       const finalTotal = roundMoney(Math.max(0, itemSubtotal - itemDiscount));
+      const historicalCashReceived = roundMoney(
+        Array.isArray(sale.cashPayments) && sale.cashPayments.length
+          ? sale.cashPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+          : Number(sale.downPayment || 0)
+      );
+      if (finalTotal + 0.005 < historicalCashReceived) {
+        return res.status(400).json({
+          message: `Edited sale total cannot be less than the ${historicalCashReceived} already received. Record a refund/adjustment before lowering the sale total.`,
+        });
+      }
 
       sale.items = normalizedItems;
       sale.product = normalizedItems[0].product;
@@ -2358,7 +2409,7 @@ const updateSale = async (req, res) => {
       sale.totalWithMarkup = finalTotal;
       sale.customer = customerDoc?._id || null;
       sale.saleDate = updatedSaleDate;
-      sale.downPayment = Math.min(Number(sale.downPayment || 0), finalTotal);
+      sale.downPayment = historicalCashReceived;
       sale.remainingBalance = Math.max(0, roundMoney(finalTotal - sale.downPayment));
       sale.paymentStatus = sale.remainingBalance <= 0 ? 'Paid' : 'Unpaid';
       await sale.save();
@@ -2739,6 +2790,17 @@ const updateSale = async (req, res) => {
       sale.subtotal =
         subtotal;
 
+      const historicalCashReceived = roundMoney(
+        Array.isArray(sale.cashPayments) && sale.cashPayments.length
+          ? sale.cashPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+          : Number(sale.downPayment || 0)
+      );
+      if (finalTotal + 0.005 < historicalCashReceived) {
+        return res.status(400).json({
+          message: `Edited sale total cannot be less than the ${historicalCashReceived} already received. Record a refund/adjustment before lowering the sale total.`,
+        });
+      }
+
       sale.finalTotal =
         finalTotal;
 
@@ -2754,7 +2816,7 @@ const updateSale = async (req, res) => {
       sale.paymentType =
         'Cash';
 
-      sale.downPayment = Math.min(Number(sale.downPayment || 0), finalTotal);
+      sale.downPayment = historicalCashReceived;
       sale.remainingBalance = Math.max(0, roundMoney(finalTotal - sale.downPayment));
       sale.paymentStatus = sale.remainingBalance <= 0 ? 'Paid' : 'Unpaid';
 

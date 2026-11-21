@@ -21,7 +21,7 @@ const returnSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true
+      required: false
     },
 
     product: {
@@ -40,6 +40,12 @@ const returnSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0
+    },
+
+    // Before-state needed to reverse a return without losing payment allocations.
+    financialSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
 
     reason: {

@@ -418,83 +418,17 @@ const Installments = () => {
           STATS OVERVIEW BANNER
       ================================================== */}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
 
         {/* FILTERED PLANS */}
 
         <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
           <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
-            Filtered Installment Plans
+            Filtered Installment Sales
           </span>
           <p className="text-lg sm:text-xl font-extrabold text-slate-900 mt-1">
-            {filteredPlans.length}
+            {filteredPlans.length} Orders
           </p>
-        </div>
-
-        {/* OUTSTANDING BALANCE */}
-
-        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
-            Outstanding Financed Balance
-          </span>
-          <p className="text-lg sm:text-xl font-extrabold text-red-600 mt-1">
-            {settings.currency}{' '}
-            {filteredPlans
-              .reduce(
-                (sum, p) =>
-                  sum +
-                  (p.remainingBalance ||
-                    0),
-                0
-              )
-              .toLocaleString()}
-          </p>
-        </div>
-
-        {/* OVERDUE */}
-
-        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
-              Overdue/Defaulter Plans
-            </span>
-            <p className="text-lg sm:text-xl font-extrabold text-amber-600 mt-1">
-              {
-                filteredPlans.filter(
-                  (p) =>
-                    p.status ===
-                    'Overdue'
-                ).length
-              }
-            </p>
-          </div>
-          {
-            filteredPlans.filter(
-              (p) =>
-                p.status ===
-                'Overdue'
-            ).length > 0 && (
-              <AlertTriangle className="w-6 h-6 text-amber-500 animate-pulse" />
-            )
-          }
-        </div>
-
-        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Purchasing Cost</span>
-          <p className="text-lg sm:text-xl font-extrabold text-amber-600 mt-1">{formatMoney(totalPurchaseCost)}</p>
-          <span className="text-[10px] text-slate-400">Cost of products sold</span>
-        </div>
-
-        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Selling Price</span>
-          <p className="text-lg sm:text-xl font-extrabold text-emerald-600 mt-1">{formatMoney(totalSellingPrice)}</p>
-          <span className="text-[10px] text-slate-400">Sale total after discount</span>
-        </div>
-
-        <div className="premium-card p-3 sm:p-4 rounded-xl shadow-sm">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">Total Profit</span>
-          <p className={`text-lg sm:text-xl font-extrabold mt-1 ${totalProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{formatMoney(totalProfit)}</p>
-          <span className="text-[10px] text-slate-400">Selling price minus purchasing cost</span>
         </div>
 
       </div>
@@ -650,10 +584,6 @@ const Installments = () => {
                   </th>
 
                   <th className="px-6 py-4">
-                    Final Total
-                  </th>
-
-                  <th className="px-6 py-4">
                     Down Payment
                   </th>
 
@@ -667,6 +597,10 @@ const Installments = () => {
 
                   <th className="px-6 py-4">
                     Term
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Remaining Installments
                   </th>
 
                   <th className="px-6 py-4">
@@ -713,6 +647,11 @@ const Installments = () => {
                               <>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-indigo-600 font-extrabold tracking-wider">
                                   {plan.sale?.saleId || 'N/A'}
+                                  {Number(plan.revisionNumber || 0) > 0 && (
+                                    <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+                                      Revised plan{Number(plan.revisionNumber) > 1 ? ` · Rev ${plan.revisionNumber}` : ''}
+                                    </span>
+                                  )}
                                 </td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle">
                                   <p className="font-bold text-gray-900">{plan.customer?.fullName || 'N/A'}</p>
@@ -732,13 +671,13 @@ const Installments = () => {
 
                             {itemIndex === 0 && (
                               <>
-                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-bold text-slate-800">{formatMoney(plan.sale?.finalTotal ?? plan.totalAmount ?? 0)}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-green-600">-{settings.currency} {(plan.downPayment || 0).toLocaleString()}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-red-600">{settings.currency} {(plan.remainingBalance || 0).toLocaleString()}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-indigo-700">
                                   {formatMoney(plan.totalAmount ?? plan.sale?.totalWithMarkup ?? plan.sale?.finalTotal ?? 0)}
                                 </td>
-                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-gray-500 font-bold">{plan.duration}M</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-gray-500 font-bold">{Number(plan.selectedDuration || plan.invoiceSnapshot?.selectedDuration || plan.sale?.selectedInstallmentDuration || plan.duration || 0)}M</td>
+                                <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-center font-black text-amber-700">{Number(plan.remainingInstallmentCount ?? plan.duration ?? 0)}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle whitespace-nowrap">
                                   <p className="font-semibold text-slate-700">{formatPlanDate(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>
                                   <p className="mt-0.5 text-[10px] font-medium text-slate-400">{formatPlanTime(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>

@@ -1250,15 +1250,22 @@ const getIndexRecord = async (
         Number(item.remainingAmount ?? item.amount ?? 0) > 0
       );
       const next = unpaid[0] || null;
+      const endOfCurrentMonth = new Date();
+      endOfCurrentMonth.setMonth(endOfCurrentMonth.getMonth() + 1, 0);
+      endOfCurrentMonth.setHours(23, 59, 59, 999);
+      const dueOrPartPaid = unpaid.filter((item) =>
+        Number(item.paidAmount || 0) > 0 ||
+        (item.dueDate && new Date(item.dueDate) <= endOfCurrentMonth)
+      );
+      const installmentBreakdown = (dueOrPartPaid.length ? dueOrPartPaid : next ? [next] : []).map((item) => ({
+        installmentNumber: Number(item.installmentNumber),
+        amount: Number(item.amount || item.originalAmount || 0),
+        remainingAmount: Number(item.remainingAmount ?? Math.max(0, Number(item.amount || item.originalAmount || 0) - Number(item.paidAmount || 0))),
+      }));
       const totalInstallments = Number(
         plan.selectedDuration || plan.invoiceSnapshot?.selectedDuration ||
         scheduled.length || plan.duration || 0
       );
-      const paidInstallments = scheduled.filter((item) =>
-        ['Paid', 'Settled'].includes(item.status) ||
-        (Number(item.amount || item.originalAmount || 0) > 0 &&
-          Number(item.paidAmount || 0) >= Number(item.amount || item.originalAmount || 0))
-      ).length;
       const customer = plan.customer || plan.sale?.customer || {};
       const sale = plan.sale || {};
       const totalRemaining = Number(plan.remainingBalance || 0);
@@ -1270,12 +1277,14 @@ const getIndexRecord = async (
         serialNumber: index + 1,
         purchaseDate: sale.saleDate || sale.createdAt || plan.createdAt || plan.firstDueDate,
         customerName: customer.fullName || customer.name || 'N/A',
+        referredBy: String(customer.referredBy || '').trim(),
         invoiceNumber: sale.saleId || sale.invoiceNumber || sale.invoiceNo || 'N/A',
         totalAmount: Number(plan.totalAmount || sale.totalAmount || sale.grandTotal || 0),
         totalRemainingAmount: totalRemaining,
         installmentAmount: nextAmount,
         installmentRemainingAmount: nextRemaining,
-        installmentPlan: `${totalInstallments}M / ${paidInstallments}`,
+        installmentBreakdown,
+        installmentPlan: `${totalInstallments}M / ${(dueOrPartPaid.length ? dueOrPartPaid : next ? [next] : []).map((item) => item.installmentNumber).join(', ') || '—'}`,
         installmentNumber: next?.installmentNumber || null,
         receivedAmount: '',
         remainingAmount: totalRemaining,
@@ -1300,6 +1309,8 @@ const getIndexRecord = async (
     });
 
     const totalRemainingAmount = rows.reduce((sum, row) => sum + row.totalRemainingAmount, 0);
+    const references = [...new Set(rows.map((row) => row.referredBy).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
 
 
     // ========================================================
@@ -1316,6 +1327,8 @@ const getIndexRecord = async (
           rows.length,
 
         totalRemainingAmount,
+
+        references,
 
         rows,
       },

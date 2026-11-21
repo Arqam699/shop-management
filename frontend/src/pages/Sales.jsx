@@ -523,95 +523,20 @@ const Sales = () => {
           </div>
         </section>
 
-        {/* =====================================================
-            KPI METRICS SUMMARY CARDS
-        ====================================================== */}
-        <div className="grid grid-cols-2 gap-3">
-          
-          {/* Filtered Sales Count */}
+        <div className="grid grid-cols-1 gap-3">
           <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Filtered Cash Sales
-                </p>
-                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                  {filteredSales.length} Orders
-                </p>
-                <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Cash transactions in view
-                </p>
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Filtered Cash Sales</p>
+                <p className="mt-1.5 text-lg font-black tracking-tight text-slate-900">{filteredSales.length} Orders</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">Cash transactions in view</p>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Receipt className="w-4.5 h-4.5" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+                <Receipt className="h-4 w-4" />
               </div>
             </div>
           </div>
-
-          {/* Total Product Purchasing Cost */}
-          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Total Purchasing Cost
-                </p>
-                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-amber-600 truncate">
-                  {formatMoney(totalPurchaseCost)}
-                </p>
-                <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                  Actual cost of sold products
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Package className="w-4.5 h-4.5" />
-              </div>
-            </div>
-          </div>
-
-          {/* Total Cash Revenue */}
-          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Total Selling Price
-                </p>
-                <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-emerald-600 truncate">
-                  {formatMoney(totalCashSalesVal)}
-                </p>
-                <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                  Total selling amount after discounts
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <CircleDollarSign className="w-4.5 h-4.5" />
-              </div>
-            </div>
-          </div>
-
-          {/* Cash Sale Profit */}
-          <div className="group relative overflow-hidden premium-card p-3 sm:p-4">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-indigo-500" />
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Total Profit
-                </p>
-                <p className={`mt-1.5 text-lg sm:text-xl font-black tracking-tight truncate ${totalCashProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>
-                  {formatMoney(totalCashProfit)}
-                </p>
-                <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                  Selling price minus purchasing cost
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Sparkles className="w-4.5 h-4.5" />
-              </div>
-            </div>
-          </div>
-
         </div>
 
         {/* =====================================================

@@ -157,6 +157,8 @@ const Dashboard = () => {
   const [indexRecordData, setIndexRecordData] = useState(null);
   const [indexRecordLoading, setIndexRecordLoading] = useState(false);
   const [indexRecordError, setIndexRecordError] = useState('');
+  const [indexRecordMode, setIndexRecordMode] = useState('all');
+  const [selectedIndexReference, setSelectedIndexReference] = useState('');
 
 
   // =========================================================
@@ -318,8 +320,13 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
   };
 
-  // Overall installment register rows are loaded from the report endpoint.
-    const indexRecordRows = indexRecordData?.rows || [];
+  // Overall and reference-filtered installment register rows.
+  const allIndexRecordRows = indexRecordData?.rows || [];
+  const indexRecordReferences = indexRecordData?.references || [];
+  const indexRecordRows = (indexRecordMode === 'reference'
+    ? allIndexRecordRows.filter((row) => selectedIndexReference && String(row.referredBy || '').trim() === selectedIndexReference)
+    : allIndexRecordRows
+  ).map((row, index) => ({ ...row, serialNumber: index + 1 }));
   const indexRecordPages = Array.from(
     { length: Math.ceil(indexRecordRows.length / 12) },
     (_, pageIndex) => indexRecordRows.slice(pageIndex * 12, (pageIndex + 1) * 12)
@@ -357,7 +364,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         csvTextCell(row.invoiceNumber),
         csvNormalCell(Number(row.totalAmount || 0)),
         csvNormalCell(Number(row.totalRemainingAmount || 0)),
-        csvNormalCell(Number(row.installmentAmount || 0)),
+        csvNormalCell((row.installmentBreakdown?.length ? row.installmentBreakdown : [{ installmentNumber: row.installmentNumber, amount: row.installmentAmount, remainingAmount: row.installmentRemainingAmount }])
+          .filter((item) => item.installmentNumber)
+          .map((item) => `#${item.installmentNumber}: ${Number(item.amount || 0)} / ${Number(item.remainingAmount || 0)}`)
+          .join('; ')),
         csvNormalCell(row.installmentPlan),
         csvNormalCell(''), csvNormalCell(Number(row.remainingAmount || 0)), csvNormalCell(''), csvNormalCell(''),
         csvTextCell(row.mobile), csvNormalCell(''),
@@ -374,7 +384,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Installment_Index_Record_${pakistanDateKey()}.csv`;
+    const referenceSuffix = indexRecordMode === 'reference' && selectedIndexReference
+      ? `_${selectedIndexReference.replace(/[^a-z0-9]+/gi, '_')}`
+      : '';
+    link.download = `Installment_${indexRecordMode === 'reference' ? 'Reference' : 'Index'}_Record${referenceSuffix}_${pakistanDateKey()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1299,11 +1312,18 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
         {/* INDEX RECORD */}
         {dashboardView !== 'cash' && <button
-          onClick={() => setShowIndexRecord(true)}
+          onClick={() => { setIndexRecordMode('all'); setSelectedIndexReference(''); setShowIndexRecord(true); }}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-lg shadow-amber-500/20"
         >
           <List className="w-3.5 h-3.5" />
           Index Record
+        </button>}
+        {(dashboardView === 'main' || dashboardView === 'installment') && <button
+          onClick={() => { setIndexRecordMode('reference'); setSelectedIndexReference(''); setShowIndexRecord(true); }}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/15 px-4 py-2.5 text-xs font-black text-cyan-200 transition-all duration-300 hover:scale-[1.02] hover:bg-cyan-500/25 active:scale-95"
+        >
+          <Users className="h-3.5 w-3.5" />
+          Reference Record
         </button>}
 
         {/* NEW CHECKOUT */}
@@ -1372,10 +1392,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   </div>
                   <div>
                     <h3 className="text-base font-black text-white">
-                      Index Sheet Installment Plan
+                      {indexRecordMode === 'reference' ? 'Reference-wise Installment Record' : 'Index Sheet Installment Plan'}
                     </h3>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      Complete register of active installment plans
+                      {indexRecordMode === 'reference' ? 'Installment records filtered by customer reference' : 'Complete register of active installment plans'}
                     </p>
                   </div>
                 </div>
@@ -1414,9 +1434,19 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     Register:
                   </span>
                   <span className="ml-2 text-xs font-black text-white">
-                    All active plans
+                    {indexRecordMode === 'reference' ? (selectedIndexReference || 'Choose a reference') : 'All active plans'}
                   </span>
                 </div>
+
+                {indexRecordMode === 'reference' && (
+                  <label className="flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-white/[0.06] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-cyan-200">
+                    Reference
+                    <select value={selectedIndexReference} onChange={(event) => setSelectedIndexReference(event.target.value)} className="max-w-[220px] bg-transparent text-xs font-black normal-case tracking-normal text-white outline-none [&>option]:text-slate-900">
+                      <option value="">Select reference name</option>
+                      {indexRecordReferences.map((reference) => <option key={reference} value={reference}>{reference}</option>)}
+                    </select>
+                  </label>
+                )}
 
                 <div className="px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08]">
                   <span className="text-[9px] uppercase tracking-wider font-black text-slate-400">
@@ -1445,11 +1475,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                     <List className="w-5 h-5 text-slate-400" />
                   </div>
                   <h4 className="mt-3 text-sm font-black text-slate-700">
-                    No active installment plans found
+                    {indexRecordMode === 'reference' && !selectedIndexReference ? 'Choose a reference name' : 'No active installment plans found'}
                   </h4>
                   <p className="mt-1 text-xs text-slate-400">
-                    {indexRecordError ||
-                      'There are no active installment plans with an outstanding balance.'}
+                    {indexRecordMode === 'reference' && !selectedIndexReference
+                      ? 'Select a name from the dropdown to view its installment records.'
+                      : indexRecordError || 'There are no active installment plans with an outstanding balance for this selection.'}
                   </p>
                 </div>
               ) : (
@@ -1457,7 +1488,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   {indexRecordPages.map((pageRows, pageIndex) => (
                     <div className="index-record-page" key={`index-page-${pageIndex}`}>
                       <div className="index-print-header px-4 py-3">
-                        <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">INDEX SHEET INSTALLMENT PLAN</h1>
+                        <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">{indexRecordMode === 'reference' ? `REFERENCE RECORD — ${selectedIndexReference}` : 'INDEX SHEET INSTALLMENT PLAN'}</h1>
                         <p className="index-print-company text-xs font-bold text-slate-700 mt-0.5"><span>{settings?.shopName || 'Electronics Shop'}</span><span>{indexRecordPrintedDate}</span></p>
                       </div>
                       <table className="index-record-table w-full min-w-[1500px] text-left">
@@ -1474,6 +1505,11 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                         <tbody>
                           {pageRows.map((row, rowIndex) => {
                             const index = pageIndex * 12 + rowIndex;
+                            const installmentBreakdown = row.installmentBreakdown?.length
+                              ? row.installmentBreakdown
+                              : row.installmentNumber
+                                ? [{ installmentNumber: row.installmentNumber, amount: row.installmentAmount, remainingAmount: row.installmentRemainingAmount }]
+                                : [];
                             return (
                               <tr key={row.id}>
                                 <td>{index + 1}</td>
@@ -1482,7 +1518,20 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                                 <td>{row.invoiceNumber}</td>
                                 <td>{indexMoney(row.totalAmount)}</td>
                                 <td>{indexMoney(row.totalRemainingAmount)}</td>
-                                <td>{indexMoney(row.installmentAmount)}</td>
+                                <td>
+                                  <div className="mx-auto max-w-[42mm] text-[7px] leading-tight">
+                                    {installmentBreakdown.map((installment, installmentIndex) => {
+                                      const scheduledAmount = Number(installment.amount || 0);
+                                      const remainingInstallmentAmount = Number(installment.remainingAmount || 0);
+                                      const isPartiallyPaid = remainingInstallmentAmount < scheduledAmount - 0.005;
+                                      return (
+                                      <div key={installment.installmentNumber} className={`flex items-center justify-center gap-1 px-0.5 py-0.5 text-right ${installmentIndex < installmentBreakdown.length - 1 ? 'border-b border-slate-300' : ''}`}>
+                                        <span className="font-black">#{installment.installmentNumber}</span>
+                                        <span>{indexMoney(scheduledAmount)}{isPartiallyPaid ? ` / ${indexMoney(remainingInstallmentAmount)}` : ''}</span>
+                                      </div>
+                                    );})}
+                                  </div>
+                                </td>
                                 <td>{row.installmentPlan}</td>
                                 <td className="index-write-cell">&nbsp;</td>
                                 <td>{indexMoney(row.remainingAmount)}</td>

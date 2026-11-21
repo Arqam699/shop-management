@@ -18,6 +18,11 @@ const saleInstallmentSnapshotSchema = new mongoose.Schema(
       min: 0,
     },
 
+    remainingAmount: {
+      type: Number,
+      min: 0,
+    },
+
     dueDate: {
       type: Date,
       required: true,
@@ -255,6 +260,18 @@ const saleSchema = new mongoose.Schema(
     treatDownPaymentAsFirstInstallment: {
       type: Boolean,
       default: false,
+    },
+
+    initialPaymentType: {
+      type: String,
+      enum: ['None', 'DownPayment', 'FirstInstallment'],
+      default: 'None',
+    },
+
+    initialInstallmentPaidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
 

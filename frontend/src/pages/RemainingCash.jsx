@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Banknote, CheckCircle2, Clock3, ExternalLink, Pencil, RefreshCw, Save, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -7,6 +7,7 @@ import { useSettings } from '../context/SettingsContext';
 
 const RemainingCash = () => {
   const { settings } = useSettings();
+  const navigate = useNavigate();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -73,7 +74,9 @@ const RemainingCash = () => {
       setSavingId(sale._id);
       const response = await api.post(`/api/sales/${sale._id}/cash-payments`, { amount, paymentMethod });
       toast.success(response.data?.message || 'Cash payment recorded.');
+      const paymentId = response.data?.data?.payment?._id;
       await fetchOutstanding();
+      if (paymentId) navigate(`/payments?receipt=${encodeURIComponent(paymentId)}`);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Could not record this payment.');
     } finally {
@@ -101,6 +104,7 @@ const RemainingCash = () => {
   };
 
   return (
+    <>
     <div className="mx-auto max-w-7xl space-y-5 pb-8">
       <header className="flex flex-col gap-4 rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-5 text-white shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-7">
         <div>
@@ -186,6 +190,7 @@ const RemainingCash = () => {
             </div>}
       </section>
     </div>
+    </>
   );
 };
 

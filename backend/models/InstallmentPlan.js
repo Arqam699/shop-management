@@ -96,6 +96,23 @@ const installmentPlanSchema = new mongoose.Schema(
       default: false,
     },
 
+    initialPaymentType: {
+      type: String,
+      enum: ['None', 'DownPayment', 'FirstInstallment'],
+      default: 'None',
+    },
+
+    initialInstallmentPaidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    initialPaymentCountsAsFirstInstallment: {
+      type: Boolean,
+      default: false,
+    },
+
     status: {
       type: String,
       enum: ['Active', 'Completed', 'Overdue'],
@@ -132,6 +149,22 @@ const installmentPlanSchema = new mongoose.Schema(
         default: false,
       },
 
+      initialPaymentType: {
+        type: String,
+        enum: ['None', 'DownPayment', 'FirstInstallment'],
+        default: 'None',
+      },
+
+      initialInstallmentPaidAmount: {
+        type: Number,
+        default: 0,
+      },
+
+      initialPaymentCountsAsFirstInstallment: {
+        type: Boolean,
+        default: false,
+      },
+
       financedAmount: {
         type: Number,
         default: 0,
@@ -141,6 +174,7 @@ const installmentPlanSchema = new mongoose.Schema(
         {
           installmentNumber: Number,
           amount: Number,
+          remainingAmount: Number,
           dueDate: Date,
         },
       ],

@@ -3,7 +3,8 @@ import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
-import { BookOpen, Plus, RefreshCw, ReceiptText, Package, TrendingUp, Download, Search, X } from 'lucide-react';
+import { BookOpen, Plus, RefreshCw, ReceiptText, Package, TrendingUp, Download, Search, X, Trash2, Lock } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 
 const BookWiseAudit = () => {
   const { settings } = useSettings();
@@ -20,6 +21,9 @@ const BookWiseAudit = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bookToDelete, setBookToDelete] = useState(null);
+  const [deletingBook, setDeletingBook] = useState(false);
+  const isDeletionUnlocked = settings?.allowGlobalDeletion === true;
   const currency = settings?.currency || 'PKR';
   const money = (value) => `${currency} ${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -106,7 +110,7 @@ const BookWiseAudit = () => {
   const exportBook = async () => {
     if (!selectedBook) return;
     const rows = [
-      ['Book', 'Product', 'Invoice', 'Date', 'Sale type', 'Quantity', 'Purchase price', 'Purchase cost', 'Line amount', 'Profit'],
+      ['Book', 'Product', 'Invoice', 'Date', 'Sale type', 'Quantity', 'Purchase price', 'Purchase cost', 'Line amount', 'Markup profit', 'Profit'],
       ...productGroups.flatMap((group) => group.lines.map((line) => [
         selectedBook.name,
         group.product.name || 'Deleted product',
@@ -117,6 +121,7 @@ const BookWiseAudit = () => {
         line.purchasePrice,
         line.purchaseTotal,
         line.sellingTotal,
+        line.markupProfit || 0,
         line.profit,
       ])),
     ];
@@ -164,6 +169,23 @@ const BookWiseAudit = () => {
       toast.error(error?.response?.data?.message || 'Could not add book.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteSelectedBook = async () => {
+    if (!bookToDelete) return;
+    try {
+      setDeletingBook(true);
+      const response = await api.delete(`/api/books/${bookToDelete._id}`);
+      toast.success(response?.data?.message || 'Book deleted; its invoices were unassigned.');
+      setBookToDelete(null);
+      setSelectedBookId('');
+      setInvoiceSearch('');
+      await loadBooks();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Could not delete this book.');
+    } finally {
+      setDeletingBook(false);
     }
   };
 
@@ -356,7 +378,17 @@ const BookWiseAudit = () => {
             </div>
           </details>
           {selectedBook && <>
-            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-indigo-600" /><h2 className="text-xl font-black text-slate-900">{selectedBook.name}</h2></div><button type="button" onClick={exportBook} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Download className="h-4 w-4" />Export Excel</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-indigo-600" /><h2 className="text-xl font-black text-slate-900">{selectedBook.name}</h2></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={exportBook} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Download className="h-4 w-4" />Export Excel</button>
+                {isDeletionUnlocked ? (
+                  <button type="button" onClick={() => setBookToDelete(selectedBook)} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" />Delete Book</button>
+                ) : (
+                  <span title="Deletion Mode is locked in Settings" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-400"><Lock className="h-4 w-4" />Delete Book</span>
+                )}
+              </div>
+            </div>
             <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={invoiceSearch} onChange={(event) => setInvoiceSearch(event.target.value)} placeholder="Search invoice number..." aria-label="Search invoices in this book" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm outline-none focus:border-indigo-500" />
@@ -377,12 +409,19 @@ const BookWiseAudit = () => {
                   <div className="flex items-start gap-3"><div className="rounded-xl bg-indigo-50 p-2 text-indigo-600"><Package className="h-4 w-4" /></div><div><h3 className="font-black text-slate-900">{group.product.name || 'Deleted product'}</h3><p className="mt-1 text-xs text-slate-500">{[group.product.brand, group.product.model, group.product.sku && `SKU ${group.product.sku}`].filter(Boolean).join(' · ') || 'Product details unavailable'}</p></div></div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs"><span><b>{group.quantity}</b> units</span><span>Cost <b>{money(group.purchaseCost)}</b></span><span>Sales <b>{money(group.sellingTotal)}</b></span><span className="text-emerald-700">Profit <b>{money(group.profit)}</b></span></div>
                 </div>
-                <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-xs"><thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Invoice</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sale type</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Purchase price</th><th className="px-4 py-3 text-right">Line amount</th></tr></thead><tbody>{group.lines.map((line, index) => <tr key={`${line.invoice}-${index}`} className="border-t border-slate-100"><td className="px-4 py-3 font-bold text-indigo-700">{line.invoice}</td><td className="px-4 py-3 text-slate-600">{line.saleDate ? new Date(line.saleDate).toLocaleDateString() : '—'}</td><td className="px-4 py-3 text-slate-600">{line.paymentType}</td><td className="px-4 py-3 text-right font-semibold">{line.quantity}</td><td className="px-4 py-3 text-right">{money(line.purchasePrice)}</td><td className="px-4 py-3 text-right font-black">{money(line.sellingTotal)}</td></tr>)}</tbody></table></div>
+                <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-xs"><thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Invoice</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sale type</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Purchase price</th><th className="px-4 py-3 text-right">Line amount</th><th className="px-4 py-3 text-right">Markup profit</th><th className="px-4 py-3 text-right">Profit</th></tr></thead><tbody>{group.lines.map((line, index) => <tr key={`${line.invoice}-${index}`} className="border-t border-slate-100"><td className="px-4 py-3 font-bold text-indigo-700">{line.invoice}</td><td className="px-4 py-3 text-slate-600">{line.saleDate ? new Date(line.saleDate).toLocaleDateString() : '—'}</td><td className="px-4 py-3 text-slate-600">{line.paymentType}</td><td className="px-4 py-3 text-right font-semibold">{line.quantity}</td><td className="px-4 py-3 text-right">{money(line.purchasePrice)}</td><td className="px-4 py-3 text-right font-black">{money(line.sellingTotal)}</td><td className="px-4 py-3 text-right font-bold text-amber-700">{line.paymentType === 'Installment' ? money(line.markupProfit) : '—'}</td><td className="px-4 py-3 text-right font-black text-emerald-700">{money(line.profit)}</td></tr>)}</tbody></table></div>
               </section>)}
             </div>}
           </>}
         </>
       )}
+      <ConfirmModal
+        isOpen={Boolean(bookToDelete)}
+        onClose={() => { if (!deletingBook) setBookToDelete(null); }}
+        onConfirm={deleteSelectedBook}
+        title="Delete Book and Unassign Invoices"
+        message={bookToDelete ? `Delete book “${bookToDelete.name}”? Its ${bookToDelete.summary?.invoices || 0} invoice(s) will be unassigned from books. The sales, invoices, payments, and customer records will remain unchanged.` : ''}
+      />
     </div>
   );
 };

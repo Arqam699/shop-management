@@ -351,6 +351,11 @@ const InstallmentPlanDetails = () => {
 
   const downPaymentAsFirstInstallment =
     toBoolean(rawDownPaymentFirst);
+  const initialPaymentCountsAsFirstInstallment = Boolean(
+    plan?.initialPaymentCountsAsFirstInstallment ??
+      plan?.invoiceSnapshot?.initialPaymentCountsAsFirstInstallment ??
+      downPaymentAsFirstInstallment
+  );
 
   // =========================================================
   // SELECTED / ACTUAL DURATION
@@ -401,25 +406,10 @@ const InstallmentPlanDetails = () => {
   //
   // =========================================================
 
-  let markupPercent = 0;
-
-  if (displayDuration === 3) {
-    markupPercent = 15;
-  } else if (displayDuration === 6) {
-    markupPercent = 25;
-  } else if (displayDuration === 12) {
-    markupPercent = 50;
-  } else if (displayDuration <= 3) {
-    markupPercent = 15;
-  } else if (displayDuration <= 6) {
-    markupPercent = 25;
-  } else {
-    markupPercent = 50;
-  }
-
-  if (Number(plan?.revisionNumber || 0) > 0 && Number.isFinite(Number(sale?.markupPercentage))) {
-    markupPercent = Number(sale.markupPercentage);
-  }
+  const storedMarkupPercent = Number(sale?.markupPercentage);
+  const markupPercent = Number.isFinite(storedMarkupPercent)
+    ? storedMarkupPercent
+    : displayDuration <= 3 ? 15 : displayDuration <= 6 ? 25 : 50;
 
   // =========================================================
   // FINANCING CALCULATION
@@ -462,7 +452,10 @@ const InstallmentPlanDetails = () => {
       calculatedTotalPayable
   );
   const previousPlanTotal = Number(plan?.revisions?.[plan.revisions.length - 1]?.totalAmount || 0);
-  const earlySettlementDiscount = Math.max(0, roundMoney(previousPlanTotal - totalPayable));
+  const isRevisedInstallmentPlan = Number(plan?.revisionNumber || 0) > 0;
+  const earlySettlementDiscount = isRevisedInstallmentPlan
+    ? 0
+    : Math.max(0, roundMoney(previousPlanTotal - totalPayable));
 
   // =========================================================
   // INSTALLMENT SCHEDULE TOTAL
@@ -561,7 +554,7 @@ const InstallmentPlanDetails = () => {
   const revisedMarkupBase = downPaymentAsFirstInstallment
     ? Math.max(0, originalPrice - downPayment)
     : originalPrice;
-  const currentMarkupForRevision = Number(sale.markupPercentage || 0) > 0
+  const currentMarkupForRevision = Number.isFinite(Number(sale?.markupPercentage))
     ? Number(sale.markupPercentage)
     : revisedMarkupBase > 0
       ? Math.max(0, (totalPayable - originalPrice) / revisedMarkupBase * 100)
@@ -704,12 +697,11 @@ const InstallmentPlanDetails = () => {
       : displayDuration;
 
   const remainingMonthlyInstallmentCount =
-    downPaymentAsFirstInstallment
-      ? Math.max(
-          0,
-          scheduleInstallmentCount - 1
-        )
-      : scheduleInstallmentCount;
+    installments.length > 0
+      ? installments.filter((installment) => Number(installment.remainingAmount ?? (Number(installment.amount || 0) - Number(installment.paidAmount || 0))) > 0.005).length
+      : initialPaymentCountsAsFirstInstallment
+        ? Math.max(0, scheduleInstallmentCount - 1)
+        : scheduleInstallmentCount;
 
   // =========================================================
   // PAYMENT RECEIPT HISTORY
@@ -1736,9 +1728,9 @@ Thank you - ${
               {displayDuration} Months
             </p>
 
-            {downPaymentAsFirstInstallment && (
+            {initialPaymentCountsAsFirstInstallment && (
               <p className="text-[9px] font-bold text-slate-500 mt-1">
-                {remainingMonthlyInstallmentCount} monthly dues after DP
+                {remainingMonthlyInstallmentCount} monthly dues remain after the initial installment
               </p>
             )}
           </div>
@@ -1910,8 +1902,8 @@ Thank you - ${
             </h2>
 
             <p className="text-xs text-slate-400 font-semibold mt-0.5">
-              {downPaymentAsFirstInstallment
-                ? `${scheduleInstallmentCount} total schedule installments • DP is #1 • ${remainingMonthlyInstallmentCount} monthly dues`
+              {initialPaymentCountsAsFirstInstallment
+                ? `${scheduleInstallmentCount} total schedule installments • #1 paid at sale • ${remainingMonthlyInstallmentCount} monthly dues`
                 : `${displayDuration} Monthly payment installments`}
             </p>
           </div>

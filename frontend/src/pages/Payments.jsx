@@ -405,7 +405,7 @@ const Payments = () => {
           invoiceNumber: invoiceNo,
           customer: payment.customer,
           product:
-            payment.installmentPlan?.product || payment.sale?.product,
+            payment.installmentPlan?.product || payment.sale?.product || payment.sale?.items?.[0]?.product,
           installmentPlan: payment.installmentPlan,
           sale: payment.sale,
           totalPaidOnThisInvoice: 0,
@@ -555,7 +555,8 @@ const Payments = () => {
   const totalPlanRemainingBalance = Math.max(
     0,
     Number(
-      activeReceipt?.planRemainingBalanceAfterPayment ??
+      activeReceipt?.cashRemainingBalanceAfterPayment ??
+        activeReceipt?.planRemainingBalanceAfterPayment ??
         planDoc?.remainingBalance ??
         activeReceipt?.remainingBalance ??
         0
@@ -806,6 +807,11 @@ const Payments = () => {
                         <tr key={group.invoiceNumber} className="hover:bg-slate-50/80 transition-colors">
                           <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
                             {group.invoiceNumber}
+                            {Number(group.installmentPlan?.revisionNumber || 0) > 0 && (
+                              <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+                                Revised plan{Number(group.installmentPlan.revisionNumber) > 1 ? ` · Rev ${group.installmentPlan.revisionNumber}` : ''}
+                              </span>
+                            )}
                           </td>
 
                           <td className="px-5 py-3.5">
@@ -906,6 +912,11 @@ const Payments = () => {
                         <tr key={payment._id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="px-5 py-3.5 font-black text-indigo-600 tracking-wider">
                             {invoiceNumber}
+                            {Number(payment.installmentPlan?.revisionNumber || 0) > 0 && (
+                              <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+                                Revised plan{Number(payment.installmentPlan.revisionNumber) > 1 ? ` · Rev ${payment.installmentPlan.revisionNumber}` : ''}
+                              </span>
+                            )}
                           </td>
 
                           <td className="px-5 py-3.5">
@@ -916,7 +927,9 @@ const Payments = () => {
                           </td>
 
                           <td className="px-5 py-3.5 font-bold text-slate-800">
-                            {isFirstDownPayment ? (
+                            {payment.cashSalePayment ? (
+                              <span className="text-emerald-700 font-black">Cash balance payment</span>
+                            ) : isFirstDownPayment ? (
                               <span className="text-indigo-700 font-black">Down Payment (#1)</span>
                             ) : (
                               <span>Month #{installmentNumber}</span>
@@ -954,7 +967,7 @@ const Payments = () => {
                                 <Printer className="w-4 h-4" />
                               </button>
 
-                              {isDeletionUnlocked ? (
+                              {isDeletionUnlocked && !payment.cashSalePayment ? (
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1161,7 +1174,9 @@ const Payments = () => {
                   <p className="text-[10px] font-black text-slate-900">Tel: {settings.shopPhone}</p>
                 )}
                 <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-900 text-[9px] font-black uppercase tracking-wider mt-1 border border-slate-300">
-                  {isDownPaymentFirstInstallment && currentInstallmentNumber === 1
+                {activeReceipt.cashSalePayment
+                  ? 'CASH PAYMENT RECEIPT'
+                  : isDownPaymentFirstInstallment && currentInstallmentNumber === 1
                     ? 'DOWN PAYMENT RECEIPT'
                     : 'INSTALLMENT RECOVERY RECEIPT'}
                 </span>
@@ -1203,11 +1218,15 @@ const Payments = () => {
 
                 <div className="relative z-10 space-y-0.5 pl-1">
                   <span className="text-[8px] uppercase font-black text-slate-500 block">Financed Item:</span>
-                  <p className="font-black text-slate-900 truncate">{planDoc?.product?.name || 'Item'}</p>
-                  {planDoc?.product?.brand && <p className="text-slate-700 font-bold truncate">Brand: {planDoc.product.brand}</p>}
-                  {planDoc?.product?.model && <p className="text-slate-700 font-bold truncate">Model: {planDoc.product.model}</p>}
-                  {planDoc?.product?.imei && <p className="text-slate-700 text-[9px] break-all">IMEI: {planDoc.product.imei}</p>}
-                  {planDoc?.product?.chassisNumber && <p className="text-slate-700 text-[9px] break-all">Chassis: {planDoc.product.chassisNumber}</p>}
+                  {(planDoc?.product ? [planDoc.product] : activeReceipt.sale?.items?.length ? activeReceipt.sale.items.map((item) => item.product).filter(Boolean) : [activeReceipt.sale?.product].filter(Boolean)).map((product, index) => (
+                    <div key={product._id || index}>
+                      <p className="font-black text-slate-900 break-words">{product.name || 'Item'}</p>
+                      {product.brand && <p className="text-slate-700 font-bold">Brand: {product.brand}</p>}
+                      {product.model && <p className="text-slate-700 font-bold">Model: {product.model}</p>}
+                      {product.imei && <p className="break-all text-[9px] text-slate-700">IMEI: {product.imei}</p>}
+                      {product.chassisNumber && <p className="break-all text-[9px] text-slate-700">Chassis: {product.chassisNumber}</p>}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1235,7 +1254,11 @@ const Payments = () => {
               </div>
 
               {/* CURRENT INSTALLMENT PAYMENT BREAKDOWN */}
-              {originalInstallmentAmount > 0 && (
+              {activeReceipt.cashSalePayment ? (
+                <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 text-[9px] font-bold">
+                  <div className="flex justify-between text-slate-700"><span>Payment date:</span><span>{formatDateTime(activeReceipt.paymentDate || activeReceipt.createdAt)}</span></div>
+                </div>
+              ) : originalInstallmentAmount > 0 && (
                 <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">
                   <div className="flex justify-between text-slate-700">
                     <span>Scheduled month:</span>

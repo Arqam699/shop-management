@@ -113,7 +113,6 @@ const NewSale = () => {
 
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState('');
   const [printPopup, setPrintPopup] = useState(null);
-  const [nextReceiptPrintId, setNextReceiptPrintId] = useState(null);
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -159,11 +158,9 @@ const NewSale = () => {
   const [downPayment, setDownPayment] = useState('');
   const [installmentDuration, setInstallmentDuration] = useState(12);
   const [markupPercentage, setMarkupPercentage] = useState('');
-
-  const [
-    treatDownPaymentAsFirstInstallment,
-    setTreatDownPaymentAsFirstInstallment,
-  ] = useState(false);
+  const initialPaymentMode = 'FirstInstallment';
+  const [initialInstallmentPaidAmount, setInitialInstallmentPaidAmount] = useState('');
+  const treatDownPaymentAsFirstInstallment = Number(downPayment || 0) > 0;
 
   /* =========================================================
      SCHEDULE
@@ -526,18 +523,14 @@ const NewSale = () => {
   }, [isCashSale, isInstallmentSale, cashItems, quantity, unitPrice]);
 
   const finalTotal = useMemo(() => {
-    const appliedDiscount = isCashSale || isInstallmentSale
-      ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
-      : Number(discount || 0);
+    const appliedDiscount = Math.min(Math.max(0, Number(discount || 0)), subtotal);
     return Math.max(
       0,
       subtotal - appliedDiscount
     );
-  }, [isCashSale, isInstallmentSale, cashItems, subtotal, discount]);
+  }, [subtotal, discount]);
 
-  const appliedDiscount = isCashSale || isInstallmentSale
-    ? cashItems.reduce((sum, item) => sum + Number(item.discount || 0), 0)
-    : Number(discount || 0);
+  const appliedDiscount = Math.min(Math.max(0, Number(discount || 0)), subtotal);
 
   /* =========================================================
      INSTALLMENT CALCULATIONS
@@ -562,16 +555,9 @@ const NewSale = () => {
     const markupRate =
       Number(markupPercentage || 0) / 100;
 
-    if (treatDownPaymentAsFirstInstallment) {
-      return Math.max(
-        0,
-        calculationBaseAfterDownPayment * markupRate
-      );
-    }
-
     return Math.max(
       0,
-      finalTotal * markupRate
+      calculationBaseAfterDownPayment * markupRate
     );
   }, [
     isInstallmentSale,
@@ -586,34 +572,21 @@ const NewSale = () => {
       return finalTotal;
     }
 
-    if (treatDownPaymentAsFirstInstallment) {
-      return Math.max(
-        0,
-        calculationBaseAfterDownPayment + markupAmount
-      );
-    }
-
     return Math.max(
       0,
-      finalTotal + markupAmount
+      calculationBaseAfterDownPayment + Number(downPayment || 0) + markupAmount
     );
   }, [
     isInstallmentSale,
     treatDownPaymentAsFirstInstallment,
     calculationBaseAfterDownPayment,
+    downPayment,
     finalTotal,
     markupAmount,
   ]);
 
   const calculatedFinancedBalance = useMemo(() => {
     if (!isInstallmentSale) return 0;
-
-    if (treatDownPaymentAsFirstInstallment) {
-      return Math.max(
-        0,
-        totalWithMarkup
-      );
-    }
 
     return Math.max(
       0,
@@ -646,73 +619,17 @@ const NewSale = () => {
     calculatedFinancedBalance,
   ]);
 
-  const effectiveDownPayment = useMemo(() => {
-    if (!isInstallmentSale) return 0;
-
-    if (manualFinancedBalance !== null) {
-      if (treatDownPaymentAsFirstInstallment) {
-        const markupRate =
-          Number(markupPercentage || 0) / 100;
-
-        if (markupRate >= 0) {
-          const amountBeforeMarkup =
-            Number(manualFinancedBalance || 0) /
-            (1 + markupRate);
-
-          return Math.max(
-            0,
-            roundMoney(
-              finalTotal - amountBeforeMarkup
-            )
-          );
-        }
-      }
-
-      return Math.max(
-        0,
-        roundMoney(
-          totalWithMarkup -
-            Number(manualFinancedBalance || 0)
-        )
-      );
-    }
-
-    return Math.max(
-      0,
-      Number(downPayment || 0)
-    );
-  }, [
-    isInstallmentSale,
-    manualFinancedBalance,
-    treatDownPaymentAsFirstInstallment,
-    markupPercentage,
-    finalTotal,
-    totalWithMarkup,
-    downPayment,
-  ]);
+  const effectiveDownPayment = Math.max(0, Number(downPayment || 0));
 
   const ledgerCurrency = settings?.currency || 'PKR';
-  const markupFormulaText = treatDownPaymentAsFirstInstallment
-    ? `(${formatMoney(finalTotal)} - ${formatMoney(downPayment)}) x ${markupPercentage}%`
-    : `${formatMoney(finalTotal)} x ${markupPercentage}%`;
-  const dealTotalFormulaText = treatDownPaymentAsFirstInstallment
-    ? `${formatMoney(calculationBaseAfterDownPayment)} + ${formatMoney(markupAmount)}`
-    : `${formatMoney(finalTotal)} + ${formatMoney(markupAmount)}`;
-  const downPaymentFormulaText = manualFinancedBalance !== null
-    ? treatDownPaymentAsFirstInstallment
-      ? `${formatMoney(finalTotal)} - (${formatMoney(manualFinancedBalance)} / (1 + ${markupPercentage}%))`
-      : `${formatMoney(totalWithMarkup)} - ${formatMoney(manualFinancedBalance)}`
-    : `Entered amount: ${formatMoney(downPayment)}`;
+  const markupFormulaText = `(${formatMoney(finalTotal)} - ${formatMoney(downPayment)}) x ${markupPercentage}%`;
+  const dealTotalFormulaText = `${formatMoney(downPayment)} + ${formatMoney(calculationBaseAfterDownPayment)} + ${formatMoney(markupAmount)}`;
+  const downPaymentFormulaText = `Entered amount: ${formatMoney(effectiveDownPayment)}`;
   const financedBalanceFormulaText = manualFinancedBalance !== null
     ? 'Manually entered financed balance'
-    : treatDownPaymentAsFirstInstallment
-    ? 'Deal total after markup; down payment is installment #1'
     : `${formatMoney(totalWithMarkup)} - ${formatMoney(effectiveDownPayment)}`;
-  const averageInstallmentAmount = installmentSchedule.length
-    ? financedBalance / installmentSchedule.length
-    : 0;
-  const totalPayableAfterMarkup =
-    effectiveDownPayment + financedBalance;
+  const averageInstallmentAmount = installmentSchedule.length ? financedBalance / installmentSchedule.length : 0;
+  const totalPayableAfterMarkup = effectiveDownPayment + financedBalance;
   const totalPayableFormulaText = manualFinancedBalance !== null
     ? `${formatMoney(effectiveDownPayment)} + ${formatMoney(financedBalance)}`
     : `${formatMoney(finalTotal)} + ${formatMoney(markupAmount)}`;
@@ -897,6 +814,12 @@ const NewSale = () => {
       )
     );
   }, [installmentSchedule]);
+
+  const initialInstallmentNumber = treatDownPaymentAsFirstInstallment ? 2 : 1;
+  const firstInstallmentAmount = Number(installmentSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber)?.amount || 0);
+  const effectiveInitialInstallmentPaidAmount = Math.max(0, Number(initialInstallmentPaidAmount || 0));
+  const hasInitialFirstInstallmentPayment = effectiveInitialInstallmentPaidAmount > 0;
+  const firstInstallmentRemainingAfterInitialPayment = Math.max(0, roundMoney(firstInstallmentAmount - effectiveInitialInstallmentPaidAmount));
 
   const scheduleDifference = useMemo(() => {
     return roundMoney(
@@ -1128,24 +1051,11 @@ const NewSale = () => {
     setScheduleMode('auto');
   };
 
-  const handleDownPaymentChange = (
-    value
-  ) => {
-    if (value === '') {
-      setDownPayment('');
-      setManualFinancedBalance(null);
-      setScheduleMode('auto');
-      return;
-    }
-    setDownPayment(
-      Math.max(
-        0,
-        Number(value || 0)
-      )
-    );
-
+  const handleDownPaymentChange = (value) => {
+    setDownPayment(value === '' ? '' : Math.max(0, Number(value || 0)));
     setManualFinancedBalance(null);
     setScheduleMode('auto');
+    setErrorMsg('');
   };
 
   const handleMarkupChange = (
@@ -1166,18 +1076,6 @@ const NewSale = () => {
 
     setManualFinancedBalance(null);
     setScheduleMode('auto');
-  };
-
-  const handleTreatDownPaymentChange = (
-    event
-  ) => {
-    setTreatDownPaymentAsFirstInstallment(
-      event.target.checked
-    );
-
-    setManualFinancedBalance(null);
-    setScheduleMode('auto');
-    setErrorMsg('');
   };
 
   const handleInstallmentDurationChange = (
@@ -1249,16 +1147,13 @@ const NewSale = () => {
       const invalidItem = cashItems.find((item) => {
         const itemQuantity = Number(item.quantity);
         const itemUnitPrice = Number(item.unitPrice);
-        const itemDiscount = Number(item.discount || 0);
         const itemStockAdjustment = Number(item.stockAdjustment || 0);
         return !Number.isInteger(itemQuantity) || itemQuantity <= 0 ||
           !Number.isFinite(itemUnitPrice) || itemUnitPrice < 0 ||
-          !Number.isFinite(itemDiscount) || itemDiscount < 0 ||
-          itemDiscount > itemQuantity * itemUnitPrice ||
           !Number.isInteger(itemStockAdjustment);
       });
       if (invalidItem) {
-        setErrorMsg('Check each product quantity, price, discount, and stock change.');
+        setErrorMsg('Check each product quantity, price, and stock change.');
         return;
       }
     }
@@ -1295,6 +1190,11 @@ const NewSale = () => {
       setErrorMsg(
         'Discount cannot be negative.'
       );
+      return;
+    }
+
+    if (Number(discount || 0) > subtotal) {
+      setErrorMsg('Overall discount cannot be greater than the sale subtotal.');
       return;
     }
 
@@ -1344,6 +1244,11 @@ const NewSale = () => {
         setErrorMsg(
           'Down payment cannot be greater than Total With Markup.'
         );
+        return;
+      }
+
+      if (initialPaymentMode === 'FirstInstallment' && effectiveInitialInstallmentPaidAmount > financedBalance) {
+        setErrorMsg('First-installment payment cannot be greater than the financed balance.');
         return;
       }
 
@@ -1528,7 +1433,7 @@ if (invalidDate) {
         selectedCustomer,
 
       product: isCashSale || isInstallmentSale ? cashItems[0]?.product : selectedProduct,
-      ...((isCashSale || isInstallmentSale) ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0), discount: Number(item.discount || 0), stockAdjustment: Math.trunc(Number(item.stockAdjustment || 0)) })) } : {}),
+      ...((isCashSale || isInstallmentSale) ? { items: cashItems.map((item) => ({ product: item.product, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), purchasePriceAtSale: Number(item.purchasePriceAtSale ?? item.product.purchasePrice ?? 0), discount: 0, stockAdjustment: Math.trunc(Number(item.stockAdjustment || 0)) })) } : {}),
 
       quantity: isCashSale || isInstallmentSale ? cashItems.reduce((sum, item) => sum + Number(item.quantity), 0) : Number(quantity),
 
@@ -1549,7 +1454,7 @@ if (invalidDate) {
 
       paymentStatus: isCashSale
         ? cashReceivedAmount >= finalTotal ? 'Paid' : 'Unpaid'
-        : (Number(effectiveDownPayment || 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
+        : (Number(effectiveDownPayment || 0) + (initialPaymentMode === 'FirstInstallment' ? effectiveInitialInstallmentPaidAmount : 0) >= Number(totalWithMarkup || 0) ? 'Paid' : 'Unpaid'),
 
       downPayment:
         isCashSale
@@ -1604,6 +1509,14 @@ if (invalidDate) {
             )
           : false,
 
+      initialPaymentType: isInstallmentSale
+        ? (initialPaymentMode === 'FirstInstallment' ? 'FirstInstallment' : 'DownPayment')
+        : 'None',
+
+      initialInstallmentPaidAmount: isInstallmentSale && initialPaymentMode === 'FirstInstallment'
+        ? roundMoney(effectiveInitialInstallmentPaidAmount)
+        : 0,
+
       installmentSchedule:
         isInstallmentSale
           ? installmentSchedule.map(
@@ -1641,12 +1554,8 @@ if (invalidDate) {
 
       const createdSale = response.data?.data?.sale || response.data?.sale || response.data?.data || {};
       const createdSaleId = createdSale._id || createdSale.id;
-      const downPaymentReceiptId = response.data?.data?.paymentReceipt?._id;
-      setNextReceiptPrintId(downPaymentReceiptId || null);
       if (createdSaleId) {
         setPrintPopup({ kind: 'invoice', recordId: createdSaleId });
-      } else if (downPaymentReceiptId) {
-        setPrintPopup({ kind: 'payment', recordId: downPaymentReceiptId });
       } else {
         toast.error('Sale was saved, but the invoice preview could not be opened.');
       }
@@ -2397,7 +2306,7 @@ if (invalidDate) {
                             resetInstallmentScheduleForItemChange();
                             const unitPrice = event.target.value === '' ? '' : Math.max(0, Number(event.target.value));
                             setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === String(item.product._id || item.product.id)
-                              ? { ...entry, unitPrice, discount: Math.min(Number(entry.discount || 0), Number(entry.quantity || 0) * unitPrice) }
+                              ? { ...entry, unitPrice }
                               : entry));
                           }} className="mt-1 h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500" />
                         </label>
@@ -2419,23 +2328,26 @@ if (invalidDate) {
             <section className="premium-card min-w-0 p-4 sm:p-6 space-y-4 animate-[pageEnter_0.3s_ease-out]">
               <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Calculator className="h-4 w-4" /></div>
-                <h2 className="text-sm font-black text-slate-900">Quantity &amp; Discount</h2>
+                <h2 className="text-sm font-black text-slate-900">Quantity &amp; Overall Discount</h2>
               </div>
-              {cashItems.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-semibold text-slate-400">Select a product above to set its quantity and discount.</p> : (
+              {cashItems.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-semibold text-slate-400">Select a product above to set its quantity.</p> : (
                 <div className="space-y-3">
                   {cashItems.map((item) => {
                     const id = String(item.product._id || item.product.id);
                     const maxQuantity = Math.max(1, Number(item.product.quantity || 0) + Number(item.stockAdjustment || 0));
-                    const maxDiscount = Number(item.quantity || 0) * Number(item.unitPrice || 0);
-                    return <div key={id} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:p-4">
-                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { resetInstallmentScheduleForItemChange(); const rawValue = event.target.value; const quantity = rawValue === '' ? '' : Math.max(1, Math.min(maxQuantity, Math.floor(Number(rawValue) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity, discount: rawValue === '' ? entry.discount : Math.min(Number(entry.discount || 0), Number(quantity) * Number(entry.unitPrice || 0)) } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
-                      <label className="block text-[10px] font-bold text-slate-500">Discount ({settings?.currency || 'PKR'})<input type="number" min="0" max={maxDiscount} value={item.discount ?? ''} onChange={(event) => { resetInstallmentScheduleForItemChange(); const rawValue = event.target.value; const value = rawValue === '' ? '' : Math.max(0, Math.min(maxDiscount, Number(rawValue))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, discount: value } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" /></label>
+                    return <div key={id} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_auto] sm:items-end sm:p-4">
+                      <label className="block text-[10px] font-bold text-slate-500">Quantity<input type="number" min="1" max={maxQuantity} step="1" value={item.quantity} onChange={(event) => { resetInstallmentScheduleForItemChange(); const rawValue = event.target.value; const quantity = rawValue === '' ? '' : Math.max(1, Math.min(maxQuantity, Math.floor(Number(rawValue) || 1))); setCashItems((items) => items.map((entry) => String(entry.product._id || entry.product.id) === id ? { ...entry, quantity } : entry)); }} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" /></label>
                       <button type="button" onClick={() => { resetInstallmentScheduleForItemChange(); setCashItems((items) => items.filter((entry) => String(entry.product._id || entry.product.id) !== id)); }} className="inline-flex h-10 items-center justify-center gap-1 rounded-xl px-3 text-xs font-bold text-rose-600 hover:bg-rose-50" aria-label="Remove product"><X className="h-4 w-4" /><span className="sm:hidden">Remove</span></button>
                     </div>;
                   })}
-                  <div className="flex justify-between rounded-xl bg-rose-50 px-4 py-3 text-xs font-black"><span className="text-slate-700">Total discount</span><span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span></div>
                 </div>
               )}
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-end">
+                <label className="block text-xs font-bold text-slate-700">Overall Discount ({settings?.currency || 'PKR'})
+                  <input type="number" min="0" max={subtotal} step="0.01" value={discount} onChange={(event) => handleDiscountChange(event.target.value)} placeholder="Enter sale discount" className="mt-1.5 h-11 w-full rounded-xl border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 outline-none focus:border-rose-400" />
+                </label>
+                <p className="rounded-xl bg-rose-50 px-4 py-3 text-xs font-black text-slate-700">Overall discount: <span className="text-rose-600">-{settings?.currency || 'PKR'} {formatMoney(appliedDiscount)}</span> · Net sale total: <span className="text-slate-900">{settings?.currency || 'PKR'} {formatMoney(finalTotal)}</span></p>
+              </div>
             </section>
           )}
           <section className="premium-card p-4 sm:p-5 space-y-3">
@@ -2597,31 +2509,6 @@ if (invalidDate) {
 
               </div>
 
-              {/* DISCOUNT */}
-
-              <div>
-
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                  Discount (
-                  {settings?.currency ||
-                    'PKR'}
-                  )
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  value={discount}
-                  onChange={(e) =>
-                    handleDiscountChange(
-                      e.target.value
-                    )
-                  }
-                  className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold text-rose-600 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                />
-
-              </div>
-
             </div>
 
           </section>}
@@ -2678,29 +2565,9 @@ if (invalidDate) {
 
               <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-4 rounded-2xl bg-slate-50/80 p-3 sm:p-4 border border-slate-100">
 
-                {/* DOWN PAYMENT */}
-
                 <div>
-
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Down payment today (
-                    {settings?.currency ||
-                      'PKR'}
-                    )
-                  </label>
-
-                  <input
-                    type="number"
-                    min="0"
-                    value={effectiveDownPayment}
-                    onChange={(e) =>
-                      handleDownPaymentChange(
-                        e.target.value
-                      )
-                    }
-                    className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                  />
-
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Down payment ({settings?.currency || 'PKR'})</label>
+                  <input type="number" min="0" step="0.01" value={downPayment} onChange={(e) => handleDownPaymentChange(e.target.value)} className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
                 </div>
 
                 {/* TOTAL INSTALLMENTS */}
@@ -2725,8 +2592,12 @@ if (invalidDate) {
                   />
 
                   <p className="text-[9px] text-slate-400 mt-1">
-                    {treatDownPaymentAsFirstInstallment
-                      ? `${getActualInstallmentCount()} remaining after down payment`
+                    {hasInitialFirstInstallmentPayment && firstInstallmentAmount > 0 && effectiveInitialInstallmentPaidAmount >= firstInstallmentAmount
+                      ? `${Math.max(0, getActualInstallmentCount() - 1)} remaining after installment #${initialInstallmentNumber}`
+                      : treatDownPaymentAsFirstInstallment
+                      ? `${getActualInstallmentCount()} remaining after initial down payment`
+                      : initialPaymentMode === 'FirstInstallment'
+                      ? `${getActualInstallmentCount()} scheduled installments; installment #${initialInstallmentNumber} is not fully paid`
                       : `${getActualInstallmentCount()} scheduled installments`}
                   </p>
 
@@ -2763,38 +2634,11 @@ if (invalidDate) {
 
               </div>
 
-              {/* =================================================
-                  DOWN PAYMENT CHECKBOX
-              ================================================== */}
-
-              <label className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100 cursor-pointer hover:bg-amber-50 transition-colors">
-
-                <input
-                  type="checkbox"
-                  checked={
-                    treatDownPaymentAsFirstInstallment
-                  }
-                  onChange={
-                    handleTreatDownPaymentChange
-                  }
-                  className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                />
-
-                <div>
-
-                  <p className="text-xs font-bold text-slate-800">
-                    Count down payment as installment #1
-                  </p>
-
-                  <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
-                    {treatDownPaymentAsFirstInstallment
-                      ? 'Down payment counts as payment #1; markup applies only to the remaining balance.'
-                      : 'Down payment is separate; markup applies to the total before down payment is subtracted.'}
-                  </p>
-
-                </div>
-
-              </label>
+              <div className="rounded-xl bg-amber-50/60 border border-amber-100 p-3 space-y-3">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{treatDownPaymentAsFirstInstallment ? 'Installment #2 payment' : '1st installment payment'} ({settings?.currency || 'PKR'})</label>
+                <input type="number" min="0" step="0.01" value={initialInstallmentPaidAmount} onChange={(e) => setInitialInstallmentPaidAmount(e.target.value)} className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm font-bold bg-white" />
+                <p className="text-[11px] text-slate-600 mt-1">Enter the amount received for the first installment. Any extra is shared equally across the remaining installments. Leave blank if nothing is received. No separate receipt is created.</p>
+              </div>
 
               {/* =================================================
                   SCHEDULE HEADER
@@ -2910,6 +2754,14 @@ if (invalidDate) {
 
               <div className="space-y-1.5 rounded-xl">
 
+                {hasInitialFirstInstallmentPayment && (
+                  <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] font-semibold text-indigo-800">
+                    Installment #{initialInstallmentNumber} received: {settings?.currency || 'PKR'} {formatMoney(effectiveInitialInstallmentPaidAmount)} of {formatMoney(firstInstallmentAmount)}.
+                    {firstInstallmentRemainingAfterInitialPayment > 0 && ` Still due on #${initialInstallmentNumber}: ${settings?.currency || 'PKR'} ${formatMoney(firstInstallmentRemainingAfterInitialPayment)}.`}
+                    {' '}Schedule below starts at installment #{initialInstallmentNumber + 1}.
+                  </div>
+                )}
+
                 {installmentSchedule.length ===
                 0 ? (
 
@@ -2929,7 +2781,9 @@ if (invalidDate) {
 
                 ) : (
 
-                  installmentSchedule.map(
+                  installmentSchedule
+                    .filter((item) => !(hasInitialFirstInstallmentPayment && Number(item.installmentNumber) === initialInstallmentNumber))
+                    .map(
                     (item, index) => (
 
                       <div
@@ -3137,7 +2991,7 @@ if (invalidDate) {
               <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                 <span className="text-slate-400">
-                  Discount
+                  Overall Discount
                 </span>
 
                 <span className={`font-bold text-rose-400 ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
@@ -3152,7 +3006,7 @@ if (invalidDate) {
 
               {isInstallmentSale && (
                 <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
-                  Formula: product discount entered = {ledgerCurrency} {formatMoney(appliedDiscount)}
+                  Formula: overall discount entered = {ledgerCurrency} {formatMoney(appliedDiscount)}
                 </p>
               )}
 
@@ -3225,28 +3079,15 @@ if (invalidDate) {
                     Formula: {dealTotalFormulaText} = {ledgerCurrency} {formatMoney(totalWithMarkup)}
                   </p>
 
-                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-2 font-black text-white">
 
-                    <span>
-                      Down Payment Received
-                    </span>
-
-                    <span className={`text-emerald-400 font-bold ${isInstallmentSale ? 'shrink-0 whitespace-nowrap text-right' : ''}`}>
-                      -
-                      {settings?.currency ||
-                        'PKR'}{' '}
-                      {formatMoney(
-                        effectiveDownPayment
-                      )}
-                    </span>
+                    <span>Down Payment Received</span>
+                    <span className="text-emerald-400 font-bold">-{settings?.currency || 'PKR'} {formatMoney(effectiveDownPayment)}</span>
 
                   </div>
+                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">Formula: {downPaymentFormulaText} = {ledgerCurrency} {formatMoney(effectiveDownPayment)}</p>
 
-                  <p className="-mt-2 text-[9px] leading-relaxed text-slate-500">
-                    Formula: {downPaymentFormulaText} = {ledgerCurrency} {formatMoney(effectiveDownPayment)}
-                  </p>
-
-                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-2 font-black text-white">
+                  <div className="flex min-w-0 flex-wrap justify-between items-center gap-x-3 gap-y-1">
 
                     <span>
                       Financed Balance Dues
@@ -3353,11 +3194,6 @@ if (invalidDate) {
         kind={printPopup?.kind}
         recordId={printPopup?.recordId}
         onClose={() => {
-          if (printPopup?.kind === 'invoice' && nextReceiptPrintId) {
-            setNextReceiptPrintId(null);
-            setPrintPopup({ kind: 'payment', recordId: nextReceiptPrintId });
-            return;
-          }
           setPrintPopup(null);
           navigate(isInstallmentSale ? '/installments' : '/sales');
         }}

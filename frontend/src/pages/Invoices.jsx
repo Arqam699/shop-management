@@ -296,7 +296,16 @@ const Invoices = () => {
       header: 'Invoice / Bill #',
       className:
         'px-5 py-3.5 font-black text-indigo-600 tracking-wider',
-      render: (inv) => inv.saleId || '—',
+      render: (inv) => (
+        <div>
+          <p>{inv.saleId || '—'}</p>
+          {inv.isInstallmentPlanRevised && (
+            <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+              Revised plan{Number(inv.installmentPlanRevisionNumber) > 1 ? ` · Rev ${inv.installmentPlanRevisionNumber}` : ''}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'customer',
@@ -536,7 +545,7 @@ const Invoices = () => {
       {/* =====================================================
           INVOICE METRICS KPI CARDS
       ====================================================== */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         
         {/* Total Invoices Count */}
         <div className="premium-card p-3 sm:p-4">
@@ -556,70 +565,6 @@ const Invoices = () => {
             <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
               <Receipt className="w-4 h-4" />
             </div>
-          </div>
-        </div>
-
-        {/* Total Invoiced Value */}
-        <div className="premium-card p-3 sm:p-4">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                Total Selling Price
-              </p>
-              <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-emerald-600 truncate">
-                {formatMoney(totalInvoicedVal)}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                Total selling amount after discounts
-              </p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-              <CircleDollarSign className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
-        {/* Remaining Dues */}
-        <div className="group relative overflow-hidden bg-white rounded-2xl border border-rose-200/80 p-3 sm:p-4 shadow-sm">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 to-red-500" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                Remaining Financed Dues
-              </p>
-              <p className="mt-1.5 text-lg sm:text-xl font-black tracking-tight text-rose-600 truncate">
-                {formatMoney(totalOutstandingDues)}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                Installment recovery pending
-              </p>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-              <CreditCard className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
-        <div className="premium-card p-3 sm:p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Total Purchasing Cost</p>
-              <p className="mt-1.5 truncate text-lg font-black tracking-tight text-amber-600 sm:text-xl">{formatMoney(totalPurchaseCost)}</p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">Actual cost of all invoiced products</p>
-            </div>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-100 bg-amber-50 text-amber-600"><Package className="h-4 w-4" /></div>
-          </div>
-        </div>
-
-        <div className="premium-card p-3 sm:p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Total Profit</p>
-              <p className={`mt-1.5 truncate text-lg font-black tracking-tight sm:text-xl ${totalProfit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{formatMoney(totalProfit)}</p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">Selling total minus purchasing cost</p>
-            </div>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-violet-600"><Sparkles className="h-4 w-4" /></div>
           </div>
         </div>
 

@@ -127,16 +127,16 @@ const getPayments = async (req, res) => {
       )
       .populate({
         path: 'sale',
-        select: 'saleId paymentType finalTotal',
-        populate: {
-          path: 'product',
-          select: 'name',
-        },
+        select: 'saleId paymentType finalTotal items product',
+        populate: [
+          { path: 'product', select: 'name model brand' },
+          { path: 'items.product', select: 'name model brand' },
+        ],
       })
       .populate({
         path: 'installmentPlan',
         select:
-          'planId remainingBalance totalAmount downPayment ' +
+          'planId revisionNumber remainingBalance totalAmount downPayment ' +
           'treatDownPaymentAsFirstInstallment',
         populate: [
           {
@@ -219,9 +219,10 @@ const getPaymentById = async (req, res) => {
       )
       .populate({
         path: 'sale',
-        populate: {
-          path: 'product',
-        },
+        populate: [
+          { path: 'product' },
+          { path: 'items.product' },
+        ],
       })
       .populate({
         path: 'installmentPlan',
@@ -253,14 +254,12 @@ const getPaymentById = async (req, res) => {
     // ----------------------------------------------------------
     // Get complete installment history
     // ----------------------------------------------------------
-    const installmentHistory = await Installment.find({
-      shopId: req.shopId,
-      installmentPlan: payment.installmentPlan?._id,
-    })
-      .sort({
-        installmentNumber: 1,
-      })
-      .lean();
+    const installmentHistory = payment.installmentPlan
+      ? await Installment.find({
+          shopId: req.shopId,
+          installmentPlan: payment.installmentPlan._id,
+        }).sort({ installmentNumber: 1 }).lean()
+      : [];
 
     return res.status(200).json({
       success: true,
@@ -316,6 +315,13 @@ const deletePayment = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Payment record not found',
+      });
+    }
+
+    if (payment.cashSalePayment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cash sale receipt history cannot be deleted from Payments.',
       });
     }
 

@@ -414,6 +414,11 @@ const getInstallmentPlans = async (
 
       plan.installmentScheduleTotal =
         totals.scheduledTotal;
+
+      plan.remainingInstallmentCount = installments.filter((installment) =>
+        Number(installment.remainingAmount || 0) > 0.005 &&
+        !['Paid', 'Settled'].includes(installment.status)
+      ).length;
     }
 
     if (pagination) {
@@ -1816,6 +1821,14 @@ const reviseInstallmentPlan = async (req, res) => {
     sale.installmentScheduleSnapshot = schedule.map(({ installmentNumber, amount, dueDate }) => ({ installmentNumber, amount, dueDate }));
     await sale.save();
 
+    // Keep the overall balance shown on any previously issued receipt aligned
+    // with the newly revised contract. Payment amounts, dates and installment
+    // allocation snapshots remain untouched.
+    await Payment.updateMany(
+      { shopId, installmentPlan: plan._id },
+      { $set: { planRemainingBalanceAfterPayment: newRemainingBalance } }
+    );
+
     await Installment.updateMany(
       { shopId, installmentPlan: plan._id, ...revisionFilter(currentRevision), isArchived: { $ne: true } },
       { $set: { isArchived: true, status: 'Settled', remainingAmount: 0 } }
@@ -1834,7 +1847,7 @@ const reviseInstallmentPlan = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Plan revised to ${newDuration} months. Previous payments were preserved, and the revised invoice total is ${newTotalAmount}.`,
+      message: `Plan revised to ${newDuration} months. Previous payments were preserved, and their receipts now show the revised remaining balance of ${newRemainingBalance}. Revised invoice total: ${newTotalAmount}.`,
       data: { plan: updatedPlan, installments: updatedInstallments },
     });
   } catch (error) {

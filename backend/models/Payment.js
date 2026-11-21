@@ -50,7 +50,7 @@ const paymentSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true,
+      required: false,
     },
 
     sale: {
@@ -62,7 +62,7 @@ const paymentSchema = new mongoose.Schema(
     installmentPlan: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'InstallmentPlan',
-      required: true,
+      required: false,
     },
 
     planRevision: {
@@ -79,7 +79,19 @@ const paymentSchema = new mongoose.Schema(
     installment: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Installment',
-      required: true,
+      required: false,
+    },
+
+    cashSalePayment: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    cashRemainingBalanceAfterPayment: {
+      type: Number,
+      default: null,
+      min: 0,
     },
 
     amount: {
