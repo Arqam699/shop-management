@@ -1029,7 +1029,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         @media print {
           @page {
             size: A4 landscape;
-            margin: 5mm;
+            margin: 0 4mm;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1140,7 +1140,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             max-width: 100% !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
-            font-size: 7pt !important;
+            font-size: 8pt !important;
             margin: 0 !important;
             visibility: visible !important;
           }
@@ -1169,22 +1169,22 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color: #000000 !important;
-            padding: 2mm 1mm !important;
+            padding: 2.2mm 1mm !important;
             font-weight: 900 !important;
             text-align: center !important;
-            font-size: 7pt !important;
+            font-size: 8pt !important;
             visibility: visible !important;
           }
 
           .index-record-table td {
             display: table-cell !important;
             border: 1px solid #000000 !important;
-            padding: 1.7mm .8mm !important;
+            padding: 1.8mm .8mm !important;
             color: #000000 !important;
             background: #ffffff !important;
-            font-size: 7pt !important;
+            font-size: 8pt !important;
             line-height: 1.15 !important;
-            height: 10mm !important;
+            height: 11mm !important;
             text-align: center !important;
             white-space: normal !important;
             overflow-wrap: anywhere !important;
@@ -1198,6 +1198,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
           .index-record-table td:nth-child(3) {
             font-weight: 800 !important;
+            font-size: 7.5pt !important;
+          }
+
+          .index-record-table td:nth-child(7) > div {
+            font-size: 9pt !important;
+            line-height: 1.15 !important;
           }
 
           .index-record-table td:nth-child(9),
@@ -1205,12 +1211,12 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           .index-record-table td:nth-child(12),
           .index-record-table td:nth-child(14) {
             min-width: 14mm !important;
-            height: 10mm !important;
+            height: 11mm !important;
           }
 
           .index-record-table td small {
             color: #000 !important;
-            font-size: 6.5pt !important;
+            font-size: 7.5pt !important;
             font-weight: 700 !important;
           }
 
@@ -1493,7 +1499,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                       </div>
                       <table className="index-record-table w-full min-w-[1500px] text-left">
                         <colgroup>
-                          {[3, 7, 14, 6, 7, 8, 9, 7, 7, 7, 5, 8, 7, 5].map((width, index) => (
+                          {[3, 7, 9, 4.5, 9, 10, 10, 7, 7, 7, 5, 8, 7, 6.5].map((width, index) => (
                             <col key={index} style={{ width: `${width}%` }} />
                           ))}
                         </colgroup>
