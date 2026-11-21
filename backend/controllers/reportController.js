@@ -1243,6 +1243,14 @@ const getIndexRecord = async (
       byPlan.get(id).push(item);
     });
 
+    const pakistanMonthFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+    });
+    const pakistanMonthKey = (date) => pakistanMonthFormatter.format(date);
+    const currentMonthKey = pakistanMonthKey(new Date());
+
     const rows = plans.map((plan, index) => {
       const scheduled = byPlan.get(plan._id.toString()) || [];
       const unpaid = scheduled.filter((item) =>
@@ -1256,6 +1264,9 @@ const getIndexRecord = async (
       const dueOrPartPaid = unpaid.filter((item) =>
         Number(item.paidAmount || 0) > 0 ||
         (item.dueDate && new Date(item.dueDate) <= endOfCurrentMonth)
+      );
+      const currentMonthInstallments = unpaid.filter((item) =>
+        item.dueDate && pakistanMonthKey(new Date(item.dueDate)) === currentMonthKey
       );
       const installmentBreakdown = (dueOrPartPaid.length ? dueOrPartPaid : next ? [next] : []).map((item) => ({
         installmentNumber: Number(item.installmentNumber),
@@ -1284,7 +1295,7 @@ const getIndexRecord = async (
         installmentAmount: nextAmount,
         installmentRemainingAmount: nextRemaining,
         installmentBreakdown,
-        installmentPlan: `${totalInstallments}M / ${(dueOrPartPaid.length ? dueOrPartPaid : next ? [next] : []).map((item) => item.installmentNumber).join(', ') || '—'}`,
+        installmentPlan: `${totalInstallments}M / ${currentMonthInstallments.map((item) => item.installmentNumber).join(', ') || "-"}`,
         installmentNumber: next?.installmentNumber || null,
         receivedAmount: '',
         remainingAmount: totalRemaining,
