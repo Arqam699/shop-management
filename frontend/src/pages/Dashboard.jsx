@@ -1,4 +1,4 @@
-
+rig
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -1020,6 +1020,8 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         }
         .index-record-page { display: contents; }
         .index-record-table th { white-space: normal; }
+        .index-record-table th:nth-child(2),
+        .index-record-table td:nth-child(2) { white-space: nowrap; }
         .index-record-table td { vertical-align: middle; }
         .index-record-table td small { display: block; margin-top: 2px; font-size: 9px; color: #64748b; }
 
@@ -1029,7 +1031,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         @media print {
           @page {
             size: A4 landscape;
-            margin: 0 4mm;
+            margin: 0 4mm 0 5mm;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1058,7 +1060,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             position: absolute !important;
             left: 0 !important;
             right: auto !important;
-            top: 0 !important;
+            top: 4mm !important;
             width: 100% !important;
             max-width: none !important;
             height: auto !important;
@@ -1191,6 +1193,13 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             visibility: visible !important;
           }
 
+          .index-record-table th:nth-child(2) {
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            line-height: 1.05 !important;
+            padding: 1mm 0.5mm !important;
+          }
+
           .index-record-table td span {
             color: #000000 !important;
             visibility: visible !important;
@@ -1199,6 +1208,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
           .index-record-table td:nth-child(3) {
             font-weight: 800 !important;
             font-size: 7.5pt !important;
+            white-space: normal !important;
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
           }
 
           .index-record-table td:nth-child(7) > div {
@@ -1499,13 +1511,13 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                       </div>
                       <table className="index-record-table w-full min-w-[1500px] text-left">
                         <colgroup>
-                          {[3, 7, 9, 4.5, 9, 10, 10, 7, 7, 7, 5, 8, 7, 6.5].map((width, index) => (
+                          {[3.1538, 8.1538, 9.1538, 4.6538, 6.6538, 7.1538, 9.1538, 5, 7.1538, 6.1538, 8.1538, 9.1538, 8.1538, 8.1538].map((width, index) => (
                             <col key={index} style={{ width: `${width}%` }} />
                           ))}
                         </colgroup>
                         <thead>
                           <tr>
-                            <th>S.N.</th><th>Date of<br />Material Purchase</th><th>Name of Customer</th><th>Invoice No.</th><th>Total Amount</th><th>Total Remaining Amount</th><th>Installment Amount<br />+ Remaining</th><th>Installment Plan<br />&amp; No.</th><th>Received Amount</th><th>Remain Amount</th><th>Receiver Sign</th><th>Installment Received Date</th><th>Phone No.</th><th>Remarks</th>
+                            <th>S.N.</th><th>Date of<br />Material<br />Purchase</th><th>Name of Customer</th><th>Invoice No.</th><th>Total<br />Amount</th><th>Total Remaining<br />Amount</th><th>Installment Amount<br />+ Remaining</th><th>Inst.<br />Plan &amp;<br />No.</th><th>Received Amount</th><th>Remain Amount</th><th>Receiver Sign</th><th>Installment Received Date</th><th>Phone No.</th><th>Remarks</th>
                           </tr>
                         </thead>
                         <tbody>

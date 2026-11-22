@@ -1398,7 +1398,7 @@ const getPaymentScore = (customer) => {
     );
 
     return (
-      <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between person-card-print">
+      <div className={`bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between person-card-print ${isGuarantor ? 'guarantor-card-print' : ''}`}>
         <div>
           <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-3 person-header-print">
             <div className="flex items-center gap-3 min-w-0">
@@ -1442,10 +1442,10 @@ const getPaymentScore = (customer) => {
             </div>
           ) : (
             <div className="p-4 sm:p-5 person-body-print">
-              <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
+              <div className={`flex flex-col sm:flex-row gap-4 items-center sm:items-start ${isGuarantor ? 'guarantor-content-print' : ''}`}>
                 
                 {/* PHOTO */}
-                <div className={`shrink-0 flex flex-col items-center ${!isGuarantor ? 'customer-card-media' : ''}`}>
+                <div className={`shrink-0 flex flex-col items-center ${isGuarantor ? 'guarantor-photo-print' : 'customer-card-media'}`}>
                   <SafeImage
                     src={photo}
                     alt={name || 'Person Photo'}
@@ -1464,18 +1464,23 @@ const getPaymentScore = (customer) => {
                 </div>
 
                 {/* DETAILS */}
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 truncate text-center sm:text-left print:text-xs">
-                    {name || 'N/A'}
-                  </h4>
-
+                <div className={`flex-1 min-w-0 ${isGuarantor ? 'guarantor-details-print' : ''}`}>
                   <div
-                    className={`grid gap-2.5 sm:gap-3 mt-2.5 text-xs print:text-[8px] print:gap-1.5 print:mt-1 ${
+                    className={`grid gap-2.5 sm:gap-3 text-xs print:text-[8px] print:gap-1.5 print:mt-1 ${
                       isGuarantor
                         ? 'grid-cols-1 sm:grid-cols-2'
                         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
                     }`}
                   >
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                        {isGuarantor ? 'Full Name' : 'Customer Name'}
+                      </span>
+                      <p className="font-bold text-slate-900 mt-0.5 truncate">
+                        {name || 'N/A'}
+                      </p>
+                    </div>
+
                     <div>
                       <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
                         Father Name
@@ -1579,7 +1584,7 @@ const getPaymentScore = (customer) => {
                 </div>
 
                 {/* FINGERPRINT BOX */}
-                <div className={`shrink-0 flex flex-col items-center ${!isGuarantor ? 'customer-card-media' : ''}`}>
+                <div className={`shrink-0 flex flex-col items-center ${isGuarantor ? 'guarantor-fingerprint-print' : 'customer-card-media'}`}>
                   <div className="w-20 sm:w-24 rounded-2xl border border-slate-200 bg-slate-50 p-2 text-center print:w-16 print:p-1 print:rounded-lg">
                     <span className="text-[8px] uppercase tracking-wider text-slate-400 font-black block mb-1 print:text-[6.5px]">
                       Biometric
@@ -1887,13 +1892,6 @@ const getPaymentScore = (customer) => {
                   <img src={getFingerprintImage(ledger.customer)} alt="Customer fingerprint" />
                 ) : <span>Fingerprint</span>}
               </div>
-            </div>
-            <div className="ledger-print-customer-meta text-[8.5px] font-bold text-slate-800">
-                <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
-                <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
-                <p>Referred By: <strong>{ledger.customer?.referredBy || '?'}</strong></p>
-                <p>Added At: {formatDateTime(ledger.customer?.createdAt).replace(/\s*PKT$/, '')}</p>
-                <p>Statement Date: {formatDateTime(new Date())}</p>
             </div>
           </div>
 
@@ -2261,7 +2259,7 @@ const getPaymentScore = (customer) => {
         @media print {
           @page {
             size: A4 portrait;
-            margin: 5mm 6mm;
+            margin: 0;
           }
 
           html, body, #root, main {
@@ -2288,18 +2286,23 @@ const getPaymentScore = (customer) => {
             left: 0 !important;
             right: auto !important;
             top: 0 !important;
-            width: 100% !important;
+            width: 210mm !important;
             max-width: none !important;
             height: auto !important;
             max-height: none !important;
             overflow: visible !important;
             transform: none !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 0 4mm !important;
             box-sizing: border-box !important;
             background: #ffffff !important;
             box-shadow: none !important;
             border: none !important;
+            gap: 2mm !important;
+          }
+
+          #customer-ledger-print > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 2mm !important;
           }
 
           .no-print {
@@ -2399,27 +2402,151 @@ const getPaymentScore = (customer) => {
             padding: 4px 6px !important;
           }
 
+          .guarantor-content-print {
+            display: grid !important;
+            grid-template-columns: 24mm minmax(0, 1fr) !important;
+            grid-template-rows: auto auto !important;
+            align-items: start !important;
+            gap: 3px 5px !important;
+          }
+
+          .guarantor-details-print {
+            grid-column: 2 !important;
+            grid-row: 1 / span 2 !important;
+            width: 100% !important;
+          }
+
+          .guarantor-photo-print,
+          .guarantor-fingerprint-print {
+            grid-column: 1 !important;
+            width: 22mm !important;
+          }
+
+          .guarantor-photo-print {
+            grid-row: 1 !important;
+            justify-self: start !important;
+          }
+
+          .guarantor-fingerprint-print {
+            grid-row: 2 !important;
+            justify-self: start !important;
+          }
+
+          .guarantor-photo-print img {
+            width: 22mm !important;
+            height: 16mm !important;
+            object-fit: cover !important;
+          }
+
+          .guarantor-fingerprint-print > div {
+            width: 22mm !important;
+            height: 16mm !important;
+            padding: 0 !important;
+          }
+
+          .guarantor-fingerprint-print img {
+            display: block !important;
+            width: 100% !important;
+            height: 16mm !important;
+            object-fit: contain !important;
+          }
+
+          .guarantor-photo-print img,
+          .guarantor-fingerprint-print > div {
+            width: 22mm !important;
+          }
+
+          .guarantor-photo-print > span,
+          .guarantor-fingerprint-print span {
+            display: none !important;
+          }
+
+          .person-body-print .grid > div {
+            display: grid !important;
+            grid-template-columns: 18mm minmax(0, 1fr) !important;
+            align-items: start !important;
+            column-gap: 3px !important;
+          }
+
+          .person-body-print .grid > div > span {
+            display: inline !important;
+            white-space: nowrap !important;
+          }
+
+          .person-body-print .grid > div > p {
+            margin-top: 0 !important;
+            min-width: 0 !important;
+          }
+
+          .person-card-print:not(.guarantor-card-print) .person-body-print .grid > div {
+            display: grid !important;
+            grid-template-columns: 24mm minmax(0, 1fr) !important;
+            align-items: start !important;
+            column-gap: 3px !important;
+          }
+
+          .person-card-print:not(.guarantor-card-print) .person-body-print .grid > div > span {
+            display: inline !important;
+            white-space: nowrap !important;
+          }
+
+          .person-card-print:not(.guarantor-card-print) .person-body-print .grid > div > span::after {
+            content: ':';
+          }
+
+          .person-card-print:not(.guarantor-card-print) .person-body-print .grid > div > p {
+            margin: 0 !important;
+            min-width: 0 !important;
+          }
+
+          .guarantor-details-print .grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            width: 100% !important;
+          }
+
+          .guarantor-details-print .grid > div > p {
+            text-align: left !important;
+            width: 100% !important;
+            font-size: 6.5px !important;
+          }
+
+          .guarantor-details-print .grid > div {
+            display: block !important;
+            width: 100% !important;
+          }
+
+          .guarantor-details-print .grid > div > span {
+            display: block !important;
+            white-space: nowrap !important;
+          }
+
+          .guarantor-details-print .grid > div > p {
+            white-space: normal !important;
+            overflow: visible !important;
+            overflow-wrap: anywhere !important;
+          }
+
           .print-guarantor-grid {
             display: grid !important;
             grid-template-columns: 1fr 1fr !important;
-            gap: 4px !important;
+            gap: 2px !important;
           }
 
           .print-summary-grid {
             display: grid !important;
             grid-template-columns: repeat(4, 1fr) !important;
-            gap: 4px !important;
-            margin-top: 4px !important;
+            gap: 2px !important;
+            margin-top: 2px !important;
           }
 
           .print-summary-card {
             border: 1px solid #94a3b8 !important;
             border-radius: 4px !important;
-            padding: 3px 5px !important;
+            padding: 2px 3px !important;
           }
 
           .ledger-section {
-            margin-top: 5px !important;
+            margin-top: 2px !important;
             border: 1px solid #94a3b8 !important;
             border-radius: 4px !important;
           }
@@ -2436,19 +2563,21 @@ const getPaymentScore = (customer) => {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             border: 0.5px solid #94a3b8 !important;
-            padding: 2.5px 3.5px !important;
+            padding: 1px 2px !important;
             font-weight: 900 !important;
             color: #0f172a !important;
+            line-height: 1.05 !important;
           }
 
           .print-table td {
             border: 0.5px solid #cbd5e1 !important;
-            padding: 2.5px 3.5px !important;
+            padding: 1px 2px !important;
             color: #0f172a !important;
+            line-height: 1.05 !important;
           }
 
           .print-plan-box {
-            padding: 3px 4px !important;
+            padding: 1px 2px !important;
             border-bottom: 0.5px solid #cbd5e1 !important;
           }
 

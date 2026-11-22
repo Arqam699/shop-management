@@ -2870,7 +2870,6 @@ Thank you - ${
                     <div className="print-product-primary-fields">
                       <div><b>Model</b><span>{item.product?.model || item.model || 'N/A'}</span></div>
                       <div><b>Qty</b><span>{Number(item.quantity || 0)}</span></div>
-                      <div><b>Purchase Price</b><span>{formatMoney(Number(item.purchasePriceAtSale ?? (index === 0 ? sale?.purchasePriceAtSale : undefined) ?? item.product?.purchasePrice ?? 0))} / unit</span></div>
                     </div>
                     {item.product?.imei && <div><b>IMEI</b><span>{item.product.imei}</span></div>}
                     {item.product?.engineNumber && <div><b>Engine No</b><span>{item.product.engineNumber}</span></div>}
@@ -3106,7 +3105,7 @@ Thank you - ${
             top: 0 !important;
             left: 0 !important;
             right: auto !important;
-            width: 194mm !important;
+            width: 202mm !important;
             box-sizing: border-box !important;
             height: auto !important;
             max-height: none !important;
@@ -3117,7 +3116,7 @@ Thank you - ${
 
           @page {
             size: A4 portrait;
-            margin: 0 8mm 8mm;
+            margin: 0 4mm 8mm;
           }
 
           html,
@@ -3143,7 +3142,7 @@ Thank you - ${
           }
 
           .installment-print-slip {
-            width: 194mm;
+            width: 202mm;
             min-height: 281mm;
             height: auto;
             max-height: none;
@@ -3319,8 +3318,8 @@ Thank you - ${
 
           .print-product-primary-fields {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 2px;
           }
 
           .print-product-primary-fields > div {
@@ -3330,10 +3329,6 @@ Thank you - ${
             align-items: start;
             font-size: 9px;
             line-height: 1.1;
-          }
-
-          .print-product-primary-fields > div:last-child {
-            grid-template-columns: auto auto;
           }
 
           .print-product-fields > div > b {
@@ -3469,6 +3464,11 @@ Thank you - ${
             color: #64748b;
             border-top: 0.5px solid #cbd5e1;
             padding-top: 3px;
+          }
+
+          .print-grid-2 > .print-box,
+          .print-grid-2 > .print-box * {
+            font-size: 11px !important;
           }
         }
       `}</style>

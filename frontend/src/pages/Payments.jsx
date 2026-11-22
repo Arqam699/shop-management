@@ -1146,7 +1146,7 @@ const Payments = () => {
             >
               <div className="relative z-10 space-y-3">
               {/* SHOP HEADER */}
-              <div className="grid grid-cols-[20mm_minmax(0,1fr)_20mm] items-center gap-2 pb-2 border-b-2 border-dashed border-slate-400">
+              <div className="receipt-header grid grid-cols-[20mm_minmax(0,1fr)_20mm] items-center gap-2 pb-2 border-b-2 border-dashed border-slate-400">
                 <div className="self-start text-left">
                   {activeCustomerPhoto && (
                     <>
@@ -1233,7 +1233,7 @@ const Payments = () => {
               </div>
 
               {/* PROMINENT CURRENT PAYMENT BOX */}
-              <div className="p-2.5 rounded-xl border-2 border-slate-900 bg-slate-50/80 text-center space-y-0.5">
+              <div className="receipt-amount-box p-2.5 rounded-xl border-2 border-slate-900 bg-slate-50/80 text-center space-y-0.5">
                 <span className="text-[9px] uppercase font-black tracking-widest text-slate-600 block">
                   Amount Received In This Receipt
                 </span>
@@ -1381,6 +1381,31 @@ const Payments = () => {
     font-size: 10px !important;
   }
 
+  #printable-receipt-content .receipt-header {
+    padding-bottom: 2mm !important;
+    border-bottom: 1.5px solid #334155 !important;
+  }
+
+  #printable-receipt-content .receipt-customer-product-details {
+    padding: 2mm !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 2mm !important;
+    background: #f8fafc !important;
+  }
+
+  #printable-receipt-content .receipt-amount-box {
+    margin: 2mm 0 !important;
+    padding: 3mm !important;
+    border: 2px solid #15803d !important;
+    border-radius: 2mm !important;
+    background: #f0fdf4 !important;
+  }
+
+  #printable-receipt-content .receipt-amount-box > p:first-of-type {
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+  }
+
   #printable-receipt-content .receipt-schedule-summary,
   #printable-receipt-content .receipt-schedule-summary * {
     font-size: 12px !important;
@@ -1394,9 +1419,18 @@ const Payments = () => {
     line-height: 1.25 !important;
   }
 
-  #printable-receipt-content .receipt-signatures {
+  #printable-receipt-content .receipt-total-remaining {
     margin-top: 2mm !important;
+    padding: 2mm 1mm !important;
+    border-top: 1px solid #64748b !important;
+    border-bottom: 1px solid #64748b !important;
+    background: #f8fafc !important;
+  }
+
+  #printable-receipt-content .receipt-signatures {
+    margin-top: 5mm !important;
     padding-top: 0 !important;
+    gap: 18mm !important;
   }
 
   #printable-receipt-content .receipt-customer-product-details .truncate {
