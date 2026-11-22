@@ -32,6 +32,10 @@ const EditSale = () => {
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [cashItems, setCashItems] = useState([]);
+  const [installmentPlan, setInstallmentPlan] = useState(null);
+  const [hasInstallmentPaymentHistory, setHasInstallmentPaymentHistory] = useState(false);
+  const [planDiscountInput, setPlanDiscountInput] = useState('');
+  const [originalSaleDateTime, setOriginalSaleDateTime] = useState('');
   const [formData, setFormData] = useState({
     customerName: '',
     customerId: '',
@@ -73,7 +77,26 @@ const EditSale = () => {
         setCustomers(Array.isArray(customerData) ? customerData : []);
 
         if (saleRes.data && saleRes.data.success) {
-          const s = saleRes.data.data.sale || saleRes.data.data;
+          const saleResponse = saleRes.data.data;
+          const s = saleResponse.sale || saleResponse;
+          setOriginalSaleDateTime(s.saleDate || s.createdAt || '');
+          if (s.paymentType === 'Installment' && saleResponse.plan?._id) {
+            let planData = {};
+            try {
+              const planResponse = await api.get(`/api/installments/${saleResponse.plan._id}`);
+              planData = planResponse.data?.data || {};
+            } catch {
+              // Keep the sale edit usable with the plan snapshot from its invoice response.
+            }
+            const currentPlan = planData.plan || saleResponse.plan;
+            setInstallmentPlan(currentPlan);
+            setHasInstallmentPaymentHistory(
+              (Array.isArray(planData.payments) && planData.payments.length > 0) ||
+              (Array.isArray(saleResponse.installments) && saleResponse.installments.some((item) => Number(item.paidAmount || 0) > 0)) ||
+              Number(currentPlan.downPayment || 0) > 0 ||
+              Number(currentPlan.totalPaid || 0) > 0
+            );
+          }
           const initialCashItems = Array.isArray(s.items) && s.items.length > 0
             ? s.items
             : [{
@@ -149,6 +172,16 @@ const EditSale = () => {
     }));
   };
 
+  const getEditedSaleDateTime = () => {
+    if (!formData.saleDate) return null;
+    const originalDate = originalSaleDateTime ? new Date(originalSaleDateTime) : null;
+    const timePart = originalDate && !Number.isNaN(originalDate.getTime())
+      ? `${String(originalDate.getHours()).padStart(2, '0')}:${String(originalDate.getMinutes()).padStart(2, '0')}:${String(originalDate.getSeconds()).padStart(2, '0')}`
+      : '12:00:00';
+    const editedDate = new Date(`${formData.saleDate}T${timePart}`);
+    return Number.isNaN(editedDate.getTime()) ? null : editedDate.toISOString();
+  };
+
   const updateCashItem = (index, field, value) => {
     setCashItems((currentItems) => currentItems.map((item, itemIndex) =>
       itemIndex === index ? { ...item, [field]: value } : item
@@ -192,19 +225,35 @@ const EditSale = () => {
     formData.paymentType === 'Installment'
       ? installmentFinancedBalance
       : 0;
+  const existingPlanDiscount = Number(installmentPlan?.balanceDiscount || 0);
+  const amountReceivedBeforeRevision = Math.max(
+    0,
+    Number(installmentPlan?.totalAmount || 0) -
+      existingPlanDiscount -
+      Number(installmentPlan?.remainingBalance || 0)
+  );
+  const revisedDealTotalAfterDiscount = Math.max(
+    0,
+    installmentTotalPayable - existingPlanDiscount - Number(planDiscountInput || 0)
+  );
+  const revisedBalanceAfterEdit = revisedDealTotalAfterDiscount - amountReceivedBeforeRevision;
+  const maximumPlanDiscount = Math.max(
+    0,
+    installmentTotalPayable - existingPlanDiscount - amountReceivedBeforeRevision
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setIsSaving(true);
 
-    if (cashItems.length === 0) {
+    if (!hasInstallmentPaymentHistory && cashItems.length === 0) {
       setErrorMsg('Add at least one product to this sale.');
       setIsSaving(false);
       return;
     }
 
-    if (cashItems.some((item) =>
+    if (!hasInstallmentPaymentHistory && cashItems.some((item) =>
       !item.product ||
       !Number.isInteger(Number(item.quantity)) ||
       Number(item.quantity) < 1 ||
@@ -221,6 +270,41 @@ const EditSale = () => {
     }
 
     try {
+      if (hasInstallmentPaymentHistory && formData.paymentType === 'Installment' && installmentPlan?._id) {
+        const duration = Number(formData.installmentDuration);
+        const markupPercentage = Number(formData.markupPercentage || 0);
+        const discountAmount = Number(planDiscountInput || 0);
+        if (!Number.isInteger(duration) || duration < 1 || duration > 36) {
+          throw new Error('Plan duration must be a whole number from 1 to 36 months.');
+        }
+        if (!Number.isFinite(markupPercentage) || markupPercentage < 0) {
+          throw new Error('Enter a valid markup percentage of zero or more.');
+        }
+        if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+          throw new Error('Enter a valid plan discount amount.');
+        }
+        const saleDate = getEditedSaleDateTime();
+        if (!saleDate) {
+          throw new Error('Enter a valid sale date.');
+        }
+        if (discountAmount > maximumPlanDiscount + 0.005) {
+          throw new Error('The plan discount cannot exceed the amount still due after recalculating the revised deal.');
+        }
+        if (revisedBalanceAfterEdit < -0.005) {
+          throw new Error('The revised deal amount cannot be less than the payments already received.');
+        }
+
+        const response = await api.put(`/api/installments/${installmentPlan._id}/revise`, {
+          duration,
+          markupPercentage,
+          discountAmount,
+          saleDate,
+        });
+        toast.success(response.data?.message || 'Installment plan updated; payment history preserved.');
+        navigate(`/invoices/${id}`);
+        return;
+      }
+
       const payload = formData.paymentType === 'Cash'
         ? {
             paymentType: 'Cash',
@@ -273,7 +357,7 @@ const EditSale = () => {
       navigate('/sales');
     } catch (err) {
       const message =
-        err.response?.data?.message || 'Failed to update transaction.';
+        err.response?.data?.message || err.message || 'Failed to update transaction.';
       setErrorMsg(message);
       toast.error(message);
     } finally {
@@ -422,7 +506,27 @@ const EditSale = () => {
             </div>
             )}
 
-            {(formData.paymentType === 'Cash' || formData.paymentType === 'Installment') && (
+            {hasInstallmentPaymentHistory && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-black text-amber-900">Payments already received</p>
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-amber-800">
+                  This edit updates the existing installment plan only. Products, down payment, invoice number, and past receipts stay unchanged.
+                </p>
+                <div className="mt-3 divide-y divide-amber-200/70">
+                  {cashItems.map((item, index) => {
+                    const product = products.find((entry) => String(entry._id) === String(item.product));
+                    return (
+                      <div key={`${item.product}-${index}`} className="flex flex-wrap justify-between gap-2 py-2 text-xs">
+                        <span className="font-black text-slate-800">{product?.name || 'Product'} {product?.model ? `(${product.model})` : ''}</span>
+                        <span className="font-bold text-slate-600">Qty {item.quantity} · {settings?.currency || 'PKR'} {Number(item.unitPrice || 0).toLocaleString()} each</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {(formData.paymentType === 'Cash' || formData.paymentType === 'Installment') && !hasInstallmentPaymentHistory && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -458,6 +562,11 @@ const EditSale = () => {
             )}
 
             {/* Payment Method Selector */}
+            {hasInstallmentPaymentHistory ? (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs font-black text-indigo-900">
+                Existing installment sale · {installmentPlan?.planId || 'Plan'}
+              </div>
+            ) : (
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">
                 Payment Terms <span className="text-rose-500">*</span>
@@ -501,13 +610,24 @@ const EditSale = () => {
                 </button>
               </div>
             </div>
+            )}
 
             {/* Installment Parameters (Conditional) */}
             {formData.paymentType === 'Installment' && (
               <div className="space-y-4 animate-[pageEnter_0.25s_ease-out]">
                 <div className="rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4">
-                  <label htmlFor="saleDate" className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Sale date</label>
-                  <input id="saleDate" name="saleDate" type="date" required value={formData.saleDate} onChange={handleChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-xs" />
+                  {hasInstallmentPaymentHistory ? (
+                    <>
+                      <label htmlFor="saleDate" className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Sale date (editable)</label>
+                      <input id="saleDate" name="saleDate" type="date" required value={formData.saleDate} onChange={handleChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-xs" />
+                      <p className="mt-1.5 text-[10px] font-semibold text-slate-500">Invoice date will update. Existing payment history and installment due dates will stay unchanged.</p>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor="saleDate" className="mb-2 block text-[10px] font-black uppercase tracking-wider text-slate-500">Sale date</label>
+                      <input id="saleDate" name="saleDate" type="date" required value={formData.saleDate} onChange={handleChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 sm:max-w-xs" />
+                    </>
+                  )}
                 </div>
                 <div className="bg-indigo-50/50 border border-indigo-200/80 p-5 rounded-2xl space-y-4">
                 <div className="flex items-center gap-2">
@@ -529,6 +649,7 @@ const EditSale = () => {
                       onChange={handleChange}
                       placeholder="0"
                       min="0"
+                      disabled={hasInstallmentPaymentHistory}
                       className="w-full h-11 border border-indigo-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
                       required
                     />
@@ -545,12 +666,13 @@ const EditSale = () => {
                       className="w-full h-11 border border-indigo-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
                       required
                     >
-                      {!['3', '6', '12', '24', '36'].includes(String(formData.installmentDuration)) && (
+                      {!['3', '6', '12', '18', '24', '36'].includes(String(formData.installmentDuration)) && (
                         <option value={formData.installmentDuration}>{formData.installmentDuration} Months Plan</option>
                       )}
                       <option value="3">3 Months Plan</option>
                       <option value="6">6 Months Plan</option>
                       <option value="12">12 Months Plan</option>
+                      <option value="18">18 Months Plan</option>
                       <option value="24">24 Months Plan</option>
                       <option value="36">36 Months Plan</option>
                     </select>
@@ -559,9 +681,16 @@ const EditSale = () => {
                     <label className="block text-[10px] font-black uppercase tracking-wider text-indigo-800 mb-1.5">Markup (%)</label>
                     <input type="number" name="markupPercentage" value={formData.markupPercentage} onChange={handleChange} min="0" step="0.01" className="w-full h-11 border border-indigo-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all" />
                   </div>
+                  {hasInstallmentPaymentHistory && (
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-800 mb-1.5">Plan Discount ({settings?.currency || 'PKR'})</label>
+                      <input type="number" value={planDiscountInput} onChange={(event) => setPlanDiscountInput(event.target.value)} min="0" max={maximumPlanDiscount} step="0.01" placeholder="0" className="w-full h-11 border border-emerald-200 rounded-xl px-4 text-xs sm:text-sm font-bold bg-white text-emerald-900 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all" />
+                      <span className="mt-1 block text-[10px] font-semibold text-emerald-700">Deducted from the revised total; not printed as a discount line.</span>
+                    </div>
+                  )}
                 </div>
                 <label className="flex items-start gap-2.5 rounded-xl border border-indigo-200 bg-white/70 p-3 text-xs font-bold text-indigo-900">
-                  <input type="checkbox" name="treatDownPaymentAsFirstInstallment" checked={formData.treatDownPaymentAsFirstInstallment} onChange={(event) => setFormData((current) => ({ ...current, treatDownPaymentAsFirstInstallment: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-indigo-600" />
+                  <input type="checkbox" name="treatDownPaymentAsFirstInstallment" checked={formData.treatDownPaymentAsFirstInstallment} disabled={hasInstallmentPaymentHistory} onChange={(event) => setFormData((current) => ({ ...current, treatDownPaymentAsFirstInstallment: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-indigo-600" />
                   <span>Count the down payment as installment #1</span>
                 </label>
                 </div>
@@ -611,12 +740,24 @@ const EditSale = () => {
               <div className="border-t border-white/[0.08] pt-4 flex justify-between items-center">
                 <span className="text-sm font-black text-white">Net Total Payable</span>
                 <span className="text-lg font-black bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-                  {settings?.currency || 'PKR'} {(formData.paymentType === 'Installment' ? installmentTotalPayable : finalTotal).toLocaleString()}
+                  {settings?.currency || 'PKR'} {(hasInstallmentPaymentHistory ? revisedDealTotalAfterDiscount : formData.paymentType === 'Installment' ? installmentTotalPayable : finalTotal).toLocaleString()}
                 </span>
               </div>
 
               {formData.paymentType === 'Installment' && (
                 <div className="space-y-2 border-t border-white/[0.08] pt-3.5 text-xs text-slate-400">
+                  {hasInstallmentPaymentHistory && existingPlanDiscount > 0 && (
+                    <div className="flex justify-between">
+                      <span>Previously applied plan discount</span>
+                      <span className="font-bold text-emerald-400">- {settings?.currency || 'PKR'} {existingPlanDiscount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {hasInstallmentPaymentHistory && Number(planDiscountInput || 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span>New plan discount</span>
+                      <span className="font-bold text-emerald-400">- {settings?.currency || 'PKR'} {Number(planDiscountInput || 0).toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>Down Payment {formData.treatDownPaymentAsFirstInstallment ? '(Installment #1)' : ''}</span>
                     <span className="text-emerald-400 font-bold">
@@ -624,11 +765,24 @@ const EditSale = () => {
                     </span>
                   </div>
                   <div className="flex justify-between text-sm font-black text-white pt-1">
-                    <span>Financed Balance</span>
+                    <span>{hasInstallmentPaymentHistory ? 'Remaining After Revision' : 'Financed Balance'}</span>
                     <span className="text-indigo-400 font-black">
-                      {settings?.currency || 'PKR'} {remaining.toLocaleString()}
+                      {settings?.currency || 'PKR'} {(hasInstallmentPaymentHistory ? Math.max(0, revisedBalanceAfterEdit) : remaining).toLocaleString()}
                     </span>
                   </div>
+                  {hasInstallmentPaymentHistory && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Already received</span>
+                        <span className="font-bold text-amber-300">{settings?.currency || 'PKR'} {amountReceivedBeforeRevision.toLocaleString()}</span>
+                      </div>
+                      {revisedBalanceAfterEdit < -0.005 && (
+                        <p className="rounded-lg bg-rose-500/10 px-3 py-2 font-bold text-rose-300">
+                          Revised deal is {settings?.currency || 'PKR'} {Math.abs(revisedBalanceAfterEdit).toLocaleString()} below the amount already received.
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -646,7 +800,7 @@ const EditSale = () => {
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>Update & Save Invoice</span>
+                  <span>{hasInstallmentPaymentHistory ? 'Update Plan & Invoice' : 'Update & Save Invoice'}</span>
                 </>
               )}
             </button>

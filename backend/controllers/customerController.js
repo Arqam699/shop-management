@@ -1038,7 +1038,7 @@ const getCustomers = async (req, res) => {
 
     const customerListSelect = req.query.includeMedia === 'true'
       ? CUSTOMER_MEDIA_SELECT
-      : 'customerId fullName fatherName mobileNumber cnic city referredBy createdAt';
+      : 'customerId fullName fatherName occupation mobileNumber cnic city address workingAddress referredBy createdAt';
 
     let customersQuery =
       Customer

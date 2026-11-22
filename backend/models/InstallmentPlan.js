@@ -92,6 +92,12 @@ const installmentPlanSchema = new mongoose.Schema(
       min: 0,
     },
 
+    lastRevisionChange: {
+      type: String,
+      enum: ['Increase', 'Decrease', 'Same'],
+      default: 'Same',
+    },
+
     // Keep prior contract terms and schedules for audit when the plan is revised.
     revisions: {
       type: [mongoose.Schema.Types.Mixed],
@@ -175,6 +181,12 @@ const installmentPlanSchema = new mongoose.Schema(
       financedAmount: {
         type: Number,
         default: 0,
+      },
+
+      revisionDiscountAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
       },
 
       remainingInstallmentCount: {

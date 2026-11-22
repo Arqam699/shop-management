@@ -430,6 +430,11 @@ const CustomerLedger = () => {
     );
   };
 
+  const getWorkingAddress = (person) => {
+    if (!person || typeof person !== 'object') return '';
+    return firstValue(person.workingAddress, person.workAddress, person.officeAddress);
+  };
+
   const getCity = (person) => {
     if (!person || typeof person !== 'object') return '';
     return firstValue(person.city, person.town, person.area);
@@ -630,6 +635,11 @@ const getPaymentScore = (customer) => {
       getFlat('fatherName', 'father', 'father_name', 'guardianName')
     );
 
+    const occupation = firstNonEmpty(
+      nested.occupation,
+      getFlat('occupation', 'job', 'profession')
+    );
+
     const mobile = firstNonEmpty(
       nested.mobile,
       nested.phone,
@@ -666,6 +676,15 @@ const getPaymentScore = (customer) => {
       nested.residentialAddress,
       getFlat('address', 'fullAddress', 'homeAddress', 'residentialAddress')
     );
+
+    const workingAddress = firstNonEmpty(
+      nested.workingAddress,
+      nested.workAddress,
+      nested.officeAddress,
+      getFlat('workingAddress', 'workAddress', 'officeAddress')
+    );
+
+    const addedAt = firstNonEmpty(nested.addedAt, getFlat('addedAt'));
 
     const city = firstNonEmpty(
       nested.city,
@@ -744,9 +763,12 @@ const getPaymentScore = (customer) => {
     return {
       name,
       fatherName,
+      occupation,
+      addedAt,
       mobile,
       cnic,
       address,
+      workingAddress,
       city,
       relationship,
       photo,
@@ -1002,6 +1024,7 @@ const getPaymentScore = (customer) => {
         customer?.cnic,
         customer?.city,
         customer?.address,
+        customer?.workingAddress,
       ];
 
       return (
@@ -1341,9 +1364,11 @@ const getPaymentScore = (customer) => {
     const fingerprintImage = getFingerprintImage(safePerson);
     const name = getCustomerName(safePerson);
     const fatherName = getFatherName(safePerson);
+    const occupation = safePerson.occupation || '';
     const mobile = getMobile(safePerson);
     const cnic = getCNIC(safePerson);
     const address = getAddress(safePerson);
+    const workingAddress = getWorkingAddress(safePerson);
     const city = getCity(safePerson);
     const paymentScore = getPaymentScore(customers);
 
@@ -1354,8 +1379,9 @@ const getPaymentScore = (customer) => {
     );
 
     const fingerprintCapturedAt = getFingerprintCapturedAt(safePerson);
-    const addedAt = !isGuarantor
-      ? formatDateTime(safePerson.createdAt)
+    const addedAtDate = isGuarantor ? safePerson.addedAt : safePerson.createdAt;
+    const addedAt = addedAtDate
+      ? formatDateTime(addedAtDate).replace(/\s*PKT$/, '')
       : '';
 
     const hasPerson = Boolean(
@@ -1364,9 +1390,11 @@ const getPaymentScore = (customer) => {
       getFingerprintFmd(safePerson) ||
       name ||
       fatherName ||
+      occupation ||
       mobile ||
       cnic ||
-      address
+      address ||
+      workingAddress
     );
 
     return (
@@ -1456,6 +1484,15 @@ const getPaymentScore = (customer) => {
                         {fatherName || '—'}
                       </p>
                     </div>
+
+                    <div>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                        Occupation
+                      </span>
+                      <p className="font-bold text-slate-700 mt-0.5 truncate">
+                        {occupation || '—'}
+                      </p>
+                    </div>
                     
 
                     <div>
@@ -1499,10 +1536,10 @@ const getPaymentScore = (customer) => {
                       </div>
                     )}
 
-                    {!isGuarantor && (
+                    {addedAt && (
                       <div>
                         <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
-                          Customer Added At
+                          {isGuarantor ? 'Guarantor Added At' : 'Customer Added At'}
                         </span>
                         <p className="font-bold text-slate-700 mt-0.5">
                           {addedAt}
@@ -1527,6 +1564,15 @@ const getPaymentScore = (customer) => {
                       </span>
                       <p className="font-medium text-slate-700 mt-0.5 line-clamp-2">
                         {address || 'No residential address recorded.'}
+                      </p>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black block print:text-[6.5px]">
+                        Working Address
+                      </span>
+                      <p className="font-medium text-slate-700 mt-0.5 line-clamp-2">
+                        {workingAddress || 'No working address recorded.'}
                       </p>
                     </div>
                   </div>
@@ -1846,7 +1892,7 @@ const getPaymentScore = (customer) => {
                 <p>Customer: <strong>{getCustomerName(ledger.customer)}</strong></p>
                 <p>Customer ID: <strong>{ledger.customer?.customerId || '—'}</strong></p>
                 <p>Referred By: <strong>{ledger.customer?.referredBy || '?'}</strong></p>
-                <p>Added At: {formatDateTime(ledger.customer?.createdAt)}</p>
+                <p>Added At: {formatDateTime(ledger.customer?.createdAt).replace(/\s*PKT$/, '')}</p>
                 <p>Statement Date: {formatDateTime(new Date())}</p>
             </div>
           </div>

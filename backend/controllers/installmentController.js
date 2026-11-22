@@ -284,7 +284,7 @@ const getInstallmentPlans = async (
         .populate('product', 'name brand model')
         .populate({
           path: 'sale',
-          select: 'saleId paymentType finalTotal totalWithMarkup markupAmount purchasePriceAtSale quantity unitPrice discount items',
+          select: 'saleId saleDate createdAt paymentType finalTotal totalWithMarkup markupAmount purchasePriceAtSale quantity unitPrice discount items',
           populate: { path: 'items.product', select: 'name brand model sku' },
         })
         .sort({
@@ -902,6 +902,7 @@ const payInstallment = async (
     const {
       installmentId,
       paymentAmount,
+      paymentDate: paymentDateInput,
       paymentMethod = 'Cash',
       notes = ''
     } = req.body;
@@ -929,6 +930,19 @@ const payInstallment = async (
       return res.status(400).json({
         message:
           'Payment amount must be greater than zero'
+      });
+    }
+
+    const paymentDate = paymentDateInput
+      ? new Date(paymentDateInput)
+      : new Date();
+
+    if (
+      Number.isNaN(paymentDate.getTime()) ||
+      paymentDate > new Date()
+    ) {
+      return res.status(400).json({
+        message: 'Payment date must be valid and cannot be in the future'
       });
     }
 
@@ -1080,9 +1094,6 @@ const payInstallment = async (
     // ========================================================
     // PAYMENT DATE
     // ========================================================
-
-    const paymentDate =
-      new Date();
 
     // ========================================================
     // ALLOCATIONS
@@ -1634,10 +1645,6 @@ const applyInstallmentBalanceDiscount = async (req, res) => {
     const shopId = req.shopId;
     const plan = await InstallmentPlan.findOne({ _id: req.params.id, shopId });
     if (!plan) return res.status(404).json({ message: 'Installment plan not found.' });
-    if (Number(plan.revisionNumber || 0) <= 0) {
-      return res.status(400).json({ message: 'Balance discount is available only after the plan has been revised.' });
-    }
-
     const discountAmount = roundMoney(req.body.discountAmount);
     if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
       return res.status(400).json({ message: 'Enter a discount amount greater than zero.' });
@@ -1646,7 +1653,7 @@ const applyInstallmentBalanceDiscount = async (req, res) => {
     const currentFinancials = await refreshPlanFinancials(plan, shopId);
     const currentBalance = roundMoney(currentFinancials.remainingBalance);
     if (discountAmount > currentBalance + 0.005) {
-      return res.status(400).json({ message: `Discount cannot exceed the remaining balance (${currentBalance}).` });
+      return res.status(400).json({ message: `Discount cannot exceed the amount still due on the deal (${currentBalance}).` });
     }
 
     const activeScheduleInstallments = await Installment.find({
@@ -1734,7 +1741,7 @@ const applyInstallmentBalanceDiscount = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `${discountAmount} discount applied to the remaining balance.`,
+      message: `${discountAmount} discount applied to the total deal amount; the invoice total and remaining balance have been reduced.`,
       data: { discountAmount, balanceDiscount: updatedDiscountTotal, remainingBalance: newRemainingBalance },
     });
   } catch (error) {
@@ -1754,12 +1761,19 @@ const reviseInstallmentPlan = async (req, res) => {
 
     const newDuration = Number(req.body.duration);
     const oldDuration = Number(plan.selectedDuration || plan.duration || 0);
-    if (!Number.isInteger(newDuration) || newDuration < 1 || newDuration > 12) {
-      return res.status(400).json({ message: 'Plan duration must be a whole number from 1 to 12 months.' });
+    if (!Number.isInteger(newDuration) || newDuration < 1 || newDuration > 36) {
+      return res.status(400).json({ message: 'Plan duration must be a whole number from 1 to 36 months.' });
     }
 
     const sale = await Sale.findOne({ _id: plan.sale, shopId, paymentType: 'Installment' });
     if (!sale) return res.status(404).json({ message: 'Related installment sale was not found.' });
+    if (req.body.saleDate !== undefined) {
+      const updatedSaleDate = new Date(req.body.saleDate);
+      if (Number.isNaN(updatedSaleDate.getTime())) {
+        return res.status(400).json({ message: 'Please provide a valid sale date.' });
+      }
+      sale.saleDate = updatedSaleDate;
+    }
 
     const currentRevision = Number(plan.revisionNumber || 0);
     const oldInstallments = await Installment.find({
@@ -1795,10 +1809,14 @@ const reviseInstallmentPlan = async (req, res) => {
     const markupPercentage = roundMoney(requestedMarkupPercentage);
     const markupAmount = roundMoney(markupBase * markupPercentage / 100);
     const newTotalAmount = roundMoney(priceBeforeMarkup + markupAmount);
-    const balanceDiscount = roundMoney(plan.balanceDiscount || 0);
+    const requestedDiscountAmount = roundMoney(req.body.discountAmount || 0);
+    if (!Number.isFinite(requestedDiscountAmount) || requestedDiscountAmount < 0) {
+      return res.status(400).json({ message: 'Plan discount must be a valid amount of zero or more.' });
+    }
+    const balanceDiscount = roundMoney(Number(plan.balanceDiscount || 0) + requestedDiscountAmount);
     if (collectedTotal + balanceDiscount > newTotalAmount) {
       return res.status(400).json({
-        message: `Payments and balance discount (${roundMoney(collectedTotal + balanceDiscount)}) exceed the revised total (${newTotalAmount}).`,
+        message: `Payments and discount (${roundMoney(collectedTotal + balanceDiscount)}) exceed the revised deal amount (${newTotalAmount}).`,
         collectedTotal,
         newTotalAmount,
       });
@@ -1868,12 +1886,14 @@ const reviseInstallmentPlan = async (req, res) => {
 
     const priorRevision = {
       revisionNumber: currentRevision,
+      lastRevisionChange: plan.lastRevisionChange,
       selectedDuration: plan.selectedDuration,
       duration: plan.duration,
       totalAmount: plan.totalAmount,
       downPayment: plan.downPayment,
       remainingBalance: plan.remainingBalance,
       balanceDiscount: plan.balanceDiscount,
+      revisionDiscountAmount: plan.invoiceSnapshot?.revisionDiscountAmount || 0,
       markupPercentage: sale.markupPercentage,
       markupAmount: sale.markupAmount,
       firstDueDate: plan.firstDueDate,
@@ -1915,9 +1935,13 @@ const reviseInstallmentPlan = async (req, res) => {
 
     plan.revisions.push(priorRevision);
     plan.revisionNumber = nextRevision;
+    plan.lastRevisionChange = newDuration > oldDuration
+      ? 'Increase'
+      : newDuration < oldDuration ? 'Decrease' : 'Same';
     plan.selectedDuration = newDuration;
     plan.duration = schedule.length;
     plan.totalAmount = newTotalAmount;
+    plan.balanceDiscount = balanceDiscount;
     plan.remainingBalance = newRemainingBalance;
     plan.balanceReduction = 0;
     plan.status = newRemainingBalance <= 0 ? 'Completed' : 'Active';
@@ -1932,6 +1956,7 @@ const reviseInstallmentPlan = async (req, res) => {
       // Invoice shows the current balance after this revision, while the
       // original down payment and first-payment figures remain immutable.
       financedAmount: newRemainingBalance,
+      revisionDiscountAmount: requestedDiscountAmount,
       initialPaymentType: plan.invoiceSnapshot?.initialPaymentType || plan.initialPaymentType || 'None',
       initialInstallmentPaidAmount: Number(
         plan.invoiceSnapshot?.initialInstallmentPaidAmount ?? plan.initialInstallmentPaidAmount ?? 0
@@ -1981,7 +2006,7 @@ const reviseInstallmentPlan = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Plan revised to ${newDuration} months. Previous payments were preserved, and their receipts now show the revised remaining balance of ${newRemainingBalance}. Revised invoice total: ${newTotalAmount}.`,
+      message: `Plan revised to ${newDuration} months. Previous payments were preserved. Revised deal total after discount: ${roundMoney(newTotalAmount - balanceDiscount)}; remaining balance: ${newRemainingBalance}.`,
       data: { plan: updatedPlan, installments: updatedInstallments },
     });
   } catch (error) {

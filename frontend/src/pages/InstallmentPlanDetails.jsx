@@ -28,6 +28,11 @@ import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import ExistingPrintPopup from '../components/ExistingPrintPopup';
 
+const getLocalDateInputValue = (value = new Date()) => {
+  const localDate = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
+
 const getImageSource = (image) => {
   if (!image || typeof image !== 'string') return '';
   if (
@@ -58,13 +63,12 @@ const InstallmentPlanDetails = () => {
 
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentDate, setPaymentDate] = useState(() => getLocalDateInputValue());
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [showPlanRevision, setShowPlanRevision] = useState(false);
   const [revisionDuration, setRevisionDuration] = useState('');
   const [revisionMarkupInput, setRevisionMarkupInput] = useState('');
   const [revisionLoading, setRevisionLoading] = useState(false);
-  const [balanceDiscountInput, setBalanceDiscountInput] = useState('');
-  const [discountLoading, setDiscountLoading] = useState(false);
 
   const currency = settings?.currency || 'PKR';
   const customerPhoto = getImageSource(plan?.customer?.liveImage || plan?.customer?.photo);
@@ -453,6 +457,8 @@ const InstallmentPlanDetails = () => {
     plan?.totalAmount ??
       calculatedTotalPayable
   );
+  const totalDealDiscount = roundMoney(plan?.balanceDiscount || 0);
+  const netTotalPayable = roundMoney(Math.max(0, totalPayable - totalDealDiscount));
   const previousPlanTotal = Number(plan?.revisions?.[plan.revisions.length - 1]?.totalAmount || 0);
   const isRevisedInstallmentPlan = Number(plan?.revisionNumber || 0) > 0;
   const earlySettlementDiscount = isRevisedInstallmentPlan
@@ -567,7 +573,10 @@ const InstallmentPlanDetails = () => {
   const revisedMarkupPercent = Number(revisionMarkupInput === '' ? 0 : revisionMarkupInput);
   const revisedMarkupAmount = roundMoney(revisedMarkupBase * revisedMarkupPercent / 100);
   const revisedTotalPayable = roundMoney(originalPrice + revisedMarkupAmount);
-  const revisedRemainingBalance = roundMoney(revisedTotalPayable - totalCustomerPaid);
+  const currentDealDiscount = totalDealDiscount;
+  const revisedNetDealAmount = roundMoney(Math.max(0, revisedTotalPayable - currentDealDiscount));
+  const currentNetDealAmount = roundMoney(Math.max(0, totalPayable - currentDealDiscount));
+  const revisedRemainingBalance = roundMoney(revisedNetDealAmount - totalCustomerPaid);
 
   const revisePlan = async () => {
     if (!Number.isInteger(revisedDurationNumber) || revisedDurationNumber < 1 || revisedDurationNumber > 12) {
@@ -595,30 +604,6 @@ const InstallmentPlanDetails = () => {
       toast.error(err.response?.data?.message || 'Could not revise the installment plan.');
     } finally {
       setRevisionLoading(false);
-    }
-  };
-
-  const applyBalanceDiscount = async () => {
-    const amount = roundMoney(balanceDiscountInput);
-    const currentBalance = roundMoney(plan?.remainingBalance || 0);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Enter a discount amount greater than zero.');
-      return;
-    }
-    if (amount > currentBalance) {
-      toast.error(`Discount cannot exceed the remaining balance (${formatMoney(currentBalance)}).`);
-      return;
-    }
-    try {
-      setDiscountLoading(true);
-      const response = await api.post(`/api/installments/${id}/discount`, { discountAmount: amount });
-      toast.success(response.data?.message || 'Discount applied to remaining balance.');
-      setBalanceDiscountInput('');
-      await fetchPlan();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not apply the balance discount.');
-    } finally {
-      setDiscountLoading(false);
     }
   };
 
@@ -676,13 +661,13 @@ const InstallmentPlanDetails = () => {
   const paymentProgress =
     remainingBalance <= 0.005
       ? 100
-      : totalPayable > 0
+      : netTotalPayable > 0
       ? Math.min(
           100,
           Math.max(
             0,
             (totalCustomerPaid /
-              totalPayable) *
+              netTotalPayable) *
               100
           )
         )
@@ -936,6 +921,7 @@ const InstallmentPlanDetails = () => {
     );
 
     setPaymentMethod('');
+    setPaymentDate(getLocalDateInputValue());
     setShowPaymentModal(true);
   };
 
@@ -953,6 +939,7 @@ const InstallmentPlanDetails = () => {
     setSelectedInstallment(null);
     setPaymentAmount('');
     setPaymentMethod('');
+    setPaymentDate(getLocalDateInputValue());
   };
 
   // =========================================================
@@ -1007,6 +994,11 @@ const InstallmentPlanDetails = () => {
       return;
     }
 
+    if (!paymentDate || paymentDate > getLocalDateInputValue()) {
+      toast.error('Select a valid payment date that is not in the future.');
+      return;
+    }
+
     const remaining =
       getInstallmentRemaining(
         selectedInstallment
@@ -1019,11 +1011,24 @@ const InstallmentPlanDetails = () => {
       return;
     }
 
+    const [paymentYear, paymentMonth, paymentDay] = paymentDate.split('-').map(Number);
+    const currentTime = new Date();
+    const recordedPaymentDate = new Date(
+      paymentYear,
+      paymentMonth - 1,
+      paymentDay,
+      currentTime.getHours(),
+      currentTime.getMinutes(),
+      currentTime.getSeconds()
+    ).toISOString();
+
     const paymentPayload = {
       installmentId:
         selectedInstallment._id,
 
       paymentAmount: amount,
+
+      paymentDate: recordedPaymentDate,
 
       paymentMethod,
 
@@ -1391,29 +1396,6 @@ Thank you - ${
 
               {plan.status !== 'Completed' && (
                 <>
-                  {Number(plan.revisionNumber || 0) > 0 && (
-                    <div className="flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-1">
-                      <input
-                        type="number"
-                        min="0.01"
-                        max={Number(plan.remainingBalance || 0)}
-                        step="0.01"
-                        value={balanceDiscountInput}
-                        onChange={(event) => setBalanceDiscountInput(event.target.value)}
-                        placeholder="Discount"
-                        aria-label="Discount from remaining balance"
-                        className="h-8 w-24 rounded-lg border border-white/10 bg-slate-950/40 px-2 text-xs font-bold text-white outline-none placeholder:text-slate-400 focus:border-emerald-300/60"
-                      />
-                      <button
-                        type="button"
-                        onClick={applyBalanceDiscount}
-                        disabled={discountLoading || !balanceDiscountInput || Number(balanceDiscountInput) <= 0 || Number(balanceDiscountInput) > Number(plan.remainingBalance || 0)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-500 px-2.5 text-[10px] font-black text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {discountLoading ? 'Applying…' : 'Apply Discount'}
-                      </button>
-                    </div>
-                  )}
                   <button
                     type="button"
                     onClick={() => { setRevisionDuration(String(defaultRevisionDuration)); setRevisionMarkupInput(String(roundMoney(currentMarkupForRevision * defaultRevisionDuration / displayDuration))); setShowPlanRevision(true); }}
@@ -1822,11 +1804,9 @@ Thank you - ${
             )}{' '}
             + {markupPercent}% Markup) ={' '}
             <strong className="text-slate-900 font-black">
-              {formatMoney(
-                totalPayable
-              )}
+              {formatMoney(netTotalPayable)}
             </strong>{' '}
-            total payable
+            total payable{totalDealDiscount > 0 ? ' after discount' : ''}
           </span>
 
           {downPaymentAsFirstInstallment && (
@@ -1930,9 +1910,7 @@ Thank you - ${
             </span>
 
             <p className="text-xl font-black text-slate-900 mt-1">
-              {formatMoney(
-                totalPayable
-              )}
+              {formatMoney(netTotalPayable)}
             </p>
 
             <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
@@ -2239,8 +2217,8 @@ Thank you - ${
         {Number(plan?.balanceDiscount || 0) > 0 && (
           <div className="mx-4 mt-4 sm:mx-5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-black text-amber-800">Discount applied to remaining balance</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-amber-700">Total discount given on this plan</p>
+              <p className="text-xs font-black text-amber-800">Discount applied to total deal amount</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-amber-700">This discount is deducted from the invoice deal total and amount due.</p>
             </div>
             <p className="shrink-0 text-sm font-black text-amber-900">
               {formatMoney(plan.balanceDiscount)}
@@ -2366,10 +2344,10 @@ Thank you - ${
 
       {showPlanRevision && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !revisionLoading) setShowPlanRevision(false); }}>
-          <section className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Shorten installment plan">
+            <section className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Shorten installment plan">
             <header className="bg-slate-950 px-5 py-4 text-white">
-              <h2 className="text-base font-black">Shorten Installment Plan</h2>
-              <p className="mt-1 text-xs text-slate-300">Recalculate the full deal total using the shorter duration rate.</p>
+                <h2 className="text-base font-black">Shorten Installment Plan</h2>
+                <p className="mt-1 text-xs text-slate-300">Recalculate the full deal total using the shorter duration rate.</p>
             </header>
             <div className="space-y-4 p-5">
               <label className="block text-xs font-black text-slate-600">Plan duration (months)
@@ -2381,9 +2359,9 @@ Thank you - ${
                 <span className="mt-1 block text-[10px] font-semibold text-slate-400">Enter the rate you want. Changing duration suggests a proportional rate, which you can edit.</span>
               </label>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-500">Previous total</p><p className="mt-1 font-black text-slate-800">{formatMoney(totalPayable)}</p></div>
-                <div className="rounded-xl bg-indigo-50 p-3"><p className="font-bold text-indigo-600">Revised total</p><p className="mt-1 font-black text-indigo-900">{formatMoney(revisedTotalPayable)}</p></div>
-                <div className="rounded-xl bg-emerald-50 p-3"><p className="font-bold text-emerald-700">Early settlement discount</p><p className="mt-1 font-black text-emerald-900">{formatMoney(Math.max(0, totalPayable - revisedTotalPayable))}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-500">Previous deal amount</p><p className="mt-1 font-black text-slate-800">{formatMoney(currentNetDealAmount)}</p></div>
+                <div className="rounded-xl bg-indigo-50 p-3"><p className="font-bold text-indigo-600">Revised deal amount</p><p className="mt-1 font-black text-indigo-900">{formatMoney(revisedNetDealAmount)}</p></div>
+                <div className="rounded-xl bg-emerald-50 p-3"><p className="font-bold text-emerald-700">Change in deal amount</p><p className="mt-1 font-black text-emerald-900">{formatMoney(Math.max(0, currentNetDealAmount - revisedNetDealAmount))}</p></div>
                 <div className="rounded-xl bg-amber-50 p-3"><p className="font-bold text-amber-700">Already received</p><p className="mt-1 font-black text-amber-900">{formatMoney(totalCustomerPaid)}</p></div>
               </div>
               <div className={`rounded-xl border p-3 text-xs font-bold ${revisedRemainingBalance < 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-white text-slate-700'}`}>
@@ -2551,6 +2529,22 @@ Thank you - ${
                       </button>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <label htmlFor="installmentPaymentDate" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Payment Received Date
+                  </label>
+                  <input
+                    id="installmentPaymentDate"
+                    type="date"
+                    value={paymentDate}
+                    max={getLocalDateInputValue()}
+                    onChange={(event) => setPaymentDate(event.target.value)}
+                    required
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-700 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                  />
+                  <p className="mt-1 text-[10px] font-medium text-slate-400">For an old sale, select the actual date you received this payment.</p>
                 </div>
 
                 {enteredPayment >
@@ -2854,6 +2848,11 @@ Thank you - ${
               </b>
             </div>
 
+            <div>
+              Working Address:{' '}
+              <b>{plan.customer?.workingAddress || 'N/A'}</b>
+            </div>
+
           </div>
 
           <div className="print-box">
@@ -2884,7 +2883,7 @@ Thank you - ${
             <div className="print-deal-totals">
               <div className="print-deal-total">
                 <span>Total Deal</span>
-                <b>{formatMoney(totalPayable)}</b>
+                <b>{formatMoney(netTotalPayable)}</b>
               </div>
               {earlySettlementDiscount > 0 && (
                 <div className="print-deal-total">

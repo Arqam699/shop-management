@@ -133,7 +133,7 @@ const getPaymentScore = (customer) => {
       dateStyle: 'medium',
       timeStyle: 'short',
       timeZone: 'Asia/Karachi',
-    }).format(date)} PKT`;
+    }).format(date)}`;
   };
   const getPhoto = (customer) => {
     const image = getValue(
@@ -247,9 +247,11 @@ const getPaymentScore = (customer) => {
         getCustomerId(customer),
         getName(customer),
         getFatherName(customer),
+        customer?.occupation,
         getMobile(customer),
         getCNIC(customer),
         getAddress(customer),
+        customer?.workingAddress,
         getCity(customer),
         customer?.referredBy,
       ];
@@ -424,9 +426,11 @@ const getPaymentScore = (customer) => {
               const customerId = getCustomerId(customer);
               const name = getName(customer);
               const fatherName = getFatherName(customer);
+              const occupation = customer?.occupation || '';
               const mobile = getMobile(customer);
               const cnic = getCNIC(customer);
               const address = getAddress(customer);
+              const workingAddress = customer?.workingAddress || '';
               const city = getCity(customer);
               const referredBy = customer?.referredBy || '';
               const photo = getPhoto(customer);
@@ -488,6 +492,22 @@ const getPaymentScore = (customer) => {
                       <p className="mt-1 text-[10px] font-semibold text-slate-500">
                         Added at: <span className="font-bold text-slate-700">{addedAt}</span>
                       </p>
+                      {customer.guarantor1?.addedAt && (
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                          Guarantor 1 Added at:{' '}
+                          <span className="font-bold text-slate-700">
+                            {formatAddedAt(customer.guarantor1.addedAt)}
+                          </span>
+                        </p>
+                      )}
+                      {customer.guarantor2?.addedAt && (
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                          Guarantor 2 Added at:{' '}
+                          <span className="font-bold text-slate-700">
+                            {formatAddedAt(customer.guarantor2.addedAt)}
+                          </span>
+                        </p>
+                      )}
 
                       {/* PARAMETERS GRID */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 mt-3 text-xs">
@@ -513,6 +533,19 @@ const getPaymentScore = (customer) => {
                             <p className="text-slate-800 font-bold truncate">{fatherName || '—'}</p>
                           </div>
                         </div>
+
+                        {/* Occupation */}
+                        {occupation && (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                              <Building2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">Occupation</p>
+                              <p className="text-slate-800 font-bold truncate">{occupation}</p>
+                            </div>
+                          </div>
+                        )}
 
                         {/* CNIC */}
                         <div className="flex items-center gap-2 min-w-0">
@@ -559,6 +592,18 @@ const getPaymentScore = (customer) => {
                             <p className="text-slate-700 font-medium truncate">{address || 'No residential address recorded'}</p>
                           </div>
                         </div>
+
+                        {workingAddress && (
+                          <div className="flex items-center gap-2 min-w-0 sm:col-span-2 lg:col-span-3 xl:col-span-4">
+                            <div className="w-7 h-7 rounded-lg bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100">
+                              <Building2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase font-black tracking-wider text-slate-400">Working Address</p>
+                              <p className="text-slate-700 font-medium truncate">{workingAddress}</p>
+                            </div>
+                          </div>
+                        )}
 
                       </div>
 

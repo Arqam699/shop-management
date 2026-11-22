@@ -30,10 +30,14 @@ import {
 const EMPTY_GUARANTOR = {
   name: '',
   fatherName: '',
+  occupation: '',
+  city: '',
   mobileNumber: '',
   cnic: '',
   relation: '',
   address: '',
+  workingAddress: '',
+  addedAt: null,
   fingerprintFmd: '',
   fingerprintImage: '',
   fingerprintCapturedAt: null,
@@ -53,10 +57,12 @@ const AddEditCustomer = () => {
   const [formData, setFormData] = useState({
     fullName: '',
     fatherName: '',
+    occupation: '',
     mobileNumber: '',
     alternateMobileNumber: '',
     cnic: '',
     address: '',
+    workingAddress: '',
     city: 'Sangla Hill',
     email: '',
     referredBy: '',
@@ -193,10 +199,12 @@ const AddEditCustomer = () => {
         setFormData({
           fullName: data.fullName || '',
           fatherName: data.fatherName || '',
+          occupation: data.occupation || '',
           mobileNumber: data.mobileNumber || '',
           alternateMobileNumber: data.alternateMobileNumber || '',
           cnic: data.cnic || '',
           address: data.address || '',
+          workingAddress: data.workingAddress || '',
           city: data.city || 'Sangla Hill',
           email: data.email || '',
           referredBy: data.referredBy || '',
@@ -701,10 +709,23 @@ const AddEditCustomer = () => {
       return;
     }
 
+    const submittedAt = new Date().toISOString();
+    const prepareGuarantor = (guarantor) => {
+      const hasDetails = [
+        'name', 'fatherName', 'occupation', 'city', 'mobileNumber', 'cnic', 'relation',
+        'address', 'workingAddress', 'fingerprintFmd', 'fingerprintImage', 'liveImage',
+      ].some((field) => String(guarantor?.[field] || '').trim());
+
+      return {
+        ...guarantor,
+        addedAt: hasDetails ? guarantor.addedAt || submittedAt : guarantor.addedAt || null,
+      };
+    };
+
     const payload = {
       ...formData,
-      guarantor1: { ...formData.guarantor1 },
-      guarantor2: { ...formData.guarantor2 },
+      guarantor1: prepareGuarantor(formData.guarantor1),
+      guarantor2: prepareGuarantor(formData.guarantor2),
     };
 
     try {
@@ -1057,6 +1078,20 @@ const AddEditCustomer = () => {
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Customer Occupation
+              </label>
+              <input
+                type="text"
+                name="occupation"
+                value={formData.occupation}
+                onChange={handleChange}
+                placeholder="e.g. Shopkeeper, Teacher"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 CNIC Number (13 Digits) <span className="text-rose-500">*</span>
               </label>
               <input
@@ -1131,6 +1166,20 @@ const AddEditCustomer = () => {
 
             <div className="sm:col-span-2 lg:col-span-3">
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Customer Working Address
+              </label>
+              <input
+                type="text"
+                name="workingAddress"
+                value={formData.workingAddress}
+                onChange={handleChange}
+                placeholder="Shop, office, workplace, or work location"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+              />
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 Customer Reference / Referred By
               </label>
               <input
@@ -1196,6 +1245,19 @@ const AddEditCustomer = () => {
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Zamanti 1 Occupation
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor1?.occupation || ''}
+                onChange={(e) => handleGuarantorChange('guarantor1', 'occupation', e.target.value)}
+                placeholder="e.g. Farmer, Business"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 Mobile Number
               </label>
               <input
@@ -1236,6 +1298,19 @@ const AddEditCustomer = () => {
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                City / Area
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor1?.city || ''}
+                onChange={(e) => handleGuarantorChange('guarantor1', 'city', e.target.value)}
+                placeholder="City or area"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 Residential Address
               </label>
               <input
@@ -1243,6 +1318,19 @@ const AddEditCustomer = () => {
                 value={formData.guarantor1?.address || ''}
                 onChange={(e) => handleGuarantorChange('guarantor1', 'address', e.target.value)}
                 placeholder="Area / Village / City"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Working Address
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor1?.workingAddress || ''}
+                onChange={(e) => handleGuarantorChange('guarantor1', 'workingAddress', e.target.value)}
+                placeholder="Shop, office, or workplace"
                 className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all"
               />
             </div>
@@ -1300,6 +1388,19 @@ const AddEditCustomer = () => {
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Zamanti 2 Occupation
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor2?.occupation || ''}
+                onChange={(e) => handleGuarantorChange('guarantor2', 'occupation', e.target.value)}
+                placeholder="e.g. Farmer, Business"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 Mobile Number
               </label>
               <input
@@ -1340,6 +1441,19 @@ const AddEditCustomer = () => {
 
             <div>
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                City / Area
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor2?.city || ''}
+                onChange={(e) => handleGuarantorChange('guarantor2', 'city', e.target.value)}
+                placeholder="City or area"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
                 Residential Address
               </label>
               <input
@@ -1347,6 +1461,19 @@ const AddEditCustomer = () => {
                 value={formData.guarantor2?.address || ''}
                 onChange={(e) => handleGuarantorChange('guarantor2', 'address', e.target.value)}
                 placeholder="Area / Village / City"
+                className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                Working Address
+              </label>
+              <input
+                type="text"
+                value={formData.guarantor2?.workingAddress || ''}
+                onChange={(e) => handleGuarantorChange('guarantor2', 'workingAddress', e.target.value)}
+                placeholder="Shop, office, or workplace"
                 className="w-full h-11 border border-slate-200 rounded-xl px-4 text-xs sm:text-sm font-medium bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
               />
             </div>

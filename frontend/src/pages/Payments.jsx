@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../utils/api';
+import { getInstallmentRevisionLabel } from '../utils/installmentRevisionLabel';
 import {
   formatCnicSearchInput,
   matchesCnicSearch,
@@ -809,7 +810,7 @@ const Payments = () => {
                             {group.invoiceNumber}
                             {Number(group.installmentPlan?.revisionNumber || 0) > 0 && (
                               <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
-                                Revised plan{Number(group.installmentPlan.revisionNumber) > 1 ? ` · Rev ${group.installmentPlan.revisionNumber}` : ''}
+                                {getInstallmentRevisionLabel(group.installmentPlan)}
                               </span>
                             )}
                           </td>
@@ -914,7 +915,7 @@ const Payments = () => {
                             {invoiceNumber}
                             {Number(payment.installmentPlan?.revisionNumber || 0) > 0 && (
                               <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
-                                Revised plan{Number(payment.installmentPlan.revisionNumber) > 1 ? ` · Rev ${payment.installmentPlan.revisionNumber}` : ''}
+                                {getInstallmentRevisionLabel(payment.installmentPlan)}
                               </span>
                             )}
                           </td>
@@ -1211,6 +1212,7 @@ const Payments = () => {
                     <p className="text-slate-700 font-bold break-words"><strong>Father Name:</strong> {activeReceipt.customer.fatherName}</p>
                   )}
                   <p className="text-slate-700 font-bold break-words"><strong>Mobile No:</strong> {activeReceipt.customer?.mobileNumber || 'N/A'}</p>
+                  <p className="text-slate-700 font-bold break-words"><strong>Payment Received Date:</strong> {formatDateTime(activeReceipt.paymentDate || activeReceipt.createdAt)}</p>
                   {activeReceipt.customer?.cnic && (
                     <p className="text-slate-600 text-[9px] break-words"><strong>CNIC:</strong> {activeReceipt.customer.cnic}</p>
                   )}
@@ -1271,7 +1273,7 @@ const Payments = () => {
                 </div>
               )}
 
-              <div className="flex justify-between border-b border-dashed border-slate-300 pb-2 text-[9px] font-black text-slate-900">
+              <div className="receipt-total-remaining flex justify-between border-b border-dashed border-slate-300 pb-2 text-[9px] font-black text-slate-900">
                 <span>Total remaining balance:</span>
                 <span>{formatMoney(totalPlanRemainingBalance)}</span>
               </div>
@@ -1383,6 +1385,12 @@ const Payments = () => {
   #printable-receipt-content .receipt-schedule-summary * {
     font-size: 12px !important;
     font-weight: 900 !important;
+    line-height: 1.25 !important;
+  }
+
+  #printable-receipt-content .receipt-total-remaining,
+  #printable-receipt-content .receipt-total-remaining * {
+    font-size: 12px !important;
     line-height: 1.25 !important;
   }
 

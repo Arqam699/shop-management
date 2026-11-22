@@ -5,6 +5,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import DataTable from '../components/DataTable';
 import useDebounce from '../utils/useDebounce';
 import api from '../utils/api';
+import { getInstallmentRevisionLabel } from '../utils/installmentRevisionLabel';
 import {
   formatCnicSearchInput,
   matchesCnicSearch,
@@ -301,7 +302,7 @@ const Invoices = () => {
           <p>{inv.saleId || '—'}</p>
           {inv.isInstallmentPlanRevised && (
             <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
-              Revised plan{Number(inv.installmentPlanRevisionNumber) > 1 ? ` · Rev ${inv.installmentPlanRevisionNumber}` : ''}
+              {getInstallmentRevisionLabel(inv)}
             </span>
           )}
         </div>

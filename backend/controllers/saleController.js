@@ -1777,15 +1777,20 @@ const getSales = async (req, res) => {
         shopId,
         sale: { $in: installmentSaleIds },
       })
-        .select('sale revisionNumber')
+        .select('sale revisionNumber lastRevisionChange')
         .lean();
       const revisionBySale = new Map(
-        installmentPlans.map((plan) => [String(plan.sale), Number(plan.revisionNumber || 0)])
+        installmentPlans.map((plan) => [String(plan.sale), {
+          revisionNumber: Number(plan.revisionNumber || 0),
+          direction: plan.lastRevisionChange || 'Same',
+        }])
       );
       for (const sale of installmentSales) {
-        const revisionNumber = revisionBySale.get(String(sale._id)) || 0;
+        const revision = revisionBySale.get(String(sale._id)) || { revisionNumber: 0, direction: 'Same' };
+        const revisionNumber = revision.revisionNumber;
         sale.isInstallmentPlanRevised = revisionNumber > 0;
         sale.installmentPlanRevisionNumber = revisionNumber;
+        sale.installmentPlanRevisionDirection = revision.direction;
       }
     }
 

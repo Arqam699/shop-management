@@ -580,7 +580,7 @@ const Customers = () => {
         ...options,
         hour: '2-digit',
         minute: '2-digit',
-      }).format(parsed)} PKT`,
+      }).format(parsed)}`,
     };
   };
 
@@ -802,6 +802,7 @@ const Customers = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
                     <InfoBox label="Full Name" value={customer.fullName} />
                     <InfoBox label="Father's Name" value={customer.fatherName} />
+                    <InfoBox label="Occupation" value={customer.occupation} />
                     <InfoBox label="Customer ID" value={customer.customerId} highlight />
                     <InfoBox label="CNIC" value={customer.cnic} />
                     <InfoBox label="Mobile Number" value={customer.mobileNumber} />
@@ -811,6 +812,9 @@ const Customers = () => {
                     <InfoBox label="Referred By" value={customer.referredBy} />
                     <div className="sm:col-span-2 lg:col-span-4">
                       <InfoBox label="Residential Address" value={customer.address} />
+                    </div>
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <InfoBox label="Working Address" value={customer.workingAddress} />
                     </div>
                     {customer.notes && (
                       <div className="sm:col-span-2 lg:col-span-4">
@@ -1666,10 +1670,17 @@ const GuarantorCard = ({ title, guarantor }) => (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <InfoBox label="Name" value={guarantor.name} />
         <InfoBox label="Father's Name" value={guarantor.fatherName} />
+        <InfoBox label="City / Area" value={guarantor.city} />
+        <InfoBox
+          label="Added At"
+          value={guarantor.addedAt ? new Intl.DateTimeFormat('en-PK', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Karachi' }).format(new Date(guarantor.addedAt)) : ''}
+        />
+        <InfoBox label="Occupation" value={guarantor.occupation} />
         <InfoBox label="Mobile" value={guarantor.mobileNumber} />
         <InfoBox label="CNIC" value={guarantor.cnic} />
         <InfoBox label="Relation" value={guarantor.relation} />
         <InfoBox label="Address" value={guarantor.address} />
+        <InfoBox label="Working Address" value={guarantor.workingAddress} />
       </div>
     )}
   </div>

@@ -23,6 +23,7 @@ import {
   Mail,
   StickyNote,
   Camera,
+  Building2,
   Sparkles,
   CheckCircle2,
   CreditCard,
@@ -190,7 +191,7 @@ const formatAddedAt = (value) => {
     dateStyle: 'medium',
     timeStyle: 'short',
     timeZone: 'Asia/Karachi',
-  }).format(date)} PKT`;
+  }).format(date)}`;
 };
 
 const formatCurrency = (
@@ -845,6 +846,12 @@ const IdentityCard = ({
                   />
 
                   <DetailItem
+                    icon={Building2}
+                    label="Occupation"
+                    value={person?.occupation}
+                  />
+
+                  <DetailItem
                     icon={Phone}
                     label="Mobile Number"
                     value={person?.mobileNumber}
@@ -889,6 +896,13 @@ const IdentityCard = ({
                     fullWidth
                   />
 
+                  <DetailItem
+                    icon={Building2}
+                    label="Working Address"
+                    value={person?.workingAddress}
+                    fullWidth
+                  />
+
                   {person?.notes && (
                     <DetailItem
                       icon={StickyNote}
@@ -913,6 +927,38 @@ const IdentityCard = ({
                   />
 
                   <DetailItem
+                    icon={Building2}
+                    label="Occupation"
+                    value={person?.occupation}
+                  />
+
+                  <DetailItem
+                    icon={MapPin}
+                    label="City / Area"
+                    value={person?.city}
+                  />
+
+                  <DetailItem
+                    icon={MapPin}
+                    label="Residential Address"
+                    value={person?.address}
+                    fullWidth
+                  />
+
+                  <DetailItem
+                    icon={Building2}
+                    label="Working Address"
+                    value={person?.workingAddress}
+                    fullWidth
+                  />
+
+                  <DetailItem
+                    icon={CalendarDays}
+                    label="Added At"
+                    value={person?.addedAt ? formatAddedAt(person.addedAt) : ''}
+                  />
+
+                  <DetailItem
                     icon={Phone}
                     label="Mobile Number"
                     value={person?.mobileNumber}
@@ -930,12 +976,6 @@ const IdentityCard = ({
                     value={person?.relation}
                   />
 
-                  <DetailItem
-                    icon={MapPin}
-                    label="Residential Address"
-                    value={person?.address}
-                    fullWidth
-                  />
                 </>
               )}
             </div>
@@ -1238,7 +1278,8 @@ const CustomerProfile = () => {
 
           {fingerprintSrc ? (
             <img
-              loading="lazy"
+              loading="eager"
+              decoding="sync"
               src={fingerprintSrc}
               alt={`${personLabel} Fingerprint`}
             />
@@ -1263,7 +1304,8 @@ const CustomerProfile = () => {
 
           {photoSrc ? (
             <img
-              loading="lazy"
+              loading="eager"
+              decoding="sync"
               src={photoSrc}
               alt={`${personLabel} Photo`}
             />
@@ -1766,13 +1808,7 @@ const CustomerProfile = () => {
           </div>
 
           <div className="print-date">
-            <span>
-              Customer ID:{' '}
-              <strong>
-                {customer.customerId ||
-                  '—'}
-              </strong>
-            </span>
+
 
             <span>
               Printed Date: {printedDate}
@@ -1788,14 +1824,6 @@ const CustomerProfile = () => {
 
           <div className="print-content">
             <div className="print-details">
-              <div>
-                <span>Customer ID</span>
-                <strong>
-                  {customer.customerId ||
-                    'N/A'}
-                </strong>
-              </div>
-
               <div>
                 <span>Added At</span>
                 <strong>{formatAddedAt(customer.createdAt)}</strong>
@@ -1815,6 +1843,11 @@ const CustomerProfile = () => {
                   {customer.fatherName ||
                     'N/A'}
                 </strong>
+              </div>
+
+              <div>
+                <span>Occupation</span>
+                <strong>{customer.occupation || 'N/A'}</strong>
               </div>
 
               <div>
@@ -1841,31 +1874,20 @@ const CustomerProfile = () => {
               </div>
 
               <div>
-                <span>City / Area</span>
-                <strong>
-                  {customer.city || 'N/A'}
-                </strong>
-              </div>
-
-              <div>
-                <span>Email Address</span>
-                <strong>
-                  {customer.email || 'N/A'}
-                </strong>
-              </div>
-
-              <div>
                 <span>Referred By</span>
                 <strong>
                   {customer.referredBy || 'N/A'}
                 </strong>
               </div>
 
-              <div
-                style={{
-                  gridColumn: 'span 2',
-                }}
-              >
+              <div className="print-details-full-line">
+                <span>City / Area</span>
+                <strong>
+                  {customer.city || 'N/A'}
+                </strong>
+              </div>
+
+              <div className="print-details-full-line">
                 <span>
                   Residential Address
                 </span>
@@ -1874,6 +1896,11 @@ const CustomerProfile = () => {
                   {customer.address ||
                     'N/A'}
                 </strong>
+              </div>
+
+              <div className="print-details-full-line">
+                <span>Working Address</span>
+                <strong>{customer.workingAddress || 'N/A'}</strong>
               </div>
             </div>
 
@@ -1893,11 +1920,13 @@ const CustomerProfile = () => {
           <div className="print-content">
             <div className="print-details">
               <div>
+                <span>Added At</span>
+                <strong>{guarantor1.addedAt ? formatAddedAt(guarantor1.addedAt) : 'N/A'}</strong>
+              </div>
+
+              <div>
                 <span>Full Name</span>
-                <strong>
-                  {guarantor1.name ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor1.name || 'N/A'}</strong>
               </div>
 
               <div>
@@ -1909,38 +1938,38 @@ const CustomerProfile = () => {
               </div>
 
               <div>
+                <span>Occupation</span>
+                <strong>{guarantor1.occupation || 'N/A'}</strong>
+              </div>
+
+              <div>
                 <span>Mobile Number</span>
-                <strong>
-                  {guarantor1.mobileNumber ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor1.mobileNumber || 'N/A'}</strong>
               </div>
 
               <div>
                 <span>CNIC Number</span>
-                <strong>
-                  {guarantor1.cnic ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor1.cnic || 'N/A'}</strong>
               </div>
 
               <div>
                 <span>Relationship</span>
-                <strong>
-                  {guarantor1.relation ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor1.relation || 'N/A'}</strong>
               </div>
 
-              <div>
-                <span>
-                  Residential Address
-                </span>
+              <div className="print-details-full-line">
+                <span>City / Area</span>
+                <strong>{guarantor1.city || 'N/A'}</strong>
+              </div>
 
-                <strong>
-                  {guarantor1.address ||
-                    'N/A'}
-                </strong>
+              <div className="print-details-full-line">
+                <span>Residential Address</span>
+                <strong>{guarantor1.address || 'N/A'}</strong>
+              </div>
+
+              <div className="print-details-full-line">
+                <span>Working Address</span>
+                <strong>{guarantor1.workingAddress || 'N/A'}</strong>
               </div>
             </div>
 
@@ -1960,11 +1989,13 @@ const CustomerProfile = () => {
           <div className="print-content">
             <div className="print-details">
               <div>
+                <span>Added At</span>
+                <strong>{guarantor2.addedAt ? formatAddedAt(guarantor2.addedAt) : 'N/A'}</strong>
+              </div>
+
+              <div>
                 <span>Full Name</span>
-                <strong>
-                  {guarantor2.name ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor2.name || 'N/A'}</strong>
               </div>
 
               <div>
@@ -1976,38 +2007,38 @@ const CustomerProfile = () => {
               </div>
 
               <div>
+                <span>Occupation</span>
+                <strong>{guarantor2.occupation || 'N/A'}</strong>
+              </div>
+
+              <div>
                 <span>Mobile Number</span>
-                <strong>
-                  {guarantor2.mobileNumber ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor2.mobileNumber || 'N/A'}</strong>
               </div>
 
               <div>
                 <span>CNIC Number</span>
-                <strong>
-                  {guarantor2.cnic ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor2.cnic || 'N/A'}</strong>
               </div>
 
               <div>
                 <span>Relationship</span>
-                <strong>
-                  {guarantor2.relation ||
-                    'N/A'}
-                </strong>
+                <strong>{guarantor2.relation || 'N/A'}</strong>
               </div>
 
-              <div>
-                <span>
-                  Residential Address
-                </span>
+              <div className="print-details-full-line">
+                <span>City / Area</span>
+                <strong>{guarantor2.city || 'N/A'}</strong>
+              </div>
 
-                <strong>
-                  {guarantor2.address ||
-                    'N/A'}
-                </strong>
+              <div className="print-details-full-line">
+                <span>Residential Address</span>
+                <strong>{guarantor2.address || 'N/A'}</strong>
+              </div>
+
+              <div className="print-details-full-line">
+                <span>Working Address</span>
+                <strong>{guarantor2.workingAddress || 'N/A'}</strong>
               </div>
             </div>
 
@@ -2069,7 +2100,7 @@ const CustomerProfile = () => {
         @media print {
           @page {
             size: A4 portrait;
-            margin: 5mm;
+            margin: 0;
           }
 
           html,
@@ -2098,14 +2129,16 @@ const CustomerProfile = () => {
           .customer-print-slip {
             position: absolute !important;
             inset: 0 !important;
-            width: 100% !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
+            min-height: 297mm !important;
             height: auto !important;
             max-height: none !important;
             overflow: visible !important;
             transform: none !important;
             box-sizing: border-box !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 0 5mm 5mm !important;
           }
 
           .customer-print-slip {
@@ -2165,16 +2198,16 @@ const CustomerProfile = () => {
           .print-title {
             background: #f1f5f9;
             border-bottom: 1px solid #cbd5e1;
-            padding: 5px 8px;
-            font-size: 10px;
+            padding: 6px 9px;
+            font-size: 12px;
             font-weight: 900;
             color: #0f172a;
           }
 
           .print-content {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 140px;
-            gap: 12px;
+            grid-template-columns: minmax(0, 1fr) 264px;
+            gap: 8px;
             padding: 9px 10px;
             align-items: start;
           }
@@ -2183,41 +2216,61 @@ const CustomerProfile = () => {
             display: grid;
             grid-template-columns: 1fr 1fr;
             column-gap: 12px;
-            row-gap: 6px;
+            row-gap: 8px;
           }
 
           .print-details > div {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
+            align-items: baseline;
+            gap: 4px;
             min-width: 0;
           }
 
+          .print-details > .print-details-full-line {
+            grid-column: 1 / -1;
+          }
+
           .print-details span {
-            font-size: 8px;
+            flex: 0 0 auto;
+            font-size: 12px;
             text-transform: uppercase;
             font-weight: 900;
             color: #475569;
-            margin-bottom: 1px;
+            margin-bottom: 0;
+            white-space: nowrap;
+          }
+
+          .print-details span::after {
+            content: ':';
           }
 
           .print-details strong {
-            font-size: 9.5px;
+            min-width: 0;
+            font-size: 12px;
             font-weight: 900;
             color: #000000;
             word-break: normal;
+            overflow-wrap: anywhere;
+          }
+
+          .print-details-full-line strong {
+            font-size: 12px;
+            white-space: nowrap;
+            overflow-wrap: normal;
           }
 
           .print-media-column {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 8px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+            gap: 5px;
           }
 
           .print-fingerprint-box,
           .print-photo-box {
-            width: 130px;
+            width: 100%;
+            min-width: 0;
             min-height: 112px;
             border: 0.5px solid #94a3b8;
             border-radius: 3px;
@@ -2228,7 +2281,7 @@ const CustomerProfile = () => {
 
           .print-fingerprint-title,
           .print-photo-title {
-            font-size: 8px;
+            font-size: 9px;
             font-weight: 900;
             color: #475569;
             margin-bottom: 2px;
@@ -2236,7 +2289,7 @@ const CustomerProfile = () => {
 
           .print-fingerprint-box img {
             display: block;
-            width: 112px;
+            width: 100%;
             height: 86px;
             object-fit: contain;
             margin: 0 auto 2px;
@@ -2244,7 +2297,7 @@ const CustomerProfile = () => {
 
           .print-photo-box img {
             display: block;
-            width: 112px;
+            width: 100%;
             height: 86px;
             object-fit: cover;
             border-radius: 2px;
@@ -2254,7 +2307,7 @@ const CustomerProfile = () => {
           .print-fingerprint-box small,
           .print-photo-box small {
             display: block;
-            font-size: 7px;
+            font-size: 8px;
             line-height: 1.2;
             color: #334155;
             font-weight: 700;
@@ -2266,7 +2319,7 @@ const CustomerProfile = () => {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 8px;
+            font-size: 9px;
             color: #64748b;
             font-weight: 800;
           }
@@ -2275,7 +2328,7 @@ const CustomerProfile = () => {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 16px;
-            margin-top: 28px;
+            margin-top: 18mm;
             padding-top: 8px;
             page-break-inside: avoid;
             break-inside: avoid;

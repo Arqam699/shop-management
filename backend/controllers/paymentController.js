@@ -136,7 +136,7 @@ const getPayments = async (req, res) => {
       .populate({
         path: 'installmentPlan',
         select:
-          'planId revisionNumber remainingBalance totalAmount downPayment ' +
+          'planId revisionNumber lastRevisionChange remainingBalance totalAmount downPayment ' +
           'treatDownPaymentAsFirstInstallment',
         populate: [
           {

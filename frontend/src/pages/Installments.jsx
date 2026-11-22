@@ -2,6 +2,7 @@ import { Fragment, useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { formatCnicSearchInput, matchesCnicSearch, matchesMobileSearch } from '../utils/cnicSearch';
+import { getInstallmentRevisionLabel } from '../utils/installmentRevisionLabel';
 import { useSettings } from '../context/SettingsContext';
 import ConfirmModal from '../components/ConfirmModal';
 import toast from 'react-hot-toast';
@@ -639,6 +640,11 @@ const Installments = () => {
                         const itemQuantity = Number(item.quantity || 0);
                         const itemUnitPrice = Number(item.unitPrice || 0);
                         const itemPurchasePrice = Number(item.purchasePriceAtSale ?? plan.sale?.purchasePriceAtSale ?? 0);
+                        const dealTotalAfterDiscount = Math.max(
+                          0,
+                          Number(plan.totalAmount ?? plan.sale?.totalWithMarkup ?? plan.sale?.finalTotal ?? 0) -
+                            Number(plan.balanceDiscount || 0)
+                        );
                         const product = item.product && typeof item.product === 'object' ? item.product : plan.product;
 
                         return (
@@ -649,7 +655,7 @@ const Installments = () => {
                                   {plan.sale?.saleId || 'N/A'}
                                   {Number(plan.revisionNumber || 0) > 0 && (
                                     <span className="mt-1 block w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
-                                      Revised plan{Number(plan.revisionNumber) > 1 ? ` · Rev ${plan.revisionNumber}` : ''}
+                                      {getInstallmentRevisionLabel(plan)}
                                     </span>
                                   )}
                                 </td>
@@ -674,13 +680,13 @@ const Installments = () => {
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-green-600">-{settings.currency} {(plan.downPayment || 0).toLocaleString()}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-red-600">{settings.currency} {(plan.remainingBalance || 0).toLocaleString()}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle font-black text-indigo-700">
-                                  {formatMoney(plan.totalAmount ?? plan.sale?.totalWithMarkup ?? plan.sale?.finalTotal ?? 0)}
+                                  {formatMoney(dealTotalAfterDiscount)}
                                 </td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-gray-500 font-bold">{Number(plan.selectedDuration || plan.invoiceSnapshot?.selectedDuration || plan.sale?.selectedInstallmentDuration || plan.duration || 0)}M</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle text-center font-black text-amber-700">{Number(plan.remainingInstallmentCount ?? plan.duration ?? 0)}</td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle whitespace-nowrap">
-                                  <p className="font-semibold text-slate-700">{formatPlanDate(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>
-                                  <p className="mt-0.5 text-[10px] font-medium text-slate-400">{formatPlanTime(plan.createdAt || plan.sale?.saleDate || plan.sale?.createdAt)}</p>
+                                  <p className="font-semibold text-slate-700">{formatPlanDate(plan.sale?.saleDate || plan.sale?.createdAt || plan.createdAt)}</p>
+                                  <p className="mt-0.5 text-[10px] font-medium text-slate-400">{formatPlanTime(plan.sale?.saleDate || plan.sale?.createdAt || plan.createdAt)}</p>
                                 </td>
                                 <td rowSpan={rowSpan} className="px-6 py-4 align-middle">
                                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${plan.status === 'Completed' ? 'bg-green-50 border-green-200 text-green-700' : plan.status === 'Overdue' ? 'bg-red-50 border-red-200 text-red-700 font-bold animate-pulse' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>

@@ -258,6 +258,7 @@ const InvoiceDetails = () => {
   const saleObj = invoice.sale || invoice;
   const isInstallmentInvoice =
     saleObj.paymentType === 'Installment';
+  const planStartDate = saleObj.saleDate || saleObj.createdAt;
   const invoiceSnapshot = invoice.plan?.invoiceSnapshot || {};
   const downPaymentPaid = Number(saleObj.downPayment || 0);
   const initialPaymentType = invoiceSnapshot.initialPaymentType || invoice.plan?.initialPaymentType || saleObj.initialPaymentType || 'None';
@@ -487,10 +488,12 @@ const InvoiceDetails = () => {
               {saleObj.customer?.fatherName && <p className="m-0 font-bold text-slate-600">Father Name: {saleObj.customer.fatherName}</p>}
               <p className="m-0 font-bold text-slate-600">Mobile No: {saleObj.customer?.mobileNumber || 'No Phone'}</p>
               {saleObj.customer?.alternateMobileNumber && <p className="m-0 font-bold text-slate-600">Alt Phone: {saleObj.customer.alternateMobileNumber}</p>}
+              {isInstallmentInvoice && <p className="m-0 font-bold text-slate-600">Plan Start Date: {formatDateTime(planStartDate)}</p>}
             </div>
             <div className="space-y-0 leading-tight">
               {saleObj.customer?.cnic && <p className="m-0 font-bold text-slate-600">CNIC: {saleObj.customer.cnic}</p>}
               {saleObj.customer?.address && <p className="m-0 font-bold text-slate-500">Address: {saleObj.customer.address}{saleObj.customer?.city ? `, ${saleObj.customer.city}` : ''}</p>}
+              {saleObj.customer?.workingAddress && <p className="m-0 font-bold text-slate-500">Working Address: {saleObj.customer.workingAddress}</p>}
             </div>
           </div>
 

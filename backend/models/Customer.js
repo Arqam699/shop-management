@@ -28,6 +28,12 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
 
+    occupation: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     mobileNumber: {
       type: String,
       required: true,
@@ -49,6 +55,12 @@ const customerSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+
+    workingAddress: {
+      type: String,
+      trim: true,
+      default: '',
     },
 
     city: {
@@ -126,6 +138,18 @@ const customerSchema = new mongoose.Schema(
         default: '',
       },
 
+      occupation: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
+      city: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
       mobileNumber: {
         type: String,
         trim: true,
@@ -148,6 +172,17 @@ const customerSchema = new mongoose.Schema(
         type: String,
         trim: true,
         default: '',
+      },
+
+      workingAddress: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
+      addedAt: {
+        type: Date,
+        default: null,
       },
 
       // ==========================================
@@ -203,6 +238,18 @@ const customerSchema = new mongoose.Schema(
         default: '',
       },
 
+      occupation: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
+      city: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
       mobileNumber: {
         type: String,
         trim: true,
@@ -225,6 +272,17 @@ const customerSchema = new mongoose.Schema(
         type: String,
         trim: true,
         default: '',
+      },
+
+      workingAddress: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+
+      addedAt: {
+        type: Date,
+        default: null,
       },
 
       // ==========================================
