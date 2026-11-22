@@ -414,7 +414,7 @@ const InvoiceDetails = () => {
       ====================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono font-bold text-slate-900 print:border-0 print:shadow-none"
+        className={`relative overflow-hidden bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xl shadow-slate-200/50 space-y-2.5 text-xs font-mono font-bold text-slate-900 print:border-0 print:shadow-none ${!isInstallmentInvoice ? 'cash-sale-invoice' : ''}`}
       >
         {!isInstallmentInvoice && invoicePaymentStatus === 'PAID' && (
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
@@ -822,6 +822,10 @@ const InvoiceDetails = () => {
             font-size: 12pt !important;
             font-weight: 900 !important;
             line-height: 1.35 !important;
+          }
+
+          #printable-thermal-invoice.cash-sale-invoice {
+            padding-top: 4mm !important;
           }
 
           #printable-thermal-invoice::before,
