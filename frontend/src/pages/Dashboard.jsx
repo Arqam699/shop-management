@@ -1,4 +1,3 @@
-rig
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
