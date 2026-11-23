@@ -1245,11 +1245,6 @@ const Payments = () => {
                 <p className="pt-1 text-[10px] font-bold text-slate-700">
                   Payment Method: <span className="font-black text-slate-900">{activeReceipt.paymentMethod || 'Cash'}</span>
                 </p>
-                {Number(activeReceipt.balanceReductionAmount || 0) > 0 && (
-                  <p className="text-[10px] font-bold text-indigo-700">
-                    Extra applied to remaining balance: <span className="font-black">{formatMoney(activeReceipt.balanceReductionAmount)}</span>
-                  </p>
-                )}
                 {Number(activeReceipt.advanceAmount || 0) > 0 && (
                   <p className="text-[10px] font-bold text-emerald-700">
                     Customer advance: <span className="font-black">{formatMoney(activeReceipt.advanceAmount)}</span>
@@ -1294,7 +1289,7 @@ const Payments = () => {
                   <p className="pt-1">Shop Signature &amp; Stamp</p>
                 </div>
               </div>
-
+              <div className="receipt-developed-credit">Designed &amp; Developed by ArZaib POS</div>
               </div>
             </div>
           </div>
@@ -1323,6 +1318,7 @@ const Payments = () => {
 
       {/* COMPACT THERMAL & A4 PRINT CSS */}
       <style>{`
+      .receipt-developed-credit { display: none; }
       @media print {
   @page {
     size: A4 portrait;
@@ -1370,6 +1366,17 @@ const Payments = () => {
 
   #printable-receipt-content .receipt-image-label {
     display: none !important;
+  }
+
+  #printable-receipt-content .receipt-developed-credit {
+    display: block !important;
+    margin-top: 1.5mm !important;
+    padding-bottom: 2mm !important;
+    color: #64748b !important;
+    font-size: 7pt !important;
+    font-weight: 700 !important;
+    line-height: 1.15 !important;
+    text-align: center !important;
   }
 
   #printable-receipt-content .receipt-customer-product-details,

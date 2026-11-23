@@ -2090,11 +2090,6 @@ Thank you - ${
                               {installmentPaymentEntries.map((entry, paymentIndex) => (
                                 <div key={`${entry.paymentId || inst._id}-${paymentIndex}`}>
                                   <div>{formatDate(entry.date)}: {formatMoney(entry.amount)} received</div>
-                                  {entry.extraAmount > 0 && (
-                                    <div className="font-black text-indigo-700">
-                                      Extra: {formatMoney(entry.extraAmount)} (reduced total balance)
-                                    </div>
-                                  )}
                                 </div>
                               ))}
                             </div>
@@ -2185,16 +2180,6 @@ Thank you - ${
                 <CheckCircle2 size={14} />
                 <span>Paid</span>
               </span>
-              {remainingBalance > 0.005 && (
-                <button
-                  type="button"
-                  onClick={() => openPaymentModal(inst, { balanceOnly: true })}
-                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700 hover:bg-indigo-100"
-                  title="Record an extra payment against the total balance"
-                >
-                  Extra to Balance
-                </button>
-              )}
             </div>
                           )}
                         </td>
@@ -2309,7 +2294,7 @@ Thank you - ${
                     >
                       <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 block">
                         {isBalanceReduction
-                          ? 'Balance reduced'
+                          ? 'Payment result'
                           : isExtraPayment
                           ? 'Extra paid'
                           : isShortPayment
@@ -2326,7 +2311,7 @@ Thank you - ${
                         }`}
                       >
                         {isBalanceReduction
-                          ? formatMoney(payment.balanceReductionPaid)
+                          ? 'Recorded'
                           : isExtraPayment
                           ? formatMoney(payment.extraPaid)
                           : isShortPayment
@@ -2339,11 +2324,6 @@ Thank you - ${
                   {isExtraPayment && (
                     <p className="mt-3 text-[11px] font-bold text-indigo-700">
                       Extra amount was paid and adjusted against future installments.
-                    </p>
-                  )}
-                  {isBalanceReduction && (
-                    <p className="mt-3 text-[11px] font-bold text-indigo-700">
-                      Extra paid: {formatMoney(payment.balanceReductionPaid)}. This amount reduced the total remaining balance; it was not carried into another installment.
                     </p>
                   )}
 
@@ -2991,9 +2971,6 @@ Thank you - ${
                       {printPaymentEntries.map((entry, paymentIndex) => (
                         <div key={`${entry.paymentId || idx}-${paymentIndex}`}>
                           {formatDate(entry.date)}: {formatMoney(entry.amount)}
-                          {entry.extraAmount > 0 && (
-                            <strong> (Extra: {formatMoney(entry.extraAmount)})</strong>
-                          )}
                         </div>
                       ))}
                     </div>

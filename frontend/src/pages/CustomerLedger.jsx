@@ -2225,7 +2225,6 @@ const getPaymentScore = (customer) => {
               </div>
             </div>
           </div>
-
           {/* SCREEN ACTIONS */}
           <div className="no-print flex flex-wrap items-center justify-between gap-3 pt-2">
             <button

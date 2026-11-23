@@ -653,16 +653,17 @@ const InvoiceDetails = () => {
             الیکٹرونکس کی کوئی بھی چیز واپس یا تبدیل نہیں ہوگی۔
           </p>
         </div>
-        <div className="invoice-signatures mt-8 grid grid-cols-2 gap-12 border-t border-slate-400 pt-3 text-center">
+        <div className="invoice-signatures mt-4 grid grid-cols-2 gap-12 border-t border-slate-400 pt-3 text-center">
           <div>
-            <div className="h-[28mm] border-b border-slate-700" />
+            <div className="h-[24mm] border-b border-slate-700" />
             <p className="pt-2 font-black text-slate-900">Customer Agreement & Signature</p>
           </div>
           <div>
-            <div className="h-[28mm] border-b border-slate-700" />
+            <div className="h-[24mm] border-b border-slate-700" />
             <p className="pt-2 font-black text-slate-900">Shop Signature & Stamp</p>
           </div>
         </div>
+        <div className="invoice-developed-credit">Designed &amp; Developed by ArZaib POS</div>
         </div>
       </div>
       {/* =====================================================
@@ -671,6 +672,10 @@ const InvoiceDetails = () => {
       <style>{`
         #printable-thermal-invoice .invoice-metadata {
           display: none !important;
+        }
+
+        .invoice-developed-credit {
+          display: none;
         }
 
         @media print {
@@ -708,6 +713,17 @@ const InvoiceDetails = () => {
           #printable-thermal-invoice .invoice-payment-totals .flex {
             flex-wrap: wrap !important;
             gap: 2mm !important;
+          }
+
+          #printable-thermal-invoice .invoice-developed-credit {
+            display: block !important;
+            margin-top: 2mm !important;
+            margin-bottom: 8mm !important;
+            color: #64748b !important;
+            font-size: 9pt !important;
+            font-weight: 700 !important;
+            line-height: 1.2 !important;
+            text-align: center !important;
           }
 
           #printable-thermal-invoice .invoice-customer-info {
@@ -809,7 +825,7 @@ const InvoiceDetails = () => {
             zoom: var(--invoice-print-scale, 1) !important;
             transform: none !important;
             box-sizing: border-box !important;
-            padding: 0 0 8mm !important;
+            padding: 0 0 12mm !important;
             padding-top: 0 !important;
             margin-top: 0 !important;
             border: none !important;
