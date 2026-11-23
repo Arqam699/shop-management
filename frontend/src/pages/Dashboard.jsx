@@ -1029,8 +1029,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         ====================================================== */
         @media print {
           @page {
-            size: A4 landscape;
-            margin: 0 4mm 0 4mm;
+            /* Use physical landscape dimensions so browser/printer defaults
+               cannot reinterpret the index sheet as a portrait layout. */
+            size: 297mm 210mm;
+            margin: 0 5mm 0 4mm;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1060,7 +1062,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             left: 0 !important;
             right: auto !important;
             top: 4mm !important;
-            width: 100% !important;
+            width: 288mm !important;
             max-width: none !important;
             height: auto !important;
             max-height: none !important;
@@ -1069,6 +1071,8 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
             background: #ffffff !important;
             border: none !important;
             display: block !important;
