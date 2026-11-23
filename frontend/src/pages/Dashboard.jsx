@@ -1069,7 +1069,9 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             overflow: visible !important;
             transform: none !important;
             margin: 0 !important;
-            padding: 0 !important;
+            /* Keep the first S.N. column inside the printer's non-printable
+               edge; border-box keeps the table within the same page width. */
+            padding: 0 0 0 5mm !important;
             box-sizing: border-box !important;
             writing-mode: horizontal-tb !important;
             direction: ltr !important;
