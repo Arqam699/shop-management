@@ -1141,15 +1141,33 @@ const createSale = async (req, res) => {
     );
 
     const initialInstallmentNumber = treatDownPayment ? 2 : 1;
-    const firstScheduledAmount = Number(futureSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber)?.amount || 0);
+    const firstScheduledEntry = futureSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber);
+    const originalFirstScheduledAmount = Number(firstScheduledEntry?.amount || 0);
     const initialPaidByInstallment = new Map();
     if (normalizedInitialPaymentType === 'FirstInstallment' && futureSchedule.length > 0) {
-      const firstPaid = Math.min(firstScheduledAmount, initialInstallmentPayment);
-      initialPaidByInstallment.set(initialInstallmentNumber, firstPaid);
-      let extra = Math.max(0, roundMoney(initialInstallmentPayment - firstPaid));
+      const firstPaid = Math.min(originalFirstScheduledAmount, initialInstallmentPayment);
+      const shortfall = Math.max(0, roundMoney(originalFirstScheduledAmount - firstPaid));
       let targets = futureSchedule
         .filter((item) => Number(item.installmentNumber) > initialInstallmentNumber)
-        .map((item) => ({ number: Number(item.installmentNumber), remaining: Number(item.amount || 0) }));
+        .map((item) => ({ number: Number(item.installmentNumber), item }));
+
+      // If the first installment receives less than its scheduled amount,
+      // close it at the amount actually received and spread its shortfall
+      // evenly over all later installments. Preserve the plan total.
+      if (shortfall > 0.005 && targets.length > 0 && firstPaid > 0) {
+        firstScheduledEntry.amount = roundMoney(firstPaid);
+        const shortfallCents = Math.round(shortfall * 100);
+        const shareCents = Math.floor(shortfallCents / targets.length);
+        const extraCents = shortfallCents % targets.length;
+        targets.forEach(({ item }, index) => {
+          item.amount = roundMoney(Number(item.amount || 0) + (shareCents + (index < extraCents ? 1 : 0)) / 100);
+        });
+      }
+
+      if (firstPaid > 0) initialPaidByInstallment.set(initialInstallmentNumber, firstPaid);
+
+      let extra = Math.max(0, roundMoney(initialInstallmentPayment - firstPaid));
+      targets = targets.map(({ number, item }) => ({ number, remaining: Number(item.amount || 0) }));
       while (extra > 0.005 && targets.length > 0) {
         const share = extra / targets.length;
         let roundTotal = 0;
@@ -1164,12 +1182,13 @@ const createSale = async (req, res) => {
         extra = roundMoney(extra - roundTotal);
       }
     }
+    const firstScheduledAmount = Number(futureSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber)?.amount || 0);
     const initialPaymentCountsAsFirstInstallment = treatDownPayment || (
       normalizedInitialPaymentType === 'FirstInstallment' && firstScheduledAmount > 0 && (initialPaidByInstallment.get(initialInstallmentNumber) || 0) >= firstScheduledAmount
     );
-    const remainingInstallmentCount = treatDownPayment
-      ? futureSchedule.length
-      : futureSchedule.filter((item) => Number(item.amount || 0) - (initialPaidByInstallment.get(Number(item.installmentNumber)) || 0) > 0.005).length;
+    const remainingInstallmentCount = futureSchedule.filter((item) =>
+      Number(item.amount || 0) - (initialPaidByInstallment.get(Number(item.installmentNumber)) || 0) > 0.005
+    ).length;
     const remainingAfterInitialPayment = Math.max(0, roundMoney(financedAmount - initialInstallmentPayment));
 
     // ========================================================

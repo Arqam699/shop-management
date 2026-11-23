@@ -408,7 +408,8 @@ const calculatePaymentScore = async ({
       // -----------------------------------------------
 
       else if (
-        payment.installment
+        payment.installment &&
+        !payment.balanceReductionOnly
       ) {
         const installmentId =
           String(

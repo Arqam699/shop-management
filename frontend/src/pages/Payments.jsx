@@ -928,7 +928,9 @@ const Payments = () => {
                           </td>
 
                           <td className="px-5 py-3.5 font-bold text-slate-800">
-                            {payment.cashSalePayment ? (
+                            {payment.balanceReductionOnly ? (
+                              <span className="text-indigo-700 font-black">Extra to plan balance</span>
+                            ) : payment.cashSalePayment ? (
                               <span className="text-emerald-700 font-black">Cash balance payment</span>
                             ) : isFirstDownPayment ? (
                               <span className="text-indigo-700 font-black">Down Payment (#1)</span>
@@ -1064,7 +1066,7 @@ const Payments = () => {
                         return (
                           <tr key={payment._id} className="hover:bg-slate-50/60">
                             <td className="px-4 py-2.5 font-bold text-slate-800">
-                              Month #{installmentNumber}
+                              {payment.balanceReductionOnly ? 'Extra to plan balance' : `Month #${installmentNumber}`}
                             </td>
                             <td className="px-4 py-2.5 text-right font-black text-emerald-600">
                               +{formatMoney(payment.amount)}
@@ -1259,6 +1261,10 @@ const Payments = () => {
               {activeReceipt.cashSalePayment ? (
                 <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 text-[9px] font-bold">
                   <div className="flex justify-between text-slate-700"><span>Payment date:</span><span>{formatDateTime(activeReceipt.paymentDate || activeReceipt.createdAt)}</span></div>
+                </div>
+              ) : activeReceipt.balanceReductionOnly ? (
+                <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 text-[9px] font-bold">
+                  <div className="flex justify-between text-indigo-700"><span>Payment applied to:</span><span>Total plan balance</span></div>
                 </div>
               ) : originalInstallmentAmount > 0 && (
                 <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">

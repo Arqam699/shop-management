@@ -64,6 +64,7 @@ const InstallmentPlanDetails = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentDate, setPaymentDate] = useState(() => getLocalDateInputValue());
+  const [balanceReductionOnly, setBalanceReductionOnly] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [showPlanRevision, setShowPlanRevision] = useState(false);
   const [revisionDuration, setRevisionDuration] = useState('');
@@ -166,6 +167,7 @@ const InstallmentPlanDetails = () => {
     return payments
       .flatMap((payment) => {
         if (Number(payment?.planRevision || 0) !== Number(installment?.revisionNumber || 0)) return [];
+        if (payment?.balanceReductionOnly) return [];
         const allocations = Array.isArray(payment?.allocations)
           ? payment.allocations
           : [];
@@ -903,7 +905,8 @@ const InstallmentPlanDetails = () => {
   // =========================================================
 
   const openPaymentModal = (
-    installment
+    installment,
+    { balanceOnly = false } = {}
   ) => {
     if (remainingBalance <= 0) {
       toast.error('The plan balance is fully paid. No more payment is due.');
@@ -913,11 +916,10 @@ const InstallmentPlanDetails = () => {
     setSelectedInstallment(
       installment
     );
+    setBalanceReductionOnly(balanceOnly);
 
     setPaymentAmount(
-      getInstallmentRemaining(
-        installment
-      ).toString()
+      balanceOnly ? '' : getInstallmentRemaining(installment).toString()
     );
 
     setPaymentMethod('');
@@ -940,6 +942,7 @@ const InstallmentPlanDetails = () => {
     setPaymentAmount('');
     setPaymentMethod('');
     setPaymentDate(getLocalDateInputValue());
+    setBalanceReductionOnly(false);
   };
 
   // =========================================================
@@ -1004,7 +1007,7 @@ const InstallmentPlanDetails = () => {
         selectedInstallment
       );
 
-    if (remaining <= 0) {
+    if (remaining <= 0 && !balanceReductionOnly) {
       toast.error(
         'This installment is already paid.'
       );
@@ -1029,6 +1032,8 @@ const InstallmentPlanDetails = () => {
       paymentAmount: amount,
 
       paymentDate: recordedPaymentDate,
+
+      balanceReductionOnly,
 
       paymentMethod,
 
@@ -2175,12 +2180,22 @@ Thank you - ${
                               </button>
                             </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 font-black text-xs">
-                              <CheckCircle2 size={14} />
-                              <span>
-                                Paid
-                              </span>
-                            </span>
+            <div className="flex flex-col items-end gap-1.5">
+              <span className="inline-flex items-center gap-1 text-emerald-600 font-black text-xs">
+                <CheckCircle2 size={14} />
+                <span>Paid</span>
+              </span>
+              {remainingBalance > 0.005 && (
+                <button
+                  type="button"
+                  onClick={() => openPaymentModal(inst, { balanceOnly: true })}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700 hover:bg-indigo-100"
+                  title="Record an extra payment against the total balance"
+                >
+                  Extra to Balance
+                </button>
+              )}
+            </div>
                           )}
                         </td>
                       </tr>
@@ -2247,7 +2262,9 @@ Thank you - ${
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-black text-slate-900">
-                        {payment.installmentNumber > 0
+                        {payment.balanceReductionOnly
+                          ? 'Extra balance payment'
+                          : payment.installmentNumber > 0
                           ? `Month #${payment.installmentNumber}`
                           : 'Installment payment'}
                       </p>
@@ -2265,10 +2282,10 @@ Thank you - ${
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 block">
-                        Payable at payment time
+                        {payment.balanceReductionOnly ? 'Applied to' : 'Payable at payment time'}
                       </span>
                       <p className="text-sm font-black text-slate-900 mt-1">
-                        {formatMoney(payment.payableAtPayment)}
+                        {payment.balanceReductionOnly ? 'Total plan balance' : formatMoney(payment.payableAtPayment)}
                       </p>
                     </div>
 
@@ -2398,7 +2415,7 @@ Thank you - ${
 
                   <div>
                     <h3 className="text-base font-black tracking-tight text-white">
-                      Record Installment Payment
+                      {balanceReductionOnly ? 'Record Extra Balance Payment' : 'Record Installment Payment'}
                     </h3>
 
                     <p className="text-xs text-slate-400 font-medium">
@@ -2439,25 +2456,21 @@ Thank you - ${
 
                   <div>
                     <span className="text-[9px] uppercase font-black text-slate-400 block">
-                      Required Monthly Due
+                      {balanceReductionOnly ? 'Extra Payment' : 'Required Monthly Due'}
                     </span>
 
                     <p className="text-sm font-black text-slate-800 mt-0.5">
-                      {formatMoney(
-                        selectedInstallment.amount
-                      )}
+                      {formatMoney(balanceReductionOnly ? 0 : selectedInstallment.amount)}
                     </p>
                   </div>
 
                   <div className="text-right">
                     <span className="text-[9px] uppercase font-black text-rose-500 block">
-                      Current Remaining
+                      {balanceReductionOnly ? 'Total Plan Balance' : 'Current Remaining'}
                     </span>
 
                     <p className="text-base font-black text-rose-600 mt-0.5">
-                      {formatMoney(
-                        selectedRemaining
-                      )}
+                      {formatMoney(balanceReductionOnly ? remainingBalance : selectedRemaining)}
                     </p>
                   </div>
                 </div>
@@ -2496,15 +2509,15 @@ Thank you - ${
                       type="button"
                       onClick={() =>
                         setQuickAmount(
-                          selectedRemaining
+                          balanceReductionOnly ? remainingBalance : selectedRemaining
                         )
                       }
                       className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-[10px] font-black text-slate-600 hover:bg-slate-200"
                     >
-                      Current Due
+                      {balanceReductionOnly ? 'Pay Remaining Balance' : 'Current Due'}
                     </button>
 
-                    <button
+                    {!balanceReductionOnly && <button
                       type="button"
                       onClick={() =>
                         setQuickAmount(
@@ -2517,9 +2530,9 @@ Thank you - ${
                       className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-[10px] font-black text-indigo-700 hover:bg-indigo-100"
                     >
                       2 × Due
-                    </button>
+                    </button>}
 
-                    {remainingBalance > selectedRemaining && (
+                    {!balanceReductionOnly && remainingBalance > selectedRemaining && (
                       <button
                         type="button"
                         onClick={() => setQuickAmount(remainingBalance)}
@@ -2617,13 +2630,11 @@ Thank you - ${
 
                           <div className="p-3 bg-white/70 rounded-xl border border-indigo-100">
                             <span className="text-[9px] uppercase font-black text-indigo-500">
-                              Current Due
+                              {balanceReductionOnly ? 'Applied to' : 'Current Due'}
                             </span>
 
                             <p className="font-black text-indigo-900 mt-1">
-                              {formatMoney(
-                                selectedRemaining
-                              )}
+                              {balanceReductionOnly ? 'Plan balance' : formatMoney(selectedRemaining)}
                             </p>
                           </div>
 

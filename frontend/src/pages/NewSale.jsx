@@ -804,22 +804,50 @@ const NewSale = () => {
      SCHEDULE TOTAL
   ========================================================= */
 
-  const scheduleTotal = useMemo(() => {
-    return roundMoney(
-      installmentSchedule.reduce(
-        (sum, item) =>
-          sum +
-          Number(item?.amount || 0),
-        0
-      )
-    );
-  }, [installmentSchedule]);
-
   const initialInstallmentNumber = treatDownPaymentAsFirstInstallment ? 2 : 1;
   const firstInstallmentAmount = Number(installmentSchedule.find((item) => Number(item.installmentNumber) === initialInstallmentNumber)?.amount || 0);
   const effectiveInitialInstallmentPaidAmount = Math.max(0, Number(initialInstallmentPaidAmount || 0));
   const hasInitialFirstInstallmentPayment = effectiveInitialInstallmentPaidAmount > 0;
   const firstInstallmentRemainingAfterInitialPayment = Math.max(0, roundMoney(firstInstallmentAmount - effectiveInitialInstallmentPaidAmount));
+
+  const effectiveInstallmentSchedule = useMemo(() => {
+    const schedule = installmentSchedule.map((item) => ({ ...item }));
+    if (!hasInitialFirstInstallmentPayment || firstInstallmentRemainingAfterInitialPayment <= 0) return schedule;
+
+    const firstIndex = schedule.findIndex((item) => Number(item.installmentNumber) === initialInstallmentNumber);
+    const laterInstallments = schedule.filter((item) => Number(item.installmentNumber) > initialInstallmentNumber);
+    if (firstIndex < 0 || laterInstallments.length === 0) return schedule;
+
+    schedule[firstIndex].amount = roundMoney(effectiveInitialInstallmentPaidAmount);
+    const centsToRedistribute = Math.round(firstInstallmentRemainingAfterInitialPayment * 100);
+    const shareCents = Math.floor(centsToRedistribute / laterInstallments.length);
+    const extraCents = centsToRedistribute % laterInstallments.length;
+
+    laterInstallments.forEach((item, index) => {
+      const increaseCents = shareCents + (index < extraCents ? 1 : 0);
+      const targetIndex = schedule.findIndex((scheduleItem) => Number(scheduleItem.installmentNumber) === Number(item.installmentNumber));
+      schedule[targetIndex].amount = roundMoney(Number(item.amount || 0) + increaseCents / 100);
+    });
+
+    return schedule;
+  }, [
+    installmentSchedule,
+    hasInitialFirstInstallmentPayment,
+    firstInstallmentRemainingAfterInitialPayment,
+    effectiveInitialInstallmentPaidAmount,
+    initialInstallmentNumber,
+  ]);
+
+  const shortfallRedistributedAcrossRemainingInstallments =
+    hasInitialFirstInstallmentPayment &&
+    firstInstallmentRemainingAfterInitialPayment > 0 &&
+    effectiveInstallmentSchedule.some((item) =>
+      Number(item.installmentNumber) > initialInstallmentNumber
+    );
+
+  const scheduleTotal = useMemo(() => roundMoney(
+    effectiveInstallmentSchedule.reduce((sum, item) => sum + Number(item?.amount || 0), 0)
+  ), [effectiveInstallmentSchedule]);
 
   const scheduleDifference = useMemo(() => {
     return roundMoney(
@@ -1279,7 +1307,7 @@ const NewSale = () => {
       if (
         Number(financedBalance || 0) >
           0 &&
-        installmentSchedule.length === 0
+        effectiveInstallmentSchedule.length === 0
       ) {
         setErrorMsg(
           'Installment schedule is empty.'
@@ -1295,7 +1323,7 @@ const NewSale = () => {
         getActualInstallmentCount();
 
       if (
-        installmentSchedule.length !==
+        effectiveInstallmentSchedule.length !==
         expectedCount
       ) {
         setErrorMsg(
@@ -1324,7 +1352,7 @@ const NewSale = () => {
       ----------------------------------------------------- */
 
       const invalidInstallment =
-        installmentSchedule.find(
+        effectiveInstallmentSchedule.find(
           (item) =>
             Number(item?.amount || 0) <
               0 ||
@@ -1351,7 +1379,7 @@ const NewSale = () => {
           : 1;
 
       const invalidInstallmentNumber =
-        installmentSchedule.some(
+        effectiveInstallmentSchedule.some(
           (item, index) =>
             Number(
               item?.installmentNumber
@@ -1378,7 +1406,7 @@ const NewSale = () => {
       ----------------------------------------------------- */
 
   const invalidDate =
-  installmentSchedule.some((item) => {
+  effectiveInstallmentSchedule.some((item) => {
     const value = String(
       item?.dueDate || ''
     ).trim();
@@ -1519,7 +1547,7 @@ if (invalidDate) {
 
       installmentSchedule:
         isInstallmentSale
-          ? installmentSchedule.map(
+          ? effectiveInstallmentSchedule.map(
               (item) => ({
                 installmentNumber:
                   Number(
@@ -2757,12 +2785,16 @@ if (invalidDate) {
                 {hasInitialFirstInstallmentPayment && (
                   <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] font-semibold text-indigo-800">
                     Installment #{initialInstallmentNumber} received: {settings?.currency || 'PKR'} {formatMoney(effectiveInitialInstallmentPaidAmount)} of {formatMoney(firstInstallmentAmount)}.
-                    {firstInstallmentRemainingAfterInitialPayment > 0 && ` Still due on #${initialInstallmentNumber}: ${settings?.currency || 'PKR'} ${formatMoney(firstInstallmentRemainingAfterInitialPayment)}.`}
+                    {shortfallRedistributedAcrossRemainingInstallments
+                      ? ` The ${settings?.currency || 'PKR'} ${formatMoney(firstInstallmentRemainingAfterInitialPayment)} shortfall is spread evenly across the remaining installments.`
+                      : firstInstallmentRemainingAfterInitialPayment > 0
+                        ? ` Still due on #${initialInstallmentNumber}: ${settings?.currency || 'PKR'} ${formatMoney(firstInstallmentRemainingAfterInitialPayment)}.`
+                        : ''}
                     {' '}Schedule below starts at installment #{initialInstallmentNumber + 1}.
                   </div>
                 )}
 
-                {installmentSchedule.length ===
+                {effectiveInstallmentSchedule.length ===
                 0 ? (
 
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
@@ -2781,7 +2813,7 @@ if (invalidDate) {
 
                 ) : (
 
-                  installmentSchedule
+                  effectiveInstallmentSchedule
                     .filter((item) => !(hasInitialFirstInstallmentPayment && Number(item.installmentNumber) === initialInstallmentNumber))
                     .map(
                     (item, index) => (

@@ -349,7 +349,7 @@ const deletePayment = async (req, res) => {
       payment.allocations.length > 0
     ) {
       allocations = payment.allocations;
-    } else if (payment.installment) {
+    } else if (payment.installment && !payment.balanceReductionOnly) {
       // Backward compatibility with old payment records
       allocations = [
         {

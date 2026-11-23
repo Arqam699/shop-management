@@ -903,6 +903,7 @@ const payInstallment = async (
       installmentId,
       paymentAmount,
       paymentDate: paymentDateInput,
+      balanceReductionOnly = false,
       paymentMethod = 'Cash',
       notes = ''
     } = req.body;
@@ -965,12 +966,22 @@ const payInstallment = async (
     }
 
     if (
+      balanceReductionOnly &&
+      Number(currentInstallment.remainingAmount || 0) > 0.005 &&
+      !['Paid', 'Settled'].includes(String(currentInstallment.status || ''))
+    ) {
+      return res.status(400).json({
+        message: 'Balance-only payments can only be recorded against an already paid installment.'
+      });
+    }
+
+    if (!balanceReductionOnly && (
       currentInstallment.status === 'Paid' ||
       currentInstallment.status === 'Settled' ||
       Number(
         currentInstallment.remainingAmount || 0
       ) <= 0
-    ) {
+    )) {
       return res.status(400).json({
         message:
           'This installment is already cleared'
@@ -1082,9 +1093,7 @@ const payInstallment = async (
           installmentNumber: 1
         });
 
-    if (
-      !installmentsFromCurrent.length
-    ) {
+    if (!balanceReductionOnly && !installmentsFromCurrent.length) {
       return res.status(400).json({
         message:
           'No unpaid installments found'
@@ -1120,14 +1129,15 @@ const payInstallment = async (
         currentInstallment.remainingAmount
       );
 
-    const currentAllocation =
-      roundMoney(
-        Math.min(
-          paymentLeft,
-          currentRemainingBefore,
-          balanceBeforePayment
-        )
-      );
+    const currentAllocation = balanceReductionOnly
+      ? 0
+      : roundMoney(
+          Math.min(
+            paymentLeft,
+            currentRemainingBefore,
+            balanceBeforePayment
+          )
+        );
 
     if (
       currentAllocation > 0
@@ -1245,10 +1255,7 @@ const payInstallment = async (
     // ACTUAL ALLOCATION CHECK
     // ========================================================
 
-    if (
-      !firstAffectedInstallment ||
-      actualAllocatedAmount <= 0
-    ) {
+    if ((!firstAffectedInstallment && !balanceReductionOnly) || actualAllocatedAmount <= 0) {
       return res.status(400).json({
         message:
           'No amount could be allocated to this installment plan'
@@ -1453,7 +1460,7 @@ const payInstallment = async (
           Number(plan.revisionNumber || 0),
 
         installment:
-          firstAffectedInstallment._id,
+          (firstAffectedInstallment || currentInstallment)._id,
 
         amount:
           amountToPay,
@@ -1470,8 +1477,10 @@ const payInstallment = async (
         balanceReductionAmount:
           extraAdjustedAmount,
 
+        balanceReductionOnly: Boolean(balanceReductionOnly),
+
         planPayableAmountAtPayment:
-          Math.min(currentRemainingBefore, balanceBeforePayment),
+          balanceReductionOnly ? 0 : Math.min(currentRemainingBefore, balanceBeforePayment),
 
         planRemainingBalanceAfterPayment:
           newPlanBalance,

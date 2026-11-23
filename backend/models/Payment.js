@@ -154,6 +154,13 @@ const paymentSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Payment collected after the selected installment was already paid;
+    // the whole amount reduces plan balance without touching an installment.
+    balanceReductionOnly: {
+      type: Boolean,
+      default: false,
+    },
+
     // Receipt-time snapshot: limits the current month's payable to the
     // amount actually owed on the plan and records the post-payment balance.
     planPayableAmountAtPayment: {
