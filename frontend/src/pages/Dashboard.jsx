@@ -1030,7 +1030,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
         @media print {
           @page {
             size: A4 landscape;
-            margin: 0 4mm 0 5mm;
+            margin: 0 4mm 0 4mm;
           }
 
           html, body, #root, #root > div, main, div, section {
