@@ -1032,7 +1032,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             /* Use physical landscape dimensions so browser/printer defaults
                cannot reinterpret the index sheet as a portrait layout. */
             size: 297mm 210mm;
-            margin: 0 4mm 0 4mm;
+            margin: 0;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1059,10 +1059,10 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
 
           #index-record-print {
             position: absolute !important;
-            left: 0 !important;
-            right: auto !important;
+            left: 8mm !important;
+            right: 4mm !important;
             top: 4mm !important;
-            width: 289mm !important;
+            width: auto !important;
             max-width: none !important;
             height: auto !important;
             max-height: none !important;
@@ -1509,7 +1509,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
                   {indexRecordPages.map((pageRows, pageIndex) => (
                     <div className="index-record-page" key={`index-page-${pageIndex}`}>
                       <div className="index-print-header px-4 py-3">
-                        <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">{indexRecordMode === 'reference' ? `REFERENCE RECORD — ${selectedIndexReference}` : 'INDEX SHEET INSTALLMENT PLAN'}</h1>
+                        <h1 className="index-print-title text-xl font-black text-slate-900 tracking-tight">{indexRecordMode === 'reference' ? (selectedIndexReference || 'REFERENCE RECORD') : 'INDEX SHEET INSTALLMENT PLAN'}</h1>
                         <p className="index-print-company text-xs font-bold text-slate-700 mt-0.5"><span>{settings?.shopName || 'Electronics Shop'}</span><span>{indexRecordPrintedDate}</span></p>
                       </div>
                       <table className="index-record-table w-full min-w-[1500px] text-left">
