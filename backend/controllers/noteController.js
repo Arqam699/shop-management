@@ -13,7 +13,7 @@ const getNote = async (req, res) => {
 const saveNote = async (req, res) => {
   try {
     const content = String(req.body?.content ?? '');
-    if (content.length > 20000) {
+    if (content.length > 100000) {
       return res.status(400).json({ success: false, message: 'Notepad is too long.' });
     }
     const note = await Note.findOneAndUpdate(

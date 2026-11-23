@@ -8,7 +8,7 @@ const noteSchema = new mongoose.Schema({
     index: true,
   },
   noteKey: { type: String, required: true, default: 'primary' },
-  content: { type: String, trim: true, maxlength: 20000, default: '' },
+  content: { type: String, trim: true, maxlength: 100000, default: '' },
 }, { timestamps: true });
 
 noteSchema.index(

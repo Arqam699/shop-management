@@ -3060,12 +3060,6 @@ Thank you - ${
           </div>
         </div>
 
-        <div className="print-footer">
-          Computer generated recovery schedule slip from{' '}
-          {settings?.shopName ||
-            'Electronics Shop'}{' '}
-          POS system.
-        </div>
       </div>
 
       {/* =====================================================
@@ -3442,16 +3436,6 @@ Thank you - ${
             font-size: 12px;
             font-weight: 900;
             margin: 0;
-          }
-
-          .print-footer {
-            margin-top: 10px;
-            text-align: center;
-            font-size: 10px;
-            font-weight: 800;
-            color: #64748b;
-            border-top: 0.5px solid #cbd5e1;
-            padding-top: 3px;
           }
 
           .print-grid-2 > .print-box,
