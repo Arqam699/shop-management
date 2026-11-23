@@ -14,7 +14,7 @@
 const mongoose = require('mongoose'); 
 const loadArchiver = async () => {
   const imported = await import('archiver');
-  return imported.default || imported;
+  return imported.ZipArchive;
 };
 const fs = require('fs');
 const fsp = fs.promises;
@@ -663,7 +663,6 @@ const cleanObject = (
   if (value && typeof value === 'object') {
     if (typeof value.$oid === 'string') return value.$oid;
     if (typeof value.toHexString === 'function') return value.toHexString();
-    if (value._id) return getIdString(value._id);
   }
 
   // ----------------------------------------------------------
@@ -2873,14 +2872,11 @@ const archiver = await loadArchiver();
       reject
     ) => {
       const archive =
-        archiver(
-          'zip',
-          {
-            zlib: {
-              level: 9,
-            },
-          }
-        );
+        new archiver({
+          zlib: {
+            level: 9,
+          },
+        });
 
       const chunks = [];
 
@@ -3771,14 +3767,11 @@ const archiver = await loadArchiver();
     ) => {
       try {
         const archive =
-          archiver(
-            'zip',
-            {
-              zlib: {
-                level: 9,
-              },
-            }
-          );
+          new archiver({
+            zlib: {
+              level: 9,
+            },
+          });
 
         const chunks = [];
 
