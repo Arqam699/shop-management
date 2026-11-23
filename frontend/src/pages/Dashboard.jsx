@@ -1032,7 +1032,7 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             /* Use physical landscape dimensions so browser/printer defaults
                cannot reinterpret the index sheet as a portrait layout. */
             size: 297mm 210mm;
-            margin: 0 5mm 0 4mm;
+            margin: 0 4mm 0 4mm;
           }
 
           html, body, #root, #root > div, main, div, section {
@@ -1062,16 +1062,14 @@ Agar aap payment already kar chuke hain to is message ko ignore karein ya paymen
             left: 0 !important;
             right: auto !important;
             top: 4mm !important;
-            width: 288mm !important;
+            width: 289mm !important;
             max-width: none !important;
             height: auto !important;
             max-height: none !important;
             overflow: visible !important;
             transform: none !important;
             margin: 0 !important;
-            /* Keep the first S.N. column inside the printer's non-printable
-               edge; border-box keeps the table within the same page width. */
-            padding: 0 0 0 5mm !important;
+            padding: 0 !important;
             box-sizing: border-box !important;
             writing-mode: horizontal-tb !important;
             direction: ltr !important;
