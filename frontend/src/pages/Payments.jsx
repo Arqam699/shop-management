@@ -1259,7 +1259,7 @@ const Payments = () => {
                 </div>
               ) : activeReceipt.balanceReductionOnly ? (
                 <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 text-[9px] font-bold">
-                  <div className="flex justify-between text-indigo-700"><span>Payment applied to:</span><span>Total plan balance</span></div>
+                  <div className="flex justify-between text-indigo-700"><span>Extra payment applied to:</span><span>Remaining plan balance</span></div>
                 </div>
               ) : originalInstallmentAmount > 0 && (
                 <div className="receipt-schedule-summary border-b border-dashed border-slate-300 pb-2 space-y-1 text-[9px] font-bold">

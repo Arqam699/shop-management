@@ -1357,8 +1357,14 @@ const payInstallment = async (
         for (const installment of allPlanInstallments) {
           if (Number(installment.remainingAmount || 0) <= 0) continue;
           installment.status = 'Paid';
+          installment.remainingAmount = 0;
           installment.paidDate = paymentDate;
           await installment.save();
+        }
+        // The plan level balance reduction covers any scheduled amount left
+        // on the final installment, so the receipt should show it as settled.
+        for (const allocation of allocations) {
+          allocation.remainingAfterPayment = 0;
         }
       }
 

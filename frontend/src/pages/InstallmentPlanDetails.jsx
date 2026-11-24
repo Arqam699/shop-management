@@ -167,20 +167,46 @@ const InstallmentPlanDetails = () => {
     return payments
       .flatMap((payment) => {
         if (Number(payment?.planRevision || 0) !== Number(installment?.revisionNumber || 0)) return [];
-        if (payment?.balanceReductionOnly) return [];
         const allocations = Array.isArray(payment?.allocations)
           ? payment.allocations
           : [];
 
+        if (payment?.balanceReductionOnly) {
+          const paymentInstallmentNumber = Number(
+            payment?.installment?.installmentNumber ||
+            payment?.currentInstallmentNumber ||
+            payment?.installmentNumber ||
+            0
+          );
+          const extraAmount = Number(payment?.balanceReductionAmount || payment?.amount || 0);
+          return paymentInstallmentNumber === installmentNumber && extraAmount > 0
+            ? [{
+                date: payment.paymentDate || payment.createdAt,
+                amount: extraAmount,
+                extraPaid: true,
+                paymentId: payment._id,
+              }]
+            : [];
+        }
+
         if (allocations.length > 0) {
-          return allocations
+          const entries = allocations
             .filter((allocation) => Number(allocation?.installmentNumber || 0) === installmentNumber)
             .map((allocation) => ({
               date: payment.paymentDate || payment.createdAt,
-              amount: Number(allocation.amount || 0) + Number(payment?.balanceReductionAmount || 0),
-              extraAmount: Number(payment?.balanceReductionAmount || 0),
+              amount: Number(allocation.amount || 0),
               paymentId: payment._id,
             }));
+          const extraAmount = Number(payment?.balanceReductionAmount || 0);
+          if (entries.length && extraAmount > 0) {
+            entries.push({
+              date: payment.paymentDate || payment.createdAt,
+              amount: extraAmount,
+              extraPaid: true,
+              paymentId: `${payment._id}-extra`,
+            });
+          }
+          return entries;
         }
 
         const paymentInstallmentNumber = Number(
@@ -216,14 +242,31 @@ const InstallmentPlanDetails = () => {
         ? roundMoney(installment.remainingAmount)
         : null;
 
-    if (backendRemaining !== null) {
-      return Math.max(0, backendRemaining);
+    const installmentRemaining = backendRemaining !== null
+      ? Math.max(0, backendRemaining)
+      : Math.max(0, roundMoney(amount - paid));
+    const unpaidInstallments = installments.filter((item) => {
+      const itemRemaining = item?.remainingAmount !== undefined && item?.remainingAmount !== null
+        ? Number(item.remainingAmount)
+        : Number(item.amount || 0) - Number(item.paidAmount || 0);
+      return itemRemaining > 0.005;
+    });
+
+    // Balance only payments leave scheduled installment records untouched.
+    // Once only the final installment remains, show the actual plan balance
+    // as its due so the customer is not asked to pay the already-reduced part.
+    if (unpaidInstallments.length === 1 && String(unpaidInstallments[0]._id) === String(installment?._id)) {
+      const scheduleRemaining = installments.reduce((sum, item) => {
+        const itemRemaining = item?.remainingAmount !== undefined && item?.remainingAmount !== null
+          ? Number(item.remainingAmount)
+          : Number(item.amount || 0) - Number(item.paidAmount || 0);
+        return sum + Math.max(0, itemRemaining);
+      }, 0);
+      const effectivePlanRemaining = Math.max(0, roundMoney(scheduleRemaining - Number(plan?.balanceReduction || 0)));
+      return Math.min(installmentRemaining, effectivePlanRemaining);
     }
 
-    return Math.max(
-      0,
-      roundMoney(amount - paid)
-    );
+    return installmentRemaining;
   };
 
   const isInstallmentPaid = (installment) => {
@@ -616,11 +659,12 @@ const InstallmentPlanDetails = () => {
   const installmentRemainingTotal =
     roundMoney(
       installments.reduce(
-        (sum, installment) =>
-          sum +
-          getInstallmentRemaining(
-            installment
-          ),
+        (sum, installment) => {
+          const remaining = installment?.remainingAmount !== undefined && installment?.remainingAmount !== null
+            ? Number(installment.remainingAmount)
+            : Number(installment?.amount || 0) - Number(installment?.paidAmount || 0);
+          return sum + Math.max(0, remaining);
+        },
         0
       )
     );
@@ -736,7 +780,7 @@ const InstallmentPlanDetails = () => {
     const planIsSettled =
       plan?.status === 'Completed' || Number(plan?.remainingBalance || 0) <= 0;
 
-    return [...payments]
+    const history = [...payments]
       .map((payment) => {
         const allocations = Array.isArray(payment?.allocations)
           ? [...payment.allocations].sort(
@@ -823,6 +867,63 @@ const InstallmentPlanDetails = () => {
           new Date(b.paymentDate || b.createdAt) -
           new Date(a.paymentDate || a.createdAt)
       );
+
+    const initialDownPayment = roundMoney(
+      plan?.downPayment ?? plan?.invoiceSnapshot?.downPayment ?? sale?.downPayment
+    );
+    const initialInstallmentPaidAmount = roundMoney(
+      plan?.initialInstallmentPaidAmount ??
+        plan?.invoiceSnapshot?.initialInstallmentPaidAmount ??
+        sale?.initialInstallmentPaidAmount
+    );
+    const initialPaymentDate = sale?.saleDate || plan?.createdAt;
+    const initialPaymentMethod = sale?.paymentMethod || 'Cash';
+    const initialPaymentRows = [];
+
+    if (initialDownPayment > 0.005) {
+      initialPaymentRows.push({
+        _id: `initial-down-payment-${plan?._id || 'plan'}`,
+        paymentId: 'Initial down payment',
+        paymentDate: initialPaymentDate,
+        paymentMethod: initialPaymentMethod,
+        amount: initialDownPayment,
+        actualPaid: initialDownPayment,
+        payableAtPayment: initialDownPayment,
+        installmentNumber: plan?.treatDownPaymentAsFirstInstallment ? 1 : 0,
+        initialPayment: true,
+        initialPaymentType: 'DownPayment',
+        remainingAfterPayment: null,
+        extraPaid: 0,
+        balanceReductionPaid: 0,
+      });
+    }
+
+    if (initialInstallmentPaidAmount > 0.005) {
+      const initialCountsAsFirst = Boolean(
+        plan?.initialPaymentCountsAsFirstInstallment ??
+        plan?.invoiceSnapshot?.initialPaymentCountsAsFirstInstallment
+      );
+      initialPaymentRows.push({
+        _id: `initial-installment-payment-${plan?._id || 'plan'}`,
+        paymentId: 'Initial installment payment',
+        paymentDate: initialPaymentDate,
+        paymentMethod: initialPaymentMethod,
+        amount: initialInstallmentPaidAmount,
+        actualPaid: initialInstallmentPaidAmount,
+        payableAtPayment: initialInstallmentPaidAmount,
+        installmentNumber: initialCountsAsFirst ? 2 : 1,
+        initialPayment: true,
+        initialPaymentType: 'FirstInstallment',
+        remainingAfterPayment: null,
+        extraPaid: 0,
+        balanceReductionPaid: 0,
+      });
+    }
+    history.push(...initialPaymentRows);
+
+    return history.sort(
+      (a, b) => new Date(b.paymentDate || b.createdAt || 0) - new Date(a.paymentDate || a.createdAt || 0)
+    );
   }, [payments, plan]);
 
   // =========================================================
@@ -2089,7 +2190,7 @@ Thank you - ${
                             <div className="mt-1.5 space-y-1 border-t border-emerald-100 pt-1.5 text-[10px] font-semibold leading-4 text-slate-600">
                               {installmentPaymentEntries.map((entry, paymentIndex) => (
                                 <div key={`${entry.paymentId || inst._id}-${paymentIndex}`}>
-                                  <div>{formatDate(entry.date)}: {formatMoney(entry.amount)} received</div>
+                                  <div>{entry.extraPaid ? 'Extra paid' : 'Paid'} {formatDate(entry.date)}: {formatMoney(entry.amount)}</div>
                                 </div>
                               ))}
                             </div>
@@ -2180,6 +2281,17 @@ Thank you - ${
                 <CheckCircle2 size={14} />
                 <span>Paid</span>
               </span>
+              {remainingBalance > 0.005 && (
+                <button
+                  type="button"
+                  onClick={() => openPaymentModal(inst, { balanceOnly: true })}
+                  className="inline-flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 transition-colors hover:bg-indigo-100"
+                  title="Record an extra payment against the remaining plan balance"
+                >
+                  <Wallet size={13} />
+                  <span>Extra paid</span>
+                </button>
+              )}
             </div>
                           )}
                         </td>
@@ -2247,7 +2359,9 @@ Thank you - ${
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-black text-slate-900">
-                        {payment.balanceReductionOnly
+                        {payment.initialPayment
+                          ? payment.initialPaymentType === 'FirstInstallment' ? `Initial payment for installment #${payment.installmentNumber}` : 'Initial down payment'
+                          : payment.balanceReductionOnly
                           ? 'Extra balance payment'
                           : payment.installmentNumber > 0
                           ? `Month #${payment.installmentNumber}`
@@ -2267,10 +2381,10 @@ Thank you - ${
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 block">
-                        {payment.balanceReductionOnly ? 'Applied to' : 'Payable at payment time'}
+                        {payment.initialPayment ? 'Initial payment received' : payment.balanceReductionOnly ? 'Applied to' : 'Payable at payment time'}
                       </span>
                       <p className="text-sm font-black text-slate-900 mt-1">
-                        {payment.balanceReductionOnly ? 'Total plan balance' : formatMoney(payment.payableAtPayment)}
+                        {payment.balanceReductionOnly ? 'Remaining plan balance' : formatMoney(payment.payableAtPayment)}
                       </p>
                     </div>
 
@@ -2323,7 +2437,7 @@ Thank you - ${
 
                   {isExtraPayment && (
                     <p className="mt-3 text-[11px] font-bold text-indigo-700">
-                      Extra amount was paid and adjusted against future installments.
+                      Extra amount was received on {formatDate(payment.paymentDate || payment.createdAt)} and deducted from the remaining balance. Monthly installment amounts were unchanged.
                     </p>
                   )}
 
@@ -2970,7 +3084,7 @@ Thank you - ${
                     <div className="print-payment-history">
                       {printPaymentEntries.map((entry, paymentIndex) => (
                         <div key={`${entry.paymentId || idx}-${paymentIndex}`}>
-                          {formatDate(entry.date)}: {formatMoney(entry.amount)}
+                          {entry.extraPaid ? `Extra paid ${formatDate(entry.date)}` : formatDate(entry.date)}: {formatMoney(entry.amount)}
                         </div>
                       ))}
                     </div>
@@ -3372,6 +3486,7 @@ Thank you - ${
 
           .print-table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             font-size: 11px;
             font-weight: 800;
@@ -3384,6 +3499,16 @@ Thank you - ${
             padding: 5px 6px;
             font-weight: 900;
             text-align: left;
+          }
+
+          .print-table th:nth-child(3),
+          .print-table td:nth-child(3) {
+            width: 12%;
+          }
+
+          .print-table th:nth-child(4),
+          .print-table td:nth-child(4) {
+            width: 25%;
           }
 
           .print-table td {
