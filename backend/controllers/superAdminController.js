@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const SuperAdmin = require('../models/SuperAdmin');
 const Shop = require('../models/Shop');
@@ -17,6 +18,8 @@ const Return = require('../models/Return');
 const YearlyAudit = require('../models/YearlyAudit');
 const Settings = require('../models/Settings');
 const Announcement = require('../models/Announcement');
+
+const SUPER_ADMIN_2FA_EMAIL = 'arqammughal699@gmail.com';
 
 
 // =====================================================
@@ -61,45 +64,55 @@ const loginSuperAdmin = async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      {
-        userId: superAdmin._id,
-        role: 'SuperAdmin',
-        sessionVersion: Number(superAdmin.sessionVersion) || 0,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: '7d',
-      }
+    if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+      return res.status(503).json({
+        success: false,
+        code: 'TWO_FACTOR_NOT_CONFIGURED',
+        message: 'Super Admin email verification is not configured. Set RESEND_API_KEY and EMAIL_FROM.',
+      });
+    }
+
+    const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const codeHash = crypto.createHash('sha256')
+      .update(`${superAdmin._id}:${otp}:${process.env.JWT_SECRET}`)
+      .digest('hex');
+    const otpCollection = mongoose.connection.collection('super_admin_login_otps');
+    await otpCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await otpCollection.updateOne(
+      { superAdminId: String(superAdmin._id) },
+      { $set: { superAdminId: String(superAdmin._id), codeHash, attempts: 0, expiresAt: new Date(Date.now() + 10 * 60 * 1000) } },
+      { upsert: true }
     );
 
-    res.cookie('superAdminToken', token, {
-      httpOnly: true,
-
-      secure:
-        process.env.NODE_ENV === 'production',
-
-      sameSite:
-        process.env.NODE_ENV === 'production'
-          ? 'none'
-          : 'lax',
-
-      maxAge:
-        7 * 24 * 60 * 60 * 1000,
+    const emailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: [SUPER_ADMIN_2FA_EMAIL],
+        subject: 'Your Super Admin verification code',
+        text: `Your Super Admin verification code is ${otp}. It expires in 10 minutes. If you did not attempt to sign in, secure your account immediately.`,
+      }),
     });
+    if (!emailResponse.ok) {
+      await otpCollection.deleteOne({ superAdminId: String(superAdmin._id) });
+      console.error('Super Admin verification email rejected:', emailResponse.status);
+      return res.status(502).json({ success: false, message: 'Could not send the verification email. Please try again.' });
+    }
+
+    const challengeToken = jwt.sign(
+      { purpose: 'super-admin-2fa', userId: String(superAdmin._id), sessionVersion: Number(superAdmin.sessionVersion) || 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
 
     return res.status(200).json({
       success: true,
 
-      message:
-        'Super Admin login successful',
-
-      superAdmin: {
-        id: superAdmin._id,
-        name: superAdmin.name,
-        email: superAdmin.email,
-        role: superAdmin.role,
-      },
+      message: 'Verification code sent to your Super Admin email.',
+      requiresTwoFactor: true,
+      challengeToken,
+      maskedEmail: SUPER_ADMIN_2FA_EMAIL.replace(/^(.).+(@.*)$/, '$1••••$2'),
     });
 
   } catch (error) {
@@ -114,6 +127,69 @@ const loginSuperAdmin = async (req, res) => {
       message:
         'Server error during Super Admin login',
     });
+  }
+};
+
+const verifySuperAdminLoginOtp = async (req, res) => {
+  try {
+    const { challengeToken, otp } = req.body || {};
+    if (typeof challengeToken !== 'string' || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ success: false, message: 'Enter the six-digit code sent to your email.' });
+    }
+
+    let challenge;
+    try {
+      challenge = jwt.verify(challengeToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ success: false, message: 'This verification request expired. Please sign in again.' });
+    }
+    if (challenge.purpose !== 'super-admin-2fa' || !mongoose.isValidObjectId(challenge.userId)) {
+      return res.status(401).json({ success: false, message: 'Invalid verification request. Please sign in again.' });
+    }
+
+    const id = String(challenge.userId);
+    const otpCollection = mongoose.connection.collection('super_admin_login_otps');
+    const record = await otpCollection.findOne({ superAdminId: id });
+    const suppliedHash = crypto.createHash('sha256')
+      .update(`${id}:${otp}:${process.env.JWT_SECRET}`).digest('hex');
+    const hashMatches = record && /^[a-f0-9]{64}$/.test(record.codeHash || '') &&
+      crypto.timingSafeEqual(Buffer.from(record.codeHash, 'hex'), Buffer.from(suppliedHash, 'hex'));
+    if (!record || record.expiresAt < new Date() || record.attempts >= 5 || !hashMatches) {
+      if (record) {
+        await otpCollection.updateOne({ _id: record._id }, { $inc: { attempts: 1 } });
+        if (record.attempts + 1 >= 5) await otpCollection.deleteOne({ _id: record._id });
+      }
+      return res.status(401).json({ success: false, message: 'The verification code is invalid or expired.' });
+    }
+
+    const consumedOtp = await otpCollection.deleteOne({ _id: record._id, codeHash: record.codeHash });
+    if (consumedOtp.deletedCount !== 1) {
+      return res.status(401).json({ success: false, message: 'The verification code is invalid or expired.' });
+    }
+    const superAdmin = await SuperAdmin.findById(id);
+    if (!superAdmin || (Number(superAdmin.sessionVersion) || 0) !== Number(challenge.sessionVersion)) {
+      return res.status(401).json({ success: false, message: 'This verification request is no longer valid. Please sign in again.' });
+    }
+
+    const token = jwt.sign(
+      { userId: superAdmin._id, role: 'SuperAdmin', sessionVersion: Number(superAdmin.sessionVersion) || 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.cookie('superAdminToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return res.status(200).json({
+      success: true,
+      message: 'Super Admin login successful',
+      superAdmin: { id: superAdmin._id, name: superAdmin.name, email: superAdmin.email, role: superAdmin.role },
+    });
+  } catch (error) {
+    console.error('Super Admin 2FA Verification Error:', error);
+    return res.status(500).json({ success: false, message: 'Could not verify the login code.' });
   }
 };
 
@@ -2898,6 +2974,7 @@ const updateShopDetails = async (
 module.exports = {
 
   loginSuperAdmin,
+  verifySuperAdminLoginOtp,
 
   logoutSuperAdmin,
 

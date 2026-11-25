@@ -1,7 +1,7 @@
 const express = require('express');
 
 const router = express.Router();
-const { superAdminLoginLimiter } = require('../middleware/rateLimiters');
+const { superAdminLoginLimiter, superAdminOtpVerifyLimiter } = require('../middleware/rateLimiters');
 
 
 // =====================================================
@@ -10,6 +10,7 @@ const { superAdminLoginLimiter } = require('../middleware/rateLimiters');
 
 const {
   loginSuperAdmin,
+  verifySuperAdminLoginOtp,
   logoutSuperAdmin,
   createShopAdmin,
   getAllShops,
@@ -53,6 +54,12 @@ router.post(
   '/login',
   superAdminLoginLimiter,
   loginSuperAdmin
+);
+
+router.post(
+  '/login/verify-otp',
+  superAdminOtpVerifyLimiter,
+  verifySuperAdminLoginOtp
 );
 
 

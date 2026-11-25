@@ -23,6 +23,9 @@ const SuperAdminLogin = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [challengeToken, setChallengeToken] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [otp, setOtp] = useState('');
 
   const navigate = useNavigate();
 
@@ -52,6 +55,13 @@ const SuperAdminLogin = () => {
         );
       }
 
+      if (data?.requiresTwoFactor && data.challengeToken) {
+        setChallengeToken(data.challengeToken);
+        setMaskedEmail(data.maskedEmail || email.trim());
+        setError('');
+        return;
+      }
+
       navigate('/super-admin/dashboard', {
         replace: true,
       });
@@ -62,6 +72,26 @@ const SuperAdminLogin = () => {
           error.message ||
           'Super Admin login failed'
       );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const response = await api.post('/api/super-admin/login/verify-otp', {
+        challengeToken,
+        otp: otp.trim(),
+      });
+      if (response.data?.success === false) {
+        throw new Error(response.data.message || 'Code verification failed');
+      }
+      navigate('/super-admin/dashboard', { replace: true });
+    } catch (verifyError) {
+      setError(verifyError.response?.data?.message || verifyError.message || 'Code verification failed');
     } finally {
       setLoading(false);
     }
@@ -190,10 +220,12 @@ const SuperAdminLogin = () => {
                 Super Admin
               </span>
               <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">
-                Welcome back
+                {challengeToken ? 'Verify your identity' : 'Welcome back'}
               </h2>
               <p className="text-xs text-slate-400 font-semibold mt-1">
-                Sign in with your master credentials to access platform controls.
+                {challengeToken
+                  ? `Enter the six-digit code sent to ${maskedEmail}.`
+                  : 'Sign in with your master credentials to access platform controls.'}
               </p>
             </div>
 
@@ -206,10 +238,10 @@ const SuperAdminLogin = () => {
             )}
 
             {/* Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={challengeToken ? handleVerifyOtp : handleLogin} className="space-y-4">
               
               {/* Email Address */}
-              <div className="space-y-1.5">
+              {!challengeToken && <div className="space-y-1.5">
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
                   Master Email Address
                 </label>
@@ -227,10 +259,10 @@ const SuperAdminLogin = () => {
                     className="w-full h-11 pl-11 pr-4 border border-slate-200 rounded-xl bg-slate-50 text-xs sm:text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-[#C19A2B] focus:ring-4 focus:ring-[#D4AF37]/10 transition-all"
                   />
                 </div>
-              </div>
+              </div>}
 
               {/* Password */}
-              <div className="space-y-1.5">
+              {!challengeToken && <div className="space-y-1.5">
                 <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
                   Master Password
                 </label>
@@ -257,7 +289,29 @@ const SuperAdminLogin = () => {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-              </div>
+              </div>}
+
+              {challengeToken && (
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Email verification code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    className="w-full h-12 px-4 border border-slate-200 rounded-xl bg-slate-50 text-center text-lg tracking-[0.4em] font-black text-slate-800 outline-none focus:bg-white focus:border-[#C19A2B] focus:ring-4 focus:ring-[#D4AF37]/10 transition-all"
+                  />
+                  <p className="text-[11px] text-slate-400">The code expires in 10 minutes.</p>
+                </div>
+              )}
 
               {/* Sign In Button */}
               <div className="pt-2">
@@ -273,14 +327,24 @@ const SuperAdminLogin = () => {
                     </>
                   ) : (
                     <>
-                      <span>Login as Super Admin</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <span>{challengeToken ? 'Verify and continue' : 'Login as Super Admin'}</span>
+                      {challengeToken ? <ShieldCheck className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                     </>
                   )}
                 </button>
               </div>
 
             </form>
+
+            {challengeToken && (
+              <button
+                type="button"
+                onClick={() => { setChallengeToken(''); setOtp(''); setError(''); }}
+                className="mt-4 w-full text-xs font-bold text-slate-500 hover:text-slate-800"
+              >
+                Back to sign in
+              </button>
+            )}
 
             {/* Back to regular login */}
             <div className="mt-7 text-center">

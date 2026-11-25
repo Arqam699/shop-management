@@ -39,6 +39,10 @@ const demoOtpVerifyLimiter = createDemoLimiter(
 module.exports = {
   adminLoginLimiter: createLoginLimiter('admin_login_rate_limits'),
   superAdminLoginLimiter: createLoginLimiter('super_admin_login_rate_limits'),
+  superAdminOtpVerifyLimiter: createDemoLimiter(
+    'super_admin_otp_verify_rate_limits', 10,
+    'Too many verification attempts. Please try again in an hour.'
+  ),
   demoSignupLimiter,
   demoOtpSendLimiter,
   demoOtpVerifyLimiter,
