@@ -80,7 +80,7 @@ const loginSuperAdmin = async (req, res) => {
     await otpCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
     await otpCollection.updateOne(
       { superAdminId: String(superAdmin._id) },
-      { $set: { superAdminId: String(superAdmin._id), codeHash, attempts: 0, expiresAt: new Date(Date.now() + 10 * 60 * 1000) } },
+      { $set: { superAdminId: String(superAdmin._id), codeHash, attempts: 0, expiresAt: new Date(Date.now() + 5 * 60 * 1000) } },
       { upsert: true }
     );
 
@@ -91,7 +91,7 @@ const loginSuperAdmin = async (req, res) => {
         from: process.env.EMAIL_FROM,
         to: [SUPER_ADMIN_2FA_EMAIL],
         subject: 'Your Super Admin verification code',
-        text: `Your Super Admin verification code is ${otp}. It expires in 10 minutes. If you did not attempt to sign in, secure your account immediately.`,
+        text: `Your Super Admin verification code is ${otp}. It expires in 5 minutes. If you did not attempt to sign in, secure your account immediately.`,
       }),
     });
     if (!emailResponse.ok) {
@@ -103,7 +103,7 @@ const loginSuperAdmin = async (req, res) => {
     const challengeToken = jwt.sign(
       { purpose: 'super-admin-2fa', userId: String(superAdmin._id), sessionVersion: Number(superAdmin.sessionVersion) || 0 },
       process.env.JWT_SECRET,
-      { expiresIn: '10m' }
+      { expiresIn: '5m' }
     );
 
     return res.status(200).json({

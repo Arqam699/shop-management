@@ -309,7 +309,7 @@ const SuperAdminLogin = () => {
                     placeholder="000000"
                     className="w-full h-12 px-4 border border-slate-200 rounded-xl bg-slate-50 text-center text-lg tracking-[0.4em] font-black text-slate-800 outline-none focus:bg-white focus:border-[#C19A2B] focus:ring-4 focus:ring-[#D4AF37]/10 transition-all"
                   />
-                  <p className="text-[11px] text-slate-400">The code expires in 10 minutes.</p>
+                  <p className="text-[11px] text-slate-400">The code expires in 5 minutes.</p>
                 </div>
               )}
 
